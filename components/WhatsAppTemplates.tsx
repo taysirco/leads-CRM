@@ -63,8 +63,30 @@ export default function WhatsAppTemplates({ customer, orderStatus }: WhatsAppTem
 
   const handleTemplateSelect = (template: MessageTemplate) => {
     const message = template.generator(customer);
-    const whatsappLink = createWhatsAppLink(customer.phone, message);
-    window.open(whatsappLink, '_blank');
+    
+    // كشف نظام التشغيل
+    const isWindows = navigator.platform.toLowerCase().includes('win');
+    
+    if (isWindows) {
+      // للويندوز: استخدام طريقة مختلفة
+      const cleanPhone = customer.phone.replace(/\+/g, '');
+      
+      // تحضير الرسالة للويندوز
+      const formattedMessage = message
+        .replace(/\*/g, '') // إزالة علامات Bold
+        .replace(/\n/g, ' '); // استبدال الأسطر الجديدة بمسافات
+      
+      // استخدام encodeURIComponent مرة واحدة فقط
+      const encodedMessage = encodeURIComponent(formattedMessage);
+      
+      const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodedMessage}`;
+      window.open(whatsappLink, '_blank');
+    } else {
+      // للأنظمة الأخرى: استخدام الطريقة العادية
+      const whatsappLink = createWhatsAppLink(customer.phone, message);
+      window.open(whatsappLink, '_blank');
+    }
+    
     setIsOpen(false);
   };
 
