@@ -47,11 +47,18 @@ export function isValidEgyptianPhone(phone: string): boolean {
 }
 
 /**
- * تنسيق رقم للعرض (بدون +)
+ * تنسيق رقم للعرض المحلي (01xxxxxxxxx)
  */
-export function formatPhoneForDisplay(phone: string): string {
-  const formatted = formatEgyptianPhone(phone);
-  return formatted.startsWith('+') ? formatted.substring(1) : formatted;
+export function formatPhoneForDisplay(phone: string | number): string {
+  const internationalFormat = formatEgyptianPhone(phone);
+  if (!internationalFormat) return '';
+  
+  const cleaned = internationalFormat.replace(/\D/g, '');
+  if (cleaned.startsWith('201') && cleaned.length === 12) {
+    return `0${cleaned.substring(2)}`;
+  }
+  
+  return internationalFormat; // Fallback to the full number if something is unusual
 }
 
 /**
