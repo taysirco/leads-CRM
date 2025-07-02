@@ -156,8 +156,9 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
 export async function getOrderStatistics() {
   const leads = await fetchLeads();
   const today = new Date().toISOString().split('T')[0];
-  
-  const stats = {
+
+  // Overall Statistics
+  const overallStats = {
     total: leads.length,
     new: leads.filter((l: LeadRow) => !l.status || l.status === 'جديد').length,
     confirmed: leads.filter((l: LeadRow) => l.status === 'تم التأكيد').length,
@@ -168,6 +169,28 @@ export async function getOrderStatistics() {
     shipped: leads.filter((l: LeadRow) => l.status === 'تم الشحن').length,
     today: leads.filter((l: LeadRow) => l.orderDate && l.orderDate.startsWith(today)).length,
   };
-  
-  return stats;
+
+  // Per-Product Statistics
+  const productStats: { [productName: string]: typeof overallStats } = {};
+
+  leads.forEach((lead) => {
+    const productName = lead.productName || 'منتج غير محدد';
+    if (!productStats[productName]) {
+      productStats[productName] = {
+        total: 0, new: 0, confirmed: 0, pending: 0, rejected: 0, noAnswer: 0, contacted: 0, shipped: 0, today: 0,
+      };
+    }
+
+    productStats[productName].total++;
+    if (!lead.status || lead.status === 'جديد') productStats[productName].new++;
+    if (lead.status === 'تم التأكيد') productStats[productName].confirmed++;
+    if (lead.status === 'في انتظار تأكيد العميل') productStats[productName].pending++;
+    if (lead.status === 'رفض التأكيد') productStats[productName].rejected++;
+    if (lead.status === 'لم يرد') productStats[productName].noAnswer++;
+    if (lead.status === 'تم التواصل معه واتساب') productStats[productName].contacted++;
+    if (lead.status === 'تم الشحن') productStats[productName].shipped++;
+    if (lead.orderDate && lead.orderDate.startsWith(today)) productStats[productName].today++;
+  });
+
+  return { overall: overallStats, byProduct: productStats };
 } 
