@@ -4,11 +4,16 @@ import { serialize } from 'cookie';
 const USERNAME = process.env.APP_USERNAME;
 const PASSWORD = process.env.APP_PASSWORD;
 
-if (!USERNAME || !PASSWORD) {
-  throw new Error('Username or password is not set in environment variables');
-}
-
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
+  console.log("--- Login API Endpoint ---");
+  console.log("Found APP_USERNAME:", !!USERNAME);
+  console.log("Found APP_PASSWORD:", !!PASSWORD);
+  
+  if (!USERNAME || !PASSWORD) {
+    console.error('ERROR: Username or password is not set in environment variables.');
+    return res.status(500).json({ message: 'Server configuration error.' });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
