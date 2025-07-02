@@ -1,6 +1,13 @@
 import '../styles/globals.css';
 import type { AppProps } from 'next/app';
- 
-export default function MyApp({ Component, pageProps }: AppProps) {
-  return <Component {...pageProps} />;
-} 
+import RTLWrapper from '../components/RTLWrapper';
+
+function MyApp({ Component, pageProps }: AppProps) {
+  return (
+    <RTLWrapper>
+      <Component {...pageProps} />
+    </RTLWrapper>
+  );
+}
+
+export default MyApp; 

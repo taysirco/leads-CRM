@@ -15,7 +15,7 @@ export interface CustomerInfo {
 export function generateFollowUpMessage(customer: CustomerInfo): string {
   const message = `السلام عليكم مع حضرتك هبة بخصوص طلبك (*${customer.productName}*), حاولنا الاتصال بك ولم نتمكن من الوصول إليك. نرجو التكرم بالرد لتأكيد الطلب, ونحن في خدمتك لأي استفسار.`;
 
-  return message;
+  return encodeURIComponent(message);
 }
 
 /**
@@ -29,7 +29,7 @@ export function generateSecondReminderMessage(customer: CustomerInfo): string {
 نحترم قرارك إذا لم تعد مهتماً، فقط أخبرنا لنزيل رقمك من قائمة المتابعة.
 مع أطيب التحيات، فريق سماريكتنج`;
 
-  return message;
+  return encodeURIComponent(message);
 }
 
 /**
@@ -41,7 +41,7 @@ export function generateConfirmationMessage(customer: CustomerInfo): string {
 سيتم التواصل معك قريباً لتأكيد العنوان وموعد التسليم.
 نشكرك على ثقتك الغالية بنا، فريق سماريكتنج`;
 
-  return message;
+  return encodeURIComponent(message);
 }
 
 /**
@@ -55,7 +55,7 @@ export function generateShippingMessage(customer: CustomerInfo): string {
 نتمنى أن ينال الطلب إعجابك.
 شكراً لثقتك، فريق سماريكتنج`;
 
-  return message;
+  return encodeURIComponent(message);
 }
 
 /**
@@ -64,6 +64,5 @@ export function generateShippingMessage(customer: CustomerInfo): string {
 export function createWhatsAppLink(phone: string, message: string): string {
   // تنظيف رقم الهاتف من + 
   const cleanPhone = phone.replace(/\+/g, '');
-  const encodedMessage = encodeURIComponent(message);
-  return `https://wa.me/${cleanPhone}?text=${encodedMessage}`;
+  return `https://wa.me/${cleanPhone}?text=${message}`;
 } 

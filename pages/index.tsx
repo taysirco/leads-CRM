@@ -1,10 +1,16 @@
 import useSWR from 'swr';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Dashboard from '../components/Dashboard';
 import OrdersTable from '../components/OrdersTable';
 import BostaExport from '../components/BostaExport';
 import ArchiveTable from '../components/ArchiveTable';
 import RejectedTable from '../components/RejectedTable';
+import NotificationSystem from '../components/NotificationSystem';
+import NotificationPermission from '../components/NotificationPermission';
+import LiveStats from '../components/LiveStats';
+import EnhancedAlerts from '../components/EnhancedAlerts';
+import NotificationSettingsComponent from '../components/NotificationSettings';
+import { useNotifications } from '../hooks/useNotifications';
 
 interface Lead {
   id: number;
@@ -13,25 +19,64 @@ interface Lead {
   phone: string;
   governorate: string;
   status: string;
+  productName: string;
+  totalPrice: string;
 }
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
   if (!res.ok) {
-    let message = 'Error fetching data';
-    try {
-      const body = await res.json();
-      message = body.error || message;
-    } catch {}
-    throw new Error(message);
+    throw new Error('Failed to fetch data');
   }
   return res.json();
 };
 
 export default function Home() {
-  const { data, error, mutate } = useSWR('/api/orders', fetcher, { refreshInterval: 30000 });
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'export' | 'archive' | 'rejected'>('orders');
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
+  const [showSettings, setShowSettings] = useState(false);
+  const [notificationSettings, setNotificationSettings] = useState<any>({
+    autoRefresh: true,
+    refreshInterval: 30,
+    soundEnabled: true
+  });
+  const [hasInteracted, setHasInteracted] = useState(false);
+  
+  useEffect(() => {
+    const handleInteraction = () => {
+      setHasInteracted(true);
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
+    };
+
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('keydown', handleInteraction);
+
+    return () => {
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
+    };
+  }, []);
+
+  const { data, error, mutate } = useSWR(
+    '/api/orders', 
+    fetcher, 
+    { refreshInterval: notificationSettings.autoRefresh ? notificationSettings.refreshInterval * 1000 : 0 }
+  );
+  
+  // Get all orders for notification system
+  const orders = data?.data || [];
+  
+  // Initialize notification system
+  const { 
+    notifications, 
+    addNotification, 
+    removeNotification, 
+    removeAllNotifications 
+  } = useNotifications(orders, hasInteracted);
+
+  // Get new orders count for enhanced alerts
+  const newOrdersCount = notifications.filter(n => n.type === 'new_order').length;
 
   const handleUpdateOrder = async (orderId: number, updates: any): Promise<void> => {
     try {
@@ -43,6 +88,13 @@ export default function Home() {
       await mutate();
     } catch (error) {
       console.error('Error updating order:', error);
+      // Show error notification
+      addNotification({
+        type: 'error',
+        title: 'خطأ في التحديث',
+        message: 'فشل في تحديث الطلب. حاول مرة أخرى.',
+        duration: 5000
+      });
       throw error;
     }
   };
@@ -71,6 +123,30 @@ export default function Home() {
     setSelectedOrders([]);
   };
 
+  // Filter orders based on active tab
+  const getFilteredOrders = () => {
+    if (!orders) return [];
+    
+    switch (activeTab) {
+      case 'orders':
+        return orders.filter((order: any) => 
+          !order.status || 
+          order.status === 'جديد' || 
+          order.status === 'في انتظار تأكيد العميل' || 
+          order.status === 'لم يرد' || 
+          order.status === 'تم التواصل معه واتساب'
+        );
+      case 'export':
+        return orders.filter((order: any) => order.status === 'تم التأكيد');
+      case 'archive':
+        return orders.filter((order: any) => order.status === 'تم الشحن');
+      case 'rejected':
+        return orders.filter((order: any) => order.status === 'رفض التأكيد');
+      default:
+        return orders;
+    }
+  };
+
   if (error) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="text-center">
@@ -83,109 +159,139 @@ export default function Home() {
   if (!data) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
         <p className="text-gray-600 mt-4">جاري تحميل البيانات...</p>
       </div>
     </div>
   );
 
-  const orders = data?.data || [];
-  
-  const mainOrders = orders.filter(
-    (order: any) => !['تم التأكيد', 'رفض التأكيد', 'تم الشحن'].includes(order.status)
-  );
-
-  const rejectedOrders = orders.filter((order: any) => order.status === 'رفض التأكيد');
+  const filteredOrders = getFilteredOrders();
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">نظام إدارة الطلبات - سماريكتنج</h1>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">آخر تحديث: {new Date().toLocaleTimeString('ar-EG')}</span>
-            </div>
-          </div>
-        </div>
-      </header>
+    <>
+      {/* Enhanced Alert System */}
+      <EnhancedAlerts 
+        hasNewOrders={newOrdersCount > 0}
+        newOrdersCount={newOrdersCount}
+        initialUserInteraction={hasInteracted}
+      />
+      
+      {/* Notification Permission Request */}
+      <NotificationPermission />
+      
+      {/* Notification System */}
+      <NotificationSystem
+        notifications={notifications}
+        onDismiss={removeNotification}
+        onDismissAll={removeAllNotifications}
+        soundEnabled={notificationSettings.soundEnabled}
+        initialUserInteraction={hasInteracted}
+      />
 
-      {/* Navigation Tabs */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        <nav className="flex space-x-reverse space-x-4 border-b">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`py-2 px-4 font-medium text-sm transition-colors ${
-              activeTab === 'dashboard'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            لوحة التحكم
-          </button>
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`py-2 px-4 font-medium text-sm transition-colors ${
-              activeTab === 'orders'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            الطلبات ({mainOrders.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('export')}
-            className={`py-2 px-4 font-medium text-sm transition-colors ${
-              activeTab === 'export'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            تصدير بوسطة
-          </button>
-          <button
-            onClick={() => setActiveTab('archive')}
-            className={`py-2 px-4 font-medium text-sm transition-colors ${
-              activeTab === 'archive'
-                ? 'border-b-2 border-indigo-600 text-indigo-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            الأرشيف (مشحون)
-          </button>
-          <button
-            onClick={() => setActiveTab('rejected')}
-            className={`py-2 px-4 font-medium text-sm transition-colors ${
-              activeTab === 'rejected'
-                ? 'border-b-2 border-red-600 text-red-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            المهملة (مرفوض)
-          </button>
-        </nav>
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto p-4">
+          <header className="mb-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">نظام إدارة الطلبات</h1>
+                <p className="text-gray-600 mt-2">إدارة شاملة لطلبات العملاء مع تزامن فوري مع Google Sheets</p>
+              </div>
+              
+              {/* Settings Button */}
+              <button
+                onClick={() => setShowSettings(true)}
+                className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-4 py-2 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
+                title="إعدادات الإشعارات"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                الإعدادات
+              </button>
+            </div>
+          </header>
+
+          {/* Live Statistics */}
+          <LiveStats orders={orders} />
+
+          {/* Navigation Tabs */}
+          <div className="bg-white rounded-lg shadow-sm mb-6 p-1">
+            <nav className="flex space-x-1 space-x-reverse">
+              {[
+                { id: 'dashboard', name: 'لوحة التحكم', icon: '📊' },
+                { id: 'orders', name: 'الطلبات النشطة', icon: '📋' },
+                { id: 'export', name: 'تصدير بوسطة', icon: '📤' },
+                { id: 'archive', name: 'الأرشيف', icon: '📁' },
+                { id: 'rejected', name: 'الطلبات المهملة', icon: '🗑️' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-all ${
+                    activeTab === tab.id
+                      ? 'bg-blue-100 text-blue-700 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  <span>{tab.icon}</span>
+                  <span>{tab.name}</span>
+                  {(tab.id === 'orders' && filteredOrders.length > 0) && (
+                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                      {filteredOrders.length}
+                    </span>
+                  )}
+                  {(tab.id === 'export' && filteredOrders.length > 0) && (
+                    <span className="bg-green-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                      {filteredOrders.length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {/* Content */}
+          <main>
+            {activeTab === 'dashboard' && <Dashboard />}
+            {activeTab === 'orders' && (
+              <OrdersTable 
+                orders={filteredOrders} 
+                onUpdateOrder={handleUpdateOrder} 
+              />
+            )}
+            {activeTab === 'export' && (
+              <BostaExport
+                orders={filteredOrders}
+                selectedOrders={selectedOrders}
+                onSelectOrder={handleSelectOrder}
+                onSelectAll={handleSelectAll}
+                onDeselectAll={handleDeselectAll}
+                onUpdateOrder={handleUpdateOrder}
+              />
+            )}
+            {activeTab === 'archive' && (
+              <ArchiveTable 
+                orders={filteredOrders} 
+                onUpdateOrder={handleUpdateOrder} 
+              />
+            )}
+            {activeTab === 'rejected' && (
+              <RejectedTable 
+                orders={filteredOrders} 
+                onUpdateOrder={handleUpdateOrder} 
+              />
+            )}
+          </main>
+        </div>
       </div>
 
-      {/* Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'orders' && (
-          <OrdersTable orders={mainOrders} onUpdateOrder={handleUpdateOrder} />
-        )}
-        {activeTab === 'export' && (
-          <BostaExport 
-            orders={orders}
-            selectedOrders={selectedOrders}
-            onUpdateOrder={handleUpdateOrder}
-            onSelectOrder={handleSelectOrder}
-            onSelectAll={handleSelectAll}
-            onDeselectAll={handleDeselectAll}
-          />
-        )}
-        {activeTab === 'archive' && <ArchiveTable orders={orders} onUpdateOrder={handleUpdateOrder} />}
-        {activeTab === 'rejected' && <RejectedTable orders={rejectedOrders} onUpdateOrder={handleUpdateOrder} />}
-      </main>
-    </div>
+      {/* Notification Settings Modal */}
+      <NotificationSettingsComponent
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        onSettingsChange={setNotificationSettings}
+      />
+    </>
   );
 } 

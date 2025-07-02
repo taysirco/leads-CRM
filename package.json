@@ -8,6 +8,7 @@
     "start": "next start -p 3000"
   },
   "dependencies": {
+    "@tailwindcss/forms": "^0.5.10",
     "cookie": "^1.0.2",
     "google-spreadsheet": "^3.3.0",
     "googleapis": "^150.0.1",

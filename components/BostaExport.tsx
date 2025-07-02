@@ -266,16 +266,16 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                         className="rounded"
                       />
                     </td>
-                    <td className="px-3 py-2">{order.id}</td>
-                    <td className="px-3 py-2">{order.name}</td>
-                    <td className="px-3 py-2">{order.phone}</td>
-                    <td className="px-3 py-2">{order.whatsapp || '-'}</td>
-                    <td className="px-3 py-2">{order.governorate}</td>
-                    <td className="px-3 py-2 text-gray-600 max-w-xs truncate" title={order.address}>{order.address}</td>
-                    <td className="px-3 py-2">{order.productName}</td>
-                    <td className="px-3 py-2">{order.totalPrice}</td>
+                    <td className="px-3 py-2 text-gray-800">{order.id}</td>
+                    <td className="px-3 py-2 text-gray-900 font-medium">{order.name}</td>
+                    <td className="px-3 py-2 text-gray-800 font-mono">{order.phone}</td>
+                    <td className="px-3 py-2 text-gray-800 font-mono">{order.whatsapp || '-'}</td>
+                    <td className="px-3 py-2 text-gray-800">{order.governorate}</td>
+                    <td className="px-3 py-2 text-gray-700 max-w-xs truncate" title={order.address}>{order.address}</td>
+                    <td className="px-3 py-2 text-gray-800">{order.productName}</td>
+                    <td className="px-3 py-2 text-gray-900 font-semibold">{order.totalPrice}</td>
                     <td className="px-3 py-2">
-                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">
+                      <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
                         {order.status}
                       </span>
                     </td>
@@ -283,14 +283,14 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                       <button
                         onClick={() => handleRevertStatus(order.id)}
                         disabled={isLoading}
-                        className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                        className="text-sm text-blue-700 hover:text-blue-900 disabled:opacity-50"
                         title="إعادة الطلب إلى قائمة الطلبات النشطة"
                       >
                         {isLoading ? 'جاري...' : 'إعادة للطلبات'}
                       </button>
                       <button
                         onClick={() => openEditModal(order)}
-                        className="text-gray-500 hover:text-blue-600 disabled:opacity-50"
+                        className="text-gray-600 hover:text-blue-700 disabled:opacity-50"
                         title="تعديل الطلب"
                         disabled={isLoading}
                       >

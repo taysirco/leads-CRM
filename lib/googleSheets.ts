@@ -62,33 +62,59 @@ export async function fetchLeads() {
     return [];
   }
 
-  const headers = rows[0];
-  const headerMap = headers.reduce((map, header, index) => {
-    map[header] = index;
+  const headers = rows[0].map((h: string) => (h || '').trim());
+  const headerMap: { [key: string]: number } = headers.reduce((map: { [key: string]: number }, header, index) => {
+    map[header.toLowerCase()] = index; // Use lowercase for case-insensitive matching
     return map;
-  }, {} as { [key: string]: number });
+  }, {});
+  
+  const fieldToHeaderMap: { [K in keyof Omit<LeadRow, 'id' | 'rowIndex'>]: string[] } = {
+    orderDate: ['تاريخ الطلب'],
+    name: ['الاسم', 'اسم العميل'],
+    phone: ['رقم الهاتف', 'الهاتف'],
+    whatsapp: ['رقم الواتس', 'واتساب'],
+    governorate: ['المحافظة'],
+    area: ['المنطقة'],
+    address: ['العنوان'],
+    orderDetails: ['تفاصيل الطلب', 'التفاصيل'],
+    quantity: ['الكمية'],
+    totalPrice: ['توتال السعر شامل الشحن', 'السعر الاجمالي', 'السعر'],
+    productName: ['اسم المنتج', 'المنتج'],
+    status: ['الحالة'],
+    notes: ['ملاحظات'],
+    source: ['المصدر'],
+    whatsappSent: ['ارسال واتس اب'],
+  };
 
   const leads = rows.slice(1).map((row, index) => {
-    const getVal = (headerName: string) => String(row[headerMap[headerName]] || '');
+    const getVal = (possibleHeaders: string[]) => {
+      for (const header of possibleHeaders) {
+        const headerIndex = headerMap[header.toLowerCase()];
+        if (headerIndex !== undefined) {
+          return String(row[headerIndex] || '');
+        }
+      }
+      return '';
+    };
 
     return {
       id: index + 2,
-      rowIndex: index,
-      orderDate: getVal('تاريخ الطلب'),
-      name: getVal('الاسم'),
-      phone: formatEgyptianPhone(getVal('رقم الهاتف')),
-      whatsapp: formatEgyptianPhone(getVal('رقم الواتس')),
-      governorate: getVal('المحافظة'),
-      area: getVal('المنطقة'),
-      address: getVal('العنوان'),
-      orderDetails: getVal('تفاصيل الطلب'),
-      quantity: getVal('الكمية'),
-      totalPrice: getVal('توتال السعر شامل الشحن'),
-      productName: getVal('اسم المنتج'),
-      status: getVal('الحالة'),
-      notes: getVal('ملاحظات'),
-      source: getVal('المصدر'),
-      whatsappSent: getVal('ارسال واتس اب'),
+      rowIndex: index + 2, // Sheet rows are 1-indexed, and we skip the header
+      orderDate: getVal(fieldToHeaderMap.orderDate),
+      name: getVal(fieldToHeaderMap.name),
+      phone: formatEgyptianPhone(getVal(fieldToHeaderMap.phone)),
+      whatsapp: formatEgyptianPhone(getVal(fieldToHeaderMap.whatsapp)),
+      governorate: getVal(fieldToHeaderMap.governorate),
+      area: getVal(fieldToHeaderMap.area),
+      address: getVal(fieldToHeaderMap.address),
+      orderDetails: getVal(fieldToHeaderMap.orderDetails),
+      quantity: getVal(fieldToHeaderMap.quantity),
+      totalPrice: getVal(fieldToHeaderMap.totalPrice),
+      productName: getVal(fieldToHeaderMap.productName),
+      status: getVal(fieldToHeaderMap.status),
+      notes: getVal(fieldToHeaderMap.notes),
+      source: getVal(fieldToHeaderMap.source),
+      whatsappSent: getVal(fieldToHeaderMap.whatsappSent),
     };
   });
 
@@ -99,26 +125,81 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  // For now, we only support updating the status. 
-  // A more robust implementation would map all header names to their column letters.
-  const statusColumn = 'L'; // Assuming 'الحالة' is in column L
-  const range = `${SHEET_NAME}!${statusColumn}${rowNumber}`;
+  const headersResponse = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range: `${SHEET_NAME}!1:1`,
+  });
 
-  if (updates.status) {
-    try {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SHEET_ID,
-        range: range,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: {
-          values: [[updates.status]],
-        },
-      });
-      console.log(`Successfully updated status for row ${rowNumber} to ${updates.status}`);
-    } catch (error) {
-      console.error(`Failed to update status for row ${rowNumber}:`, error);
-      throw new Error(`Failed to update sheet: ${error}`);
+  const headers = headersResponse.data.values?.[0];
+  if (!headers) {
+    throw new Error('Could not retrieve headers from the sheet.');
+  }
+  
+  const headerMap: { [key: string]: number } = headers.reduce((map: { [key: string]: number }, header, index) => {
+    map[header.toLowerCase()] = index; // Use lowercase for case-insensitive matching
+    return map;
+  }, {});
+
+  const fieldToHeaderMap: { [K in keyof Omit<LeadRow, 'id' | 'rowIndex'>]: string[] } = {
+    orderDate: ['تاريخ الطلب'],
+    name: ['الاسم', 'اسم العميل'],
+    phone: ['رقم الهاتف', 'الهاتف'],
+    whatsapp: ['رقم الواتس', 'واتساب'],
+    governorate: ['المحافظة'],
+    area: ['المنطقة'],
+    address: ['العنوان'],
+    orderDetails: ['تفاصيل الطلب', 'التفاصيل'],
+    quantity: ['الكمية'],
+    totalPrice: ['توتال السعر شامل الشحن', 'السعر الاجمالي', 'السعر'],
+    productName: ['اسم المنتج', 'المنتج'],
+    status: ['الحالة'],
+    notes: ['ملاحظات'],
+    source: ['المصدر'],
+    whatsappSent: ['ارسال واتس اب'],
+  };
+
+  const data = (Object.entries(updates) as [keyof LeadRow, any][]).map(([key, value]) => {
+    if (key === 'id' || key === 'rowIndex') return null;
+
+    const possibleHeaders = fieldToHeaderMap[key as keyof Omit<LeadRow, 'id' | 'rowIndex'>];
+    if (!possibleHeaders) return null;
+
+    let columnIndex: number | undefined;
+    for (const header of possibleHeaders) {
+        const headerIndex = headerMap[header.toLowerCase()];
+        if (headerIndex !== undefined) {
+            columnIndex = headerIndex;
+            break;
+        }
     }
+    
+    if (columnIndex === undefined) return null;
+    
+    const columnLetter = String.fromCharCode('A'.charCodeAt(0) + columnIndex);
+    
+    return {
+      range: `${SHEET_NAME}!${columnLetter}${rowNumber}`,
+      values: [[value]],
+    };
+  }).filter(Boolean) as { range: string; values: any[][]; }[];
+
+  if (data.length === 0) {
+    console.log('No valid fields to update for row', rowNumber);
+    return;
+  }
+
+  try {
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      requestBody: {
+        valueInputOption: 'USER_ENTERED',
+        data: data,
+      },
+    });
+    console.log(`Successfully updated row ${rowNumber} with`, updates);
+  } catch (error) {
+    console.error(`Failed to update row ${rowNumber}:`, error);
+    throw new Error(`Failed to update sheet: ${error}`);
   }
 }
 
