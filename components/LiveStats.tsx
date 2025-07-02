@@ -200,20 +200,6 @@ const LiveStats: React.FC<LiveStatsProps> = ({ orders }) => {
         bgColor="bg-gradient-to-br from-gray-50 to-slate-50"
         statKey="rejected"
       />
-      
-      <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-4 border border-gray-200">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-600">إجمالي المبيعات</p>
-            <p className="text-xl font-bold text-purple-600">
-              {revenue.toLocaleString('ar-EG')} ج.م
-            </p>
-          </div>
-          <div className="text-3xl p-3 rounded-full bg-white bg-opacity-70">
-            💰
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
