@@ -244,6 +244,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                 <th className="px-3 py-2 text-right font-medium text-gray-700">#</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-700">الاسم</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-700">الهاتف</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-700">واتساب</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-700">المحافظة</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-700">العنوان</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-700">المنتج</th>
@@ -268,6 +269,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                     <td className="px-3 py-2">{order.id}</td>
                     <td className="px-3 py-2">{order.name}</td>
                     <td className="px-3 py-2">{order.phone}</td>
+                    <td className="px-3 py-2">{order.whatsapp || '-'}</td>
                     <td className="px-3 py-2">{order.governorate}</td>
                     <td className="px-3 py-2 text-gray-600 max-w-xs truncate" title={order.address}>{order.address}</td>
                     <td className="px-3 py-2">{order.productName}</td>
