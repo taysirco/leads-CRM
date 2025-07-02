@@ -75,34 +75,18 @@ export type LeadRow = {
 export async function fetchLeads() {
   const sheet = await getSheet('leads');
   const rows = (await sheet.getRows()) as GoogleSpreadsheetRow[];
-  const debugInfo: { row: number, phone: any, phoneType: string, whatsapp: any, whatsappType: string }[] = [];
-  const problematicNumbers = ['1118920324', '1017986564', '1127289000'];
 
   const leads = rows.map((r: any, index: number) => {
-    const rawPhone = r['رقم الهاتف'];
-    const rawWhatsapp = r['رقم الواتس'];
-
-    // Check if the raw value (as string) is one of the problematic numbers
-    if (problematicNumbers.includes(String(rawPhone)) || problematicNumbers.includes(String(rawWhatsapp))) {
-      debugInfo.push({
-        row: index + 2,
-        phone: rawPhone,
-        phoneType: typeof rawPhone,
-        whatsapp: rawWhatsapp,
-        whatsappType: typeof rawWhatsapp
-      });
-    }
-
-    const formattedPhone = formatEgyptianPhone(rawPhone || '');
-    const formattedWhatsapp = formatEgyptianPhone(rawWhatsapp || '');
-
+    const rawPhone = r['رقم الهاتف'] || '';
+    const rawWhatsapp = r['رقم الواتس'] || '';
+    
     return {
       id: index + 2,
       rowIndex: index,
       orderDate: r['تاريخ الطلب'] ?? '',
       name: r['الاسم'] ?? '',
-      phone: formattedPhone,
-      whatsapp: formattedWhatsapp,
+      phone: formatEgyptianPhone(rawPhone),
+      whatsapp: formatEgyptianPhone(rawWhatsapp),
       governorate: r['المحافظة'] ?? '',
       area: r['المنطقة'] ?? '',
       address: r['العنوان'] ?? '',
@@ -117,7 +101,7 @@ export async function fetchLeads() {
     };
   });
 
-  return { leads, debugInfo };
+  return leads;
 }
 
 export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
@@ -170,7 +154,7 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
 }
 
 export async function getOrderStatistics() {
-  const { leads } = await fetchLeads();
+  const leads = await fetchLeads();
   const today = new Date().toISOString().split('T')[0];
   
   const stats = {

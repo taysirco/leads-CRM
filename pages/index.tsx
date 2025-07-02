@@ -4,7 +4,6 @@ import Dashboard from '../components/Dashboard';
 import OrdersTable from '../components/OrdersTable';
 import BostaExport from '../components/BostaExport';
 import ArchiveTable from '../components/ArchiveTable';
-import DebugPanel from '../components/DebugPanel';
 
 interface Lead {
   id: number;
@@ -90,7 +89,6 @@ export default function Home() {
   );
 
   const orders = data?.data || [];
-  const debugInfo = data?.debugInfo || [];
   
   const mainOrders = orders.filter(
     (order: any) => !['تم التأكيد', 'رفض التأكيد', 'تم الشحن'].includes(order.status)
@@ -158,12 +156,7 @@ export default function Home() {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'dashboard' && (
-          <>
-            <DebugPanel debugInfo={debugInfo} />
-            <Dashboard />
-          </>
-        )}
+        {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'orders' && (
           <OrdersTable orders={mainOrders} onUpdateOrder={handleUpdateOrder} />
         )}

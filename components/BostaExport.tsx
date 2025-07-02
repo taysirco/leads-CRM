@@ -59,29 +59,31 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   };
 
   const mapOrderToBosta = (order: Order) => {
-    // الأرقام منسقة بالفعل، نحتاج فقط لإزالة + وإبقاء الأرقام فقط
-    const cleanPhone = order.phone.replace(/\+/g, '');
-    const cleanWhatsapp = order.whatsapp.replace(/\+/g, '');
-    
+    // This mapping is now updated to match the official Bosta template columns and rules.
     return {
+      // --- Customer Information ---
       'Full Name': order.name,
-      'Phone': cleanPhone, // الرقم منسق بالفعل، نزيل + فقط
-      'Second Phone': cleanWhatsapp, // رقم الواتساب منسق بالفعل
+      'Phone': order.phone.replace(/\D/g, ''), // Clean phone number
+      'Second Phone': order.whatsapp ? order.whatsapp.replace(/\D/g, '') : '',
       'City': order.governorate,
-      'Area': order.area || 'منطقة أخري',
+      'Area': order.area || 'منطقة أخرى', // Default value if area is missing
       'Street Name': order.address,
-      'Building#, Floor#, and Apartment#': '',
-      'Work address': '',
+      'Building#, Floor#, and Apartment#': '', // Optional, leave empty
+      'Work address': '', // Optional, leave empty
       'Delivery notes': order.notes || '',
-      'Type': 'Cash Collection',
-      'Cash Amount': order.totalPrice ? order.totalPrice.replace(/\D/g, '') : '',
+
+      // --- Order Details ---
+      'Type': 'Cash Collection', // Default type as per requirement
+      'Cash Amount': order.totalPrice ? order.totalPrice.replace(/\D/g, '') : '0',
       '#Items': order.quantity || '1',
-      'Package Description': order.productName || order.orderDetails || 'طلب',
-      'Order Reference': `ORDER-${order.id}`,
-      'Allow opening package': '',
+      'Package Description': order.productName || order.orderDetails || 'Order',
+      'Order Reference': `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}`, // Unique reference
+      'Allow opening package': '', // Optional, leave empty
+
+      // --- Exchange / Large Deliveries (Optional) ---
       'Return #Items': '',
       'Return Package Description': '',
-      'Package Type': ''
+      'Package Type': '',
     };
   };
 
@@ -90,15 +92,20 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
     
     try {
       const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id));
+      if (selectedOrdersData.length === 0) {
+        alert('يرجى تحديد طلب واحد على الأقل للتصدير.');
+        setIsExporting(false);
+        return;
+      }
       const bostaData = selectedOrdersData.map(mapOrderToBosta);
       
-      // Create CSV content
-      const headers = Object.keys(bostaData[0] || {});
+      // The headers must be in the exact order as defined in the mapping function.
+      const headers = Object.keys(bostaData[0]);
       const csvContent = [
         headers.join(','),
         ...bostaData.map(row => 
           headers.map(header => {
-            const value = row[header as keyof typeof row] || '';
+            const value = (row as any)[header] || '';
             // Escape commas and quotes in values
             return `"${String(value).replace(/"/g, '""')}"`;
           }).join(',')
@@ -106,7 +113,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       ].join('\n');
       
       // Create and download file
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' }); // Add BOM for Excel
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);

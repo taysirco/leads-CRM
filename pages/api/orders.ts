@@ -10,8 +10,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(200).json({ data: stats });
       }
       
-      const { leads, debugInfo } = await fetchLeads();
-      res.status(200).json({ data: leads, debugInfo });
+      const leads = await fetchLeads();
+      res.status(200).json({ data: leads });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
