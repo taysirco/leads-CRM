@@ -54,7 +54,7 @@ export async function fetchLeads() {
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
     range: 'leads', // Assuming your sheet name is 'leads'
-    valueRenderOption: 'FORMATTED_VALUE', // This is the key to solving the #ERROR! issue
+    valueRenderOption: 'FORMULA', // This is the key to solving the #ERROR! issue
   });
 
   const rows = response.data.values;
