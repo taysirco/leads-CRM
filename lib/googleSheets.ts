@@ -74,19 +74,42 @@ export type LeadRow = {
 
 export async function fetchLeads() {
   const sheet = await getSheet('leads');
+  // Load all cells in the sheet to access formatted values
+  await sheet.loadCells(); 
   const rows = (await sheet.getRows()) as GoogleSpreadsheetRow[];
 
   const leads = rows.map((r: any, index: number) => {
-    const rawPhone = r['رقم الهاتف'] || '';
-    const rawWhatsapp = r['رقم الواتس'] || '';
+    const rowIndex = r.rowIndex - 1; // getRows is 1-based, we need 0-based for loadCells
+
+    // Function to get value, falling back to formatted value if raw is null/error
+    const getCellValue = (colIndex: number) => {
+      const rawValue = r._rawData[colIndex];
+      if (rawValue === null || (typeof rawValue === 'object' && rawValue.errorValue)) {
+        // If raw value is null or an error, try the formatted value from the cell
+        const cell = sheet.getCell(rowIndex, colIndex);
+        return cell.formattedValue || ''; // Use formattedValue as fallback
+      }
+      return rawValue || '';
+    };
+
+    // Assuming column indices: Phone is 2, WhatsApp is 3
+    // NOTE: This is fragile. A better solution would be to map headers to indices once.
+    const phoneColIndex = 2; 
+    const whatsappColIndex = 3;
+
+    const rawPhone = getCellValue(phoneColIndex);
+    const rawWhatsapp = getCellValue(whatsappColIndex);
     
+    const formattedPhone = formatEgyptianPhone(rawPhone);
+    const formattedWhatsapp = formatEgyptianPhone(rawWhatsapp);
+
     return {
       id: index + 2,
       rowIndex: index,
       orderDate: r['تاريخ الطلب'] ?? '',
       name: r['الاسم'] ?? '',
-      phone: formatEgyptianPhone(rawPhone),
-      whatsapp: formatEgyptianPhone(rawWhatsapp),
+      phone: formattedPhone,
+      whatsapp: formattedWhatsapp,
       governorate: r['المحافظة'] ?? '',
       area: r['المنطقة'] ?? '',
       address: r['العنوان'] ?? '',
