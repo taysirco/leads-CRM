@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import * as XLSX from 'xlsx';
 
 interface Order {
   id: number;
@@ -111,33 +112,21 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
     }
   };
 
-  const formatToLocalEgyptian = (phone: string): string => {
-    if (!phone) return '';
-    let cleaned = phone.replace(/\D/g, ''); // Remove all non-digits
-    
-    // If it starts with 201 and is 12 digits long (e.g., 20111...
-    if (cleaned.startsWith('201') && cleaned.length === 12) {
-      return `0${cleaned.substring(2)}`; // Returns 011...
-    }
-    // If it's already in the correct local format (01... and 11 digits)
-    if (cleaned.startsWith('01') && cleaned.length === 11) {
-      return cleaned;
-    }
-    // If it's a 10-digit number starting with 1 (e.g., 111...
-    if (cleaned.startsWith('1') && cleaned.length === 10) {
-      return `0${cleaned}`;
-    }
-    // Fallback for other formats, return the cleaned digits
-    return cleaned;
-  };
-
   const mapOrderToBosta = (order: Order) => {
-    // This mapping is now updated to match the official Bosta template columns and rules.
+    // Reverting to the international format by cleaning and ensuring country code
+    const formatToInternational = (phone: string) => {
+      if (!phone) return '';
+      const cleaned = phone.replace(/\D/g, '');
+      if (cleaned.startsWith('20')) return cleaned;
+      if (cleaned.startsWith('01') && cleaned.length === 11) return `20${cleaned.substring(1)}`;
+      if (cleaned.startsWith('1') && cleaned.length === 10) return `20${cleaned}`;
+      return cleaned;
+    };
+    
     return {
-      // --- Customer Information ---
       'Full Name': order.name,
-      'Phone': formatToLocalEgyptian(order.phone),
-      'Second Phone': order.whatsapp ? formatToLocalEgyptian(order.whatsapp) : '',
+      'Phone': formatToInternational(order.phone),
+      'Second Phone': order.whatsapp ? formatToInternational(order.whatsapp) : '',
       'City': order.governorate,
       'Area': order.area || 'منطقة أخرى', // Default value if area is missing
       'Street Name': order.address,
@@ -172,29 +161,14 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       }
       const bostaData = selectedOrdersData.map(mapOrderToBosta);
       
-      // The headers must be in the exact order as defined in the mapping function.
-      const headers = Object.keys(bostaData[0]);
-      const csvContent = [
-        headers.join(','),
-        ...bostaData.map(row => 
-          headers.map(header => {
-            const value = (row as any)[header] || '';
-            // Escape commas and quotes in values
-            return `"${String(value).replace(/"/g, '""')}"`;
-          }).join(',')
-        )
-      ].join('\n');
-      
-      // Create and download file
-      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' }); // Add BOM for Excel
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `bosta-orders-${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      // Create a new workbook and a worksheet
+      const ws = XLSX.utils.json_to_sheet(bostaData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Bosta Orders");
+
+      // Generate the .xlsx file and trigger a download
+      const fileName = `bosta-orders-${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
       
     } catch (error) {
       console.error('Export error:', error);
