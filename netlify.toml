@@ -1,0 +1,13 @@
+# Netlify build configuration for a Next.js app
+[build]
+  command = "next build"
+  publish = ".next"
+
+[dev]
+  command = "next dev"
+  port = 3000
+  publish = ".next"
+  
+# This is the essential part for Next.js features like API routes and SSR to work correctly.
+[[plugins]]
+  package = "@netlify/plugin-nextjs" 
