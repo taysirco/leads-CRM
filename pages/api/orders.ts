@@ -16,6 +16,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.status(500).json({ error: error.message });
     }
   } else if (req.method === 'PUT') {
+    // Check for bulk update
+    if (Array.isArray(req.body.orders)) {
+      const { orders, status } = req.body;
+      if (!orders || !status) {
+        return res.status(400).json({ error: 'Array of orders and a status are required for bulk update' });
+      }
+      try {
+        const updatePromises = orders.map((orderId: number) => updateLead(Number(orderId), { status }));
+        await Promise.all(updatePromises);
+        res.status(200).json({ message: 'Bulk update successful' });
+      } catch (error: any) {
+        console.error(`API: Failed to bulk update orders:`, error.message);
+        res.status(500).json({ error: error.message });
+      }
+      return;
+    }
+
+    // Handle single order update
     const { rowNumber, ...updates } = req.body;
     if (!rowNumber) {
       return res.status(400).json({ error: 'rowNumber is required' });
