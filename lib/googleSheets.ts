@@ -13,6 +13,12 @@ const doc = new GoogleSpreadsheet(SHEET_ID);
 type GoogleSpreadsheetRow = any;
 
 async function authenticate() {
+  console.log("--- Authenticating with Environment Variables ---");
+  console.log("Found GOOGLE_SHEET_ID:", !!process.env.GOOGLE_SHEET_ID);
+  console.log("Found GOOGLE_SERVICE_ACCOUNT_EMAIL:", !!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL);
+  console.log("Found GOOGLE_PRIVATE_KEY:", !!process.env.GOOGLE_PRIVATE_KEY);
+  console.log("Found GOOGLE_PRIVATE_KEY_BASE64:", !!process.env.GOOGLE_PRIVATE_KEY_BASE64);
+  
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
     throw new Error('Service account email is not set');
   }
