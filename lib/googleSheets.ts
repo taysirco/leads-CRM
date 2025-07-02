@@ -250,51 +250,89 @@ export async function fetchLeads() {
 }
 
 export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
-  console.log(`updateLead: Authenticating for update...`);
-  await authenticateForUpdate();
-  const sheet = await getSheet('leads'); // This will use the old method, which is fine for updates
-  const arrayIndex = rowNumber - 2;
-  const rows = (await sheet.getRows()) as GoogleSpreadsheetRow[];
-  
-  console.log(`updateLead: Total rows available: ${rows.length}, trying to access index: ${arrayIndex}`);
-  
-  if (arrayIndex < 0 || arrayIndex >= rows.length) {
-    const error = `Row ${rowNumber} not found. Valid range: 2-${rows.length + 1}`;
-    console.error(error);
-    throw new Error(error);
+  console.log(`updateLead: Authenticating for row ${rowNumber}...`);
+  try {
+    await authenticateForUpdate();
+    const sheet = doc.sheetsByTitle['leads'];
+    if (!sheet) {
+      throw new Error("Sheet 'leads' not found. Ensure the sheet name is correct.");
+    }
+    
+    // google-spreadsheet uses 0-based indexing for rows, and headers are the first row.
+    // So data rows start at index 0, which corresponds to row 2 in the sheet.
+    const arrayIndex = rowNumber - 2;
+
+    console.log(`updateLead: Fetching rows for sheet '${sheet.title}'...`);
+    const rows = await sheet.getRows();
+    console.log(`updateLead: Total rows fetched: ${rows.length}, attempting to access index: ${arrayIndex}`);
+
+    if (arrayIndex < 0 || arrayIndex >= rows.length) {
+      const errorMsg = `Row ${rowNumber} (index ${arrayIndex}) is out of bounds. Total rows: ${rows.length}.`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    const row = rows[arrayIndex];
+    if (!row) {
+      const errorMsg = `Row object not found at index ${arrayIndex}.`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    console.log(`updateLead: Found row at index ${arrayIndex}. Current status: '${(row as any).get('الحالة')}'`);
+
+    // Dynamically map updates to sheet headers
+    const headerMapping: { [key in keyof LeadRow]?: string } = {
+      status: 'الحالة',
+      notes: 'ملاحظات',
+      name: 'الاسم',
+      phone: 'رقم الهاتف',
+      whatsapp: 'رقم الواتس',
+      governorate: 'المحافظة',
+      area: 'المنطقة',
+      address: 'العنوان',
+      orderDetails: 'تفاصيل الطلب',
+      quantity: 'الكمية',
+      totalPrice: 'توتال السعر شامل الشحن',
+      productName: 'اسم المنتج',
+      source: 'المصدر',
+      whatsappSent: 'ارسال واتس اب',
+    };
+
+    let hasChanges = false;
+    for (const key in updates) {
+      const typedKey = key as keyof LeadRow;
+      const headerName = headerMapping[typedKey];
+      
+      if (headerName && updates[typedKey] !== undefined) {
+        console.log(`updateLead: Setting column '${headerName}' to '${updates[typedKey]}'`);
+        row.set(headerName, updates[typedKey]!);
+        hasChanges = true;
+      }
+    }
+    
+    if (hasChanges) {
+      console.log(`updateLead: Saving changes for row ${rowNumber} (index ${arrayIndex})...`);
+      await row.save();
+      console.log(`updateLead: Successfully saved row ${rowNumber}.`);
+    } else {
+      console.log(`updateLead: No changes to save for row ${rowNumber}.`);
+    }
+
+  } catch (error: any) {
+    // Log the detailed error from Google Sheets API
+    console.error(`--- DETAILED ERROR for updateLead on row ${rowNumber} ---`);
+    console.error(`Error Message: ${error.message}`);
+    if (error.response) {
+      console.error("Google API Response Status:", error.response.status);
+      console.error("Google API Response Data:", JSON.stringify(error.response.data, null, 2));
+    }
+    console.error("Full Error Object:", JSON.stringify(error, null, 2));
+    console.error(`----------------------------------------------------`);
+    
+    // Re-throw a more user-friendly error
+    throw new Error(`Failed to update row ${rowNumber}. Check server logs for details. Original error: ${error.message}`);
   }
-  
-  const row = rows[arrayIndex];
-  if (!row) {
-    const error = 'Row not found at index ' + arrayIndex;
-    console.error(error);
-    throw new Error(error);
-  }
-  
-  console.log(`updateLead: Found row at index ${arrayIndex}, current status: ${(row as any)['الحالة']}`);
-  
-  // Update all possible fields
-  if (updates.status !== undefined) {
-    console.log(`updateLead: Changing status from "${(row as any)['الحالة']}" to "${updates.status}"`);
-    (row as any)['الحالة'] = updates.status;
-  }
-  if (updates.notes !== undefined) (row as any)['ملاحظات'] = updates.notes;
-  if (updates.name !== undefined) (row as any)['الاسم'] = updates.name;
-  if (updates.phone !== undefined) (row as any)['رقم الهاتف'] = updates.phone;
-  if (updates.whatsapp !== undefined) (row as any)['رقم الواتس'] = updates.whatsapp;
-  if (updates.governorate !== undefined) (row as any)['المحافظة'] = updates.governorate;
-  if (updates.area !== undefined) (row as any)['المنطقة'] = updates.area;
-  if (updates.address !== undefined) (row as any)['العنوان'] = updates.address;
-  if (updates.orderDetails !== undefined) (row as any)['تفاصيل الطلب'] = updates.orderDetails;
-  if (updates.quantity !== undefined) (row as any)['الكمية'] = updates.quantity;
-  if (updates.totalPrice !== undefined) (row as any)['توتال السعر شامل الشحن'] = updates.totalPrice;
-  if (updates.productName !== undefined) (row as any)['اسم المنتج'] = updates.productName;
-  if (updates.source !== undefined) (row as any)['المصدر'] = updates.source;
-  if (updates.whatsappSent !== undefined) (row as any)['ارسال واتس اب'] = updates.whatsappSent;
-  
-  console.log(`updateLead: Saving row ${rowNumber} (index ${arrayIndex})`);
-  await row.save();
-  console.log(`updateLead: Successfully saved row ${rowNumber}`);
 }
 
 export async function getOrderStatistics() {
