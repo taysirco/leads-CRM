@@ -16,26 +16,25 @@ async function authenticate() {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
     throw new Error('Service account email is not set');
   }
-  // Handle private key from either plain text (with \n) or BASE64 encoded variant
+  
   let rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
+  
   if (!rawKey && process.env.GOOGLE_PRIVATE_KEY_BASE64) {
     console.log("Found GOOGLE_PRIVATE_KEY_BASE64, decoding...");
-    rawKey = Buffer.from(process.env.GOOGLE_PRIVATE_KEY_BASE64, 'base64').toString('utf8');
+    const decodedKey = Buffer.from(process.env.GOOGLE_PRIVATE_KEY_BASE64, 'base64').toString('utf8');
+    rawKey = decodedKey;
   }
 
   if (!rawKey) {
     throw new Error('GOOGLE_PRIVATE_KEY or GOOGLE_PRIVATE_KEY_BASE64 must be provided');
   }
 
-  // normalize key
-  rawKey = rawKey.trim();
-  if ((rawKey.startsWith('"') && rawKey.endsWith('"')) || (rawKey.startsWith("'") && rawKey.endsWith("'"))) {
-    rawKey = rawKey.slice(1, -1);
-  }
+  // Final check and replacement for escaped newlines, just in case
+  const private_key = rawKey.replace(/\\n/g, '\n');
 
   await doc.useServiceAccountAuth({
     client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    private_key: rawKey.replace(/\\n/g, '\n'),
+    private_key: private_key,
   });
   await doc.loadInfo();
 }
