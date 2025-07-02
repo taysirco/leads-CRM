@@ -34,43 +34,39 @@ const getAuth = () => {
   });
 };
 
-async function authenticate() {
-  console.log("--- Authenticating with Environment Variables ---");
-  console.log("Found GOOGLE_SHEET_ID:", !!process.env.GOOGLE_SHEET_ID);
-  console.log("Found GOOGLE_SERVICE_ACCOUNT_EMAIL:", !!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL);
-  console.log("Found GOOGLE_PRIVATE_KEY:", !!process.env.GOOGLE_PRIVATE_KEY);
-  console.log("Found GOOGLE_PRIVATE_KEY_BASE64:", !!process.env.GOOGLE_PRIVATE_KEY_BASE64);
-  
-  if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
-    throw new Error('Service account email is not set');
+// A single, robust authentication function
+async function ensureAuthenticated() {
+  // Check if we are already authenticated
+  if (doc.authMode === 'JWT') {
+    // If the token is expired, the library will automatically refresh it.
+    // We can add a check here if needed, but for now, we'll trust the library.
+    return;
   }
   
-  await doc.useServiceAccountAuth({
-    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    private_key: process.env.GOOGLE_PRIVATE_KEY || '',
-  });
-  await doc.loadInfo();
-}
-
-async function authenticateForUpdate() {
+  console.log("--- Ensuring Authentication: Performing Full Auth ---");
+  
   let rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
   if (!rawKey && process.env.GOOGLE_PRIVATE_KEY_BASE64) {
+    console.log("Found GOOGLE_PRIVATE_KEY_BASE64, decoding...");
     rawKey = Buffer.from(process.env.GOOGLE_PRIVATE_KEY_BASE64, 'base64').toString('utf8');
   }
-  if (!rawKey) {
-    throw new Error('GOOGLE_PRIVATE_KEY or GOOGLE_PRIVATE_KEY_BASE64 must be provided');
+
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !rawKey) {
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_PRIVATE_KEY (or BASE64) must be provided');
   }
+  
   const private_key = rawKey.replace(/\\n/g, '\n');
 
   await doc.useServiceAccountAuth({
     client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
     private_key,
   });
-  await doc.loadInfo();
+  
+  // No need to call loadInfo() here as getRows() or other operations will trigger it.
 }
 
 export async function getSheet(sheetName: string) {
-  await authenticate();
+  await ensureAuthenticated();
   const sheet = doc.sheetsByTitle[sheetName];
   if (!sheet) throw new Error(`Sheet ${sheetName} not found`);
   return sheet;
@@ -252,7 +248,7 @@ export async function fetchLeads() {
 export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   console.log(`updateLead: Authenticating for row ${rowNumber}...`);
   try {
-    await authenticateForUpdate();
+    await ensureAuthenticated();
     const sheet = doc.sheetsByTitle['leads'];
     if (!sheet) {
       throw new Error("Sheet 'leads' not found. Ensure the sheet name is correct.");
