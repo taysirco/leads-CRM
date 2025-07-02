@@ -25,6 +25,7 @@ interface MessageTemplate {
 export default function WhatsAppTemplates({ customer, orderStatus }: WhatsAppTemplatesProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [showNotification, setShowNotification] = useState(false);
 
   const templates: MessageTemplate[] = [
     {
@@ -68,19 +69,23 @@ export default function WhatsAppTemplates({ customer, orderStatus }: WhatsAppTem
     const isWindows = navigator.platform.toLowerCase().includes('win');
     
     if (isWindows) {
-      // للويندوز: استخدام طريقة مختلفة
+      // للويندوز: نسخ الرسالة للحافظة وفتح واتساب بدون معاملات
       const cleanPhone = customer.phone.replace(/\+/g, '');
       
-      // تحضير الرسالة للويندوز
-      const formattedMessage = message
-        .replace(/\*/g, '') // إزالة علامات Bold
-        .replace(/\n/g, ' '); // استبدال الأسطر الجديدة بمسافات
-      
-      // استخدام encodeURIComponent مرة واحدة فقط
-      const encodedMessage = encodeURIComponent(formattedMessage);
-      
-      const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodedMessage}`;
-      window.open(whatsappLink, '_blank');
+      // نسخ الرسالة إلى الحافظة
+      navigator.clipboard.writeText(message).then(() => {
+        // فتح واتساب بدون رسالة
+        const whatsappLink = `https://wa.me/${cleanPhone}`;
+        window.open(whatsappLink, '_blank');
+        
+        // عرض إشعار للمستخدم
+        setShowNotification(true);
+        setTimeout(() => setShowNotification(false), 5000);
+      }).catch(() => {
+        // في حالة فشل النسخ، استخدم الطريقة العادية
+        const whatsappLink = createWhatsAppLink(customer.phone, message);
+        window.open(whatsappLink, '_blank');
+      });
     } else {
       // للأنظمة الأخرى: استخدام الطريقة العادية
       const whatsappLink = createWhatsAppLink(customer.phone, message);
@@ -98,6 +103,18 @@ export default function WhatsAppTemplates({ customer, orderStatus }: WhatsAppTem
 
   return (
     <div className="relative">
+      {/* Notification for Windows users */}
+      {showNotification && (
+        <div className="fixed top-4 right-4 z-50 bg-green-500 text-white p-4 rounded-lg shadow-lg">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span>تم نسخ الرسالة! الصق الرسالة (Ctrl+V) في واتساب</span>
+          </div>
+        </div>
+      )}
+
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50 border border-green-200"
