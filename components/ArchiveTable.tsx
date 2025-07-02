@@ -28,103 +28,62 @@ interface ArchiveTableProps {
 
 export default function ArchiveTable({ orders, onUpdateOrder }: ArchiveTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [loadingOrders, setLoadingOrders] = useState<Set<number>>(new Set());
 
-  const archivedOrders = useMemo(() => {
+  const shippedOrders = useMemo(() => {
     return orders.filter(order => {
-      const isArchived = ['رفض التأكيد', 'تم الشحن'].includes(order.status);
-      if (!isArchived) return false;
+      const isShipped = order.status === 'تم الشحن';
+      if (!isShipped) return false;
 
       const matchesSearch = !searchTerm ||
         order.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.phone.includes(searchTerm) ||
-        order.notes.toLowerCase().includes(searchTerm.toLowerCase());
+        (order.notes && order.notes.toLowerCase().includes(searchTerm.toLowerCase()));
       
       return matchesSearch;
     });
   }, [orders, searchTerm]);
 
-  const handleRevertStatus = async (orderId: number) => {
-    setLoadingOrders(prev => new Set(prev.add(orderId)));
-    try {
-      await onUpdateOrder(orderId, { status: 'جديد' });
-    } catch (error) {
-      console.error(`Failed to revert order ${orderId}:`, error);
-      alert(`فشل في إعادة الطلب #${orderId}.`);
-    } finally {
-      setLoadingOrders(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(orderId);
-        return newSet;
-      });
-    }
-  };
-
   return (
     <div className="bg-white shadow-lg rounded-lg overflow-hidden">
       <div className="p-4 bg-gray-50 border-b">
         <div className="flex justify-between items-center">
-          <h2 className="text-xl font-semibold">الأرشيف (الطلبات المرفوضة والمشحونة)</h2>
+          <h2 className="text-xl font-semibold">الأرشيف (الطلبات المشحونة)</h2>
           <input
             type="text"
-            placeholder="بحث في الأرشيف..."
+            placeholder="بحث في الطلبات المشحونة..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-1/3 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <p className="text-sm text-gray-600 mt-2">
-          يتم عرض {archivedOrders.length} طلب هنا كمرجع.
+          يتم عرض {shippedOrders.length} طلب تم شحنه.
         </p>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-100 border-b">
+          <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-right font-medium text-gray-700">رقم الطلب</th>
-              <th className="px-4 py-3 text-right font-medium text-gray-700">تاريخ الطلب</th>
+              <th className="px-4 py-3 text-right font-medium text-gray-700">#</th>
               <th className="px-4 py-3 text-right font-medium text-gray-700">الاسم</th>
               <th className="px-4 py-3 text-right font-medium text-gray-700">الهاتف</th>
               <th className="px-4 py-3 text-right font-medium text-gray-700">المنتج</th>
-              <th className="px-4 py-3 text-right font-medium text-gray-700">السعر</th>
-              <th className="px-4 py-3 text-right font-medium text-gray-700">الملاحظات</th>
               <th className="px-4 py-3 text-right font-medium text-gray-700">الحالة</th>
-              <th className="px-4 py-3 text-right font-medium text-gray-700">إجراءات</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {archivedOrders.map((order) => {
-              const isLoading = loadingOrders.has(order.id);
-              return (
-                <tr key={order.id} className={`hover:bg-gray-50 ${isLoading ? 'opacity-50' : ''}`}>
-                  <td className="px-4 py-3">#{order.id}</td>
-                  <td className="px-4 py-3">
-                    {order.orderDate ? new Date(order.orderDate).toLocaleDateString('ar-EG') : '-'}
-                  </td>
-                  <td className="px-4 py-3 font-medium">{order.name}</td>
-                  <td className="px-4 py-3">{order.phone}</td>
-                  <td className="px-4 py-3">{order.productName}</td>
-                  <td className="px-4 py-3">{order.totalPrice}</td>
-                  <td className="px-4 py-3 text-gray-600 max-w-xs truncate">{order.notes || '-'}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={order.status} />
-                  </td>
-                  <td className="px-4 py-3">
-                    {order.status === 'رفض التأكيد' && (
-                      <button
-                        onClick={() => handleRevertStatus(order.id)}
-                        disabled={isLoading}
-                        className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                        title="إعادة الطلب إلى قائمة الطلبات النشطة"
-                      >
-                        {isLoading ? 'جاري...' : 'إعادة للطلبات'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+            {shippedOrders.map((order) => (
+              <tr key={order.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3">{order.id}</td>
+                <td className="px-4 py-3 font-medium">{order.name}</td>
+                <td className="px-4 py-3">{order.phone}</td>
+                <td className="px-4 py-3">{order.productName}</td>
+                <td className="px-4 py-3">
+                  <StatusBadge status={order.status} />
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

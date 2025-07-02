@@ -188,35 +188,6 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
         </div>
       )}
       <div className="bg-white shadow-lg rounded-lg overflow-hidden">
-        {/* Phone Formatter Info Banner */}
-        <div className="p-3 bg-blue-50 border-b border-blue-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div className="text-sm text-blue-800">
-                <div className="flex items-center gap-4">
-                  <span>
-                    <strong>تنسيق تلقائي:</strong> جميع أرقام الهاتف والواتساب يتم تنسيقها تلقائياً إلى الصيغة المصرية الموحدة (+201XXXXXXXXX)
-                  </span>
-                  <span className="text-blue-600">|</span>
-                  <span>
-                    <strong>رسائل جاهزة:</strong> انقر على أيقونة النقاط الثلاث 💬 لإرسال رسائل احترافية مُخصصة حسب حالة الطلب
-                  </span>
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => testPhoneFormatter()}
-              className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
-              title="اختبار منسق الأرقام في Console"
-            >
-              اختبار
-            </button>
-          </div>
-        </div>
-
         {/* Filters */}
         <div className="p-4 bg-gray-50 border-b">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

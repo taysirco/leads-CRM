@@ -4,6 +4,7 @@ import Dashboard from '../components/Dashboard';
 import OrdersTable from '../components/OrdersTable';
 import BostaExport from '../components/BostaExport';
 import ArchiveTable from '../components/ArchiveTable';
+import RejectedTable from '../components/RejectedTable';
 
 interface Lead {
   id: number;
@@ -29,7 +30,7 @@ const fetcher = async (url: string) => {
 
 export default function Home() {
   const { data, error, mutate } = useSWR('/api/orders', fetcher, { refreshInterval: 30000 });
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'export' | 'archive'>('orders');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'export' | 'archive' | 'rejected'>('orders');
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
 
   const handleUpdateOrder = async (orderId: number, updates: any): Promise<void> => {
@@ -94,6 +95,8 @@ export default function Home() {
     (order: any) => !['تم التأكيد', 'رفض التأكيد', 'تم الشحن'].includes(order.status)
   );
 
+  const rejectedOrders = orders.filter((order: any) => order.status === 'رفض التأكيد');
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -145,11 +148,21 @@ export default function Home() {
             onClick={() => setActiveTab('archive')}
             className={`py-2 px-4 font-medium text-sm transition-colors ${
               activeTab === 'archive'
+                ? 'border-b-2 border-indigo-600 text-indigo-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            الأرشيف (مشحون)
+          </button>
+          <button
+            onClick={() => setActiveTab('rejected')}
+            className={`py-2 px-4 font-medium text-sm transition-colors ${
+              activeTab === 'rejected'
                 ? 'border-b-2 border-red-600 text-red-600'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            الأرشيف
+            المهملة (مرفوض)
           </button>
         </nav>
       </div>
@@ -171,6 +184,7 @@ export default function Home() {
           />
         )}
         {activeTab === 'archive' && <ArchiveTable orders={orders} onUpdateOrder={handleUpdateOrder} />}
+        {activeTab === 'rejected' && <RejectedTable orders={rejectedOrders} onUpdateOrder={handleUpdateOrder} />}
       </main>
     </div>
   );
