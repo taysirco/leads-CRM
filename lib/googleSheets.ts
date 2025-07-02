@@ -19,6 +19,7 @@ async function authenticate() {
   // Handle private key from either plain text (with \n) or BASE64 encoded variant
   let rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
   if (!rawKey && process.env.GOOGLE_PRIVATE_KEY_BASE64) {
+    console.log("Found GOOGLE_PRIVATE_KEY_BASE64, decoding...");
     rawKey = Buffer.from(process.env.GOOGLE_PRIVATE_KEY_BASE64, 'base64').toString('utf8');
   }
 
