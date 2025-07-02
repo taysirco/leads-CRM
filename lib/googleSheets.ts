@@ -1,6 +1,8 @@
 import { google } from 'googleapis';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { formatEgyptianPhone } from './phoneFormatter';
+import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { startOfDay, endOfDay, subDays } from 'date-fns';
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID as string;
 
@@ -297,44 +299,126 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
 
 export async function getOrderStatistics() {
   const leads = await fetchLeads();
-  const today = new Date().toISOString().split('T')[0];
+  const timeZone = 'Africa/Cairo';
 
-  // Overall Statistics
-  const overallStats = {
-    total: leads.length,
-    new: leads.filter((l: LeadRow) => !l.status || l.status === 'جديد').length,
-    confirmed: leads.filter((l: LeadRow) => l.status === 'تم التأكيد').length,
-    pending: leads.filter((l: LeadRow) => l.status === 'في انتظار تأكيد العميل').length,
-    rejected: leads.filter((l: LeadRow) => l.status === 'رفض التأكيد').length,
-    noAnswer: leads.filter((l: LeadRow) => l.status === 'لم يرد').length,
-    contacted: leads.filter((l: LeadRow) => l.status === 'تم التواصل معه واتساب').length,
-    shipped: leads.filter((l: LeadRow) => l.status === 'تم الشحن').length,
-    today: leads.filter((l: LeadRow) => l.orderDate && l.orderDate.startsWith(today)).length,
+  // --- Helper function to parse dates correctly ---
+  const parseDateInCairo = (dateStr: string): Date => {
+    // Assuming dateStr is 'YYYY-MM-DD HH:MM:SS' or 'YYYY-MM-DD'
+    // We treat it as a wall-clock time in Cairo and convert to a UTC Date object
+    return fromZonedTime(dateStr.split(' ')[0], timeZone);
   };
 
-  // Per-Product Statistics
-  const productStats: { [productName: string]: typeof overallStats } = {};
+  const nowInCairo = toZonedTime(new Date(), timeZone);
 
-  leads.forEach((lead) => {
-    const productName = lead.productName || 'منتج غير محدد';
+  // --- Time-based boundaries using Cairo Timezone ---
+  const todayStart = startOfDay(nowInCairo);
+  const todayEnd = endOfDay(nowInCairo);
+  const yesterdayStart = startOfDay(subDays(nowInCairo, 1));
+  const yesterdayEnd = endOfDay(subDays(nowInCairo, 1));
+  const weekStart = startOfDay(subDays(nowInCairo, 6)); // Last 7 days including today
+  const monthStart = startOfDay(subDays(nowInCairo, 29)); // Last 30 days including today
+  const lastMonthStart = startOfDay(subDays(nowInCairo, 59));
+  const lastMonthEnd = endOfDay(subDays(nowInCairo, 30));
+  
+  const getPrice = (priceStr: string | null | undefined): number => {
+    if (!priceStr) return 0;
+    return parseFloat(priceStr.replace(/[^\d.]/g, '')) || 0;
+  };
+
+  const leadsWithParsedDates = leads.map(l => ({
+    ...l,
+    orderDateObj: l.orderDate ? parseDateInCairo(l.orderDate) : new Date(0),
+    totalPriceNum: getPrice(l.totalPrice),
+    normalizedProductName: (l.productName || 'منتج غير محدد').trim()
+  }));
+
+  // --- Overall Statistics ---
+  const overallStats = {
+    total: leads.length,
+    new: leads.filter(l => !l.status || l.status === 'جديد').length,
+    confirmed: leads.filter(l => l.status === 'تم التأكيد').length,
+    pending: leads.filter(l => l.status === 'في انتظار تأكيد العميل').length,
+    rejected: leads.filter(l => l.status === 'رفض التأكيد').length,
+    noAnswer: leads.filter(l => l.status === 'لم يرد').length,
+    contacted: leads.filter(l => l.status === 'تم التواصل معه واتساب').length,
+    shipped: leads.filter(l => l.status === 'تم الشحن').length,
+    
+    // Time-based counts (Cairo Timezone)
+    today: leadsWithParsedDates.filter(l => l.orderDateObj >= todayStart && l.orderDateObj <= todayEnd).length,
+    yesterday: leadsWithParsedDates.filter(l => l.orderDateObj >= yesterdayStart && l.orderDateObj <= yesterdayEnd).length,
+    last7days: leadsWithParsedDates.filter(l => l.orderDateObj >= weekStart && l.orderDateObj <= todayEnd).length,
+    last30days: leadsWithParsedDates.filter(l => l.orderDateObj >= monthStart && l.orderDateObj <= todayEnd).length,
+  };
+
+  // --- Financial Statistics ---
+  const confirmedLeads = leadsWithParsedDates.filter(l => l.status === 'تم التأكيد' || l.status === 'تم الشحن');
+  const shippedLeads = leadsWithParsedDates.filter(l => l.status === 'تم الشحن');
+
+  const totalRevenue = shippedLeads.reduce((sum, l) => sum + l.totalPriceNum, 0);
+  const averageOrderValue = shippedLeads.length > 0 ? totalRevenue / shippedLeads.length : 0;
+  
+  const thisMonthRevenue = leadsWithParsedDates
+    .filter(l => (l.status === 'تم الشحن') && l.orderDateObj >= monthStart && l.orderDateObj <= todayEnd)
+    .reduce((sum, l) => sum + l.totalPriceNum, 0);
+  
+  const lastMonthRevenue = leadsWithParsedDates
+    .filter(l => (l.status === 'تم الشحن') && l.orderDateObj >= lastMonthStart && l.orderDateObj <= lastMonthEnd)
+    .reduce((sum, l) => sum + l.totalPriceNum, 0);
+
+  const revenueGrowth = lastMonthRevenue > 0
+    ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
+    : thisMonthRevenue > 0 ? 100 : 0;
+
+  // --- Conversion Rates ---
+  const totalLeadsForConversion = leads.length - overallStats.shipped - overallStats.confirmed;
+  const confirmationRate = totalLeadsForConversion > 0
+    ? (overallStats.confirmed / totalLeadsForConversion) * 100
+    : 0;
+
+  // --- Per-Product Statistics ---
+  const productStats: { 
+    [productName: string]: { 
+      originalName: string;
+      total: number; 
+      confirmed: number;
+      shipped: number;
+      rejected: number;
+      revenue: number;
+    } 
+  } = {};
+
+  leadsWithParsedDates.forEach((lead) => {
+    const productName = lead.normalizedProductName;
     if (!productStats[productName]) {
       productStats[productName] = {
-        total: 0, new: 0, confirmed: 0, pending: 0, rejected: 0, noAnswer: 0, contacted: 0, shipped: 0, today: 0,
+        originalName: lead.productName || 'منتج غير محدد',
+        total: 0, confirmed: 0, shipped: 0, rejected: 0, revenue: 0
       };
     }
-
-    productStats[productName].total++;
-    if (!lead.status || lead.status === 'جديد') productStats[productName].new++;
-    if (lead.status === 'تم التأكيد') productStats[productName].confirmed++;
-    if (lead.status === 'في انتظار تأكيد العميل') productStats[productName].pending++;
-    if (lead.status === 'رفض التأكيد') productStats[productName].rejected++;
-    if (lead.status === 'لم يرد') productStats[productName].noAnswer++;
-    if (lead.status === 'تم التواصل معه واتساب') productStats[productName].contacted++;
-    if (lead.status === 'تم الشحن') productStats[productName].shipped++;
-    if (lead.orderDate && lead.orderDate.startsWith(today)) productStats[productName].today++;
+    const stats = productStats[productName];
+    stats.total++;
+    if (lead.status === 'تم التأكيد') stats.confirmed++;
+    if (lead.status === 'تم الشحن') {
+      stats.shipped++;
+      stats.revenue += lead.totalPriceNum;
+    }
+    if (lead.status === 'رفض التأكيد') stats.rejected++;
   });
 
-  return { overall: overallStats, byProduct: productStats };
+  return { 
+    overall: overallStats, 
+    financials: {
+      totalRevenue,
+      averageOrderValue,
+      thisMonthRevenue,
+      lastMonthRevenue,
+      revenueGrowth
+    },
+    conversion: {
+      confirmationRate
+    },
+    byProduct: Object.values(productStats).sort((a,b) => b.revenue - a.revenue) 
+  };
 }
 
 /**
