@@ -75,10 +75,10 @@ export default function ArchiveTable({ orders, onUpdateOrder }: ArchiveTableProp
           <tbody className="divide-y divide-gray-200">
             {shippedOrders.map((order) => (
               <tr key={order.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3">{order.id}</td>
-                <td className="px-4 py-3 font-medium">{order.name}</td>
-                <td className="px-4 py-3">{order.phone}</td>
-                <td className="px-4 py-3">{order.productName}</td>
+                <td className="px-4 py-3 text-gray-800 font-medium">{order.id}</td>
+                <td className="px-4 py-3 text-gray-900 font-semibold">{order.name}</td>
+                <td className="px-4 py-3 text-gray-800 font-mono">{order.phone}</td>
+                <td className="px-4 py-3 text-gray-800">{order.productName}</td>
                 <td className="px-4 py-3">
                   <StatusBadge status={order.status} />
                 </td>

@@ -319,20 +319,20 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleCopy(order.phone)}
-                        className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-sm font-mono"
+                        className="text-blue-700 hover:text-blue-900 flex items-center gap-1 text-sm font-mono"
                         title={`اضغط لنسخ: ${formatPhoneForDisplay(order.phone)}`}
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                         </svg>
-                        {formatPhoneForDisplay(order.phone)}
+                        <span className="text-gray-800">{formatPhoneForDisplay(order.phone)}</span>
                       </button>
                       {order.phone && (
                         <a
                           href={`https://wa.me/${formatPhoneNumber(order.phone)}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
+                          className="text-green-700 hover:text-green-900 p-1 rounded hover:bg-green-50"
                           title={`WhatsApp: ${order.phone}`}
                         >
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -342,17 +342,17 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm">{order.governorate}</td>
-                  <td className="px-4 py-3 text-sm">{order.productName}</td>
-                  <td className="px-4 py-3 text-sm font-medium">{order.totalPrice}</td>
-                  <td className="px-4 py-3 text-sm">{order.source}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
+                  <td className="px-4 py-3 text-sm text-gray-800">{order.governorate}</td>
+                  <td className="px-4 py-3 text-sm text-gray-800">{order.productName}</td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{order.totalPrice}</td>
+                  <td className="px-4 py-3 text-sm text-gray-800">{order.source}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">
                     {new Date(order.orderDate).toLocaleDateString('ar-EG')}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={order.status} />
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">
+                  <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate">
                     {order.notes || '-'}
                   </td>
                   <td className="px-4 py-3 text-sm">
