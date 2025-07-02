@@ -139,17 +139,25 @@ export async function getOrderStatistics() {
     today: leads.filter((l: LeadRow) => l.orderDate && l.orderDate.startsWith(today)).length,
   };
 
-  // Per-Product Statistics
+  const normalize = (str: string) => (str || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  // Per-Product and Per-Source Statistics
   const productStats: { [productName: string]: typeof overallStats } = {};
+  const sourceStats: { [sourceName: string]: typeof overallStats } = {};
 
   leads.forEach((lead) => {
-    const productName = lead.productName || 'منتج غير محدد';
+    const productName = normalize(lead.productName || 'منتج غير محدد');
+    const sourceName = normalize(lead.source || 'مصدر غير محدد');
+
+    // Initialize stats object if it doesn't exist
     if (!productStats[productName]) {
-      productStats[productName] = {
-        total: 0, new: 0, confirmed: 0, pending: 0, rejected: 0, noAnswer: 0, contacted: 0, shipped: 0, today: 0,
-      };
+      productStats[productName] = { total: 0, new: 0, confirmed: 0, pending: 0, rejected: 0, noAnswer: 0, contacted: 0, shipped: 0, today: 0 };
+    }
+    if (!sourceStats[sourceName]) {
+      sourceStats[sourceName] = { total: 0, new: 0, confirmed: 0, pending: 0, rejected: 0, noAnswer: 0, contacted: 0, shipped: 0, today: 0 };
     }
 
+    // Increment counters for product
     productStats[productName].total++;
     if (!lead.status || lead.status === 'جديد') productStats[productName].new++;
     if (lead.status === 'تم التأكيد') productStats[productName].confirmed++;
@@ -159,7 +167,18 @@ export async function getOrderStatistics() {
     if (lead.status === 'تم التواصل معه واتساب') productStats[productName].contacted++;
     if (lead.status === 'تم الشحن') productStats[productName].shipped++;
     if (lead.orderDate && lead.orderDate.startsWith(today)) productStats[productName].today++;
+
+    // Increment counters for source
+    sourceStats[sourceName].total++;
+    if (!lead.status || lead.status === 'جديد') sourceStats[sourceName].new++;
+    if (lead.status === 'تم التأكيد') sourceStats[sourceName].confirmed++;
+    if (lead.status === 'في انتظار تأكيد العميل') sourceStats[sourceName].pending++;
+    if (lead.status === 'رفض التأكيد') sourceStats[sourceName].rejected++;
+    if (lead.status === 'لم يرد') sourceStats[sourceName].noAnswer++;
+    if (lead.status === 'تم التواصل معه واتساب') sourceStats[sourceName].contacted++;
+    if (lead.status === 'تم الشحن') sourceStats[sourceName].shipped++;
+    if (lead.orderDate && lead.orderDate.startsWith(today)) sourceStats[sourceName].today++;
   });
 
-  return { overall: overallStats, byProduct: productStats };
+  return { overall: overallStats, byProduct: productStats, bySource: sourceStats };
 } 

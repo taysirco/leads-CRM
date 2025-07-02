@@ -1,5 +1,6 @@
 import useSWR from 'swr';
 import React from 'react';
+import ReportCard from './ReportCard';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -25,43 +26,44 @@ export default function Dashboard() {
   if (error) return <div>فشل في جلب الإحصائيات: {error.message}</div>;
   if (!data) return <div>جاري تحميل الإحصائيات...</div>;
 
-  // Handle API error response
   if (data.error) {
     return <div>حدث خطأ: {data.error}</div>;
   }
 
-  const { overall, byProduct } = data.data;
+  const { overall, byProduct, bySource } = data.data;
 
-  if (!overall || !byProduct) {
+  if (!overall || !byProduct || !bySource) {
     return <div>البيانات غير مكتملة.</div>;
   }
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold mb-4">نظرة عامة</h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="إجمالي الطلبات" value={overall.total} icon="📊" />
-        <StatCard label="طلبات جديدة" value={overall.new} icon="🆕" />
-        <StatCard label="مؤكدة" value={overall.confirmed} icon="✅" />
-        <StatCard label="طلبات اليوم" value={overall.today} icon="📅" />
+    <div className="space-y-12">
+      <div>
+        <h2 className="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">نظرة عامة</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <StatCard label="إجمالي الطلبات" value={overall.total} icon="📊" />
+          <StatCard label="طلبات جديدة" value={overall.new} icon="🆕" />
+          <StatCard label="مؤكدة" value={overall.confirmed} icon="✅" />
+          <StatCard label="طلبات اليوم" value={overall.today} icon="📅" />
+        </div>
       </div>
 
-      <hr className="my-8" />
+      <div>
+        <h2 className="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">تقارير حسب المنتج</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Object.entries(byProduct).map(([productName, stats]: [string, any]) => (
+            <ReportCard key={productName} title={productName} stats={stats} />
+          ))}
+        </div>
+      </div>
 
-      <h2 className="text-2xl font-bold mb-4">إحصائيات حسب المنتج</h2>
-      <div className="space-y-6">
-        {Object.entries(byProduct).map(([productName, stats]: [string, any]) => (
-          <div key={productName} className="bg-gray-50 p-6 rounded-lg shadow-md">
-            <h3 className="text-xl font-semibold mb-4 text-gray-800">{productName}</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              <StatCard label="إجمالي الطلبات" value={stats.total} icon="📦" />
-              <StatCard label="جديدة" value={stats.new} icon="🆕" />
-              <StatCard label="مؤكدة" value={stats.confirmed} icon="✅" />
-              <StatCard label="تم الشحن" value={stats.shipped} icon="🚚" />
-              <StatCard label="مرفوضة" value={stats.rejected} icon="❌" />
-            </div>
-          </div>
-        ))}
+      <div>
+        <h2 className="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">تقارير حسب المصدر</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Object.entries(bySource).map(([sourceName, stats]: [string, any]) => (
+            <ReportCard key={sourceName} title={sourceName} stats={stats} />
+          ))}
+        </div>
       </div>
     </div>
   );
