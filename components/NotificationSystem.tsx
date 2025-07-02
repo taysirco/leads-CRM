@@ -216,12 +216,12 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
                       </div>
                       <p className="text-gray-700 text-sm mb-2">{notification.message}</p>
                       {notification.data && (
-                        <div className="bg-white bg-opacity-60 rounded-lg p-2 text-xs">
+                        <div className="bg-white bg-opacity-60 rounded-lg p-2 text-xs text-gray-800">
                           <div className="grid grid-cols-2 gap-1">
-                            <span>العميل: <strong>{notification.data.customerName}</strong></span>
-                            <span>الهاتف: <strong>{notification.data.phone}</strong></span>
-                            <span>المنتج: <strong>{notification.data.product}</strong></span>
-                            <span>السعر: <strong>{notification.data.price}</strong></span>
+                            <span>العميل: <strong className="text-gray-900">{notification.data.customerName}</strong></span>
+                            <span>الهاتف: <strong className="text-gray-900">{notification.data.phone}</strong></span>
+                            <span>المنتج: <strong className="text-gray-900">{notification.data.product}</strong></span>
+                            <span>السعر: <strong className="text-gray-900">{notification.data.price}</strong></span>
                           </div>
                         </div>
                       )}

@@ -154,6 +154,84 @@ const LiveStats: React.FC<LiveStatsProps> = ({ orders }) => {
     </div>
   );
 
+  // Calculate enhanced performance indicator
+  const successfulOrders = stats.confirmed + stats.shipped;
+  const totalOrders = stats.total;
+  const performancePercentage = totalOrders > 0 ? Math.round((successfulOrders / totalOrders) * 100) : 0;
+  
+  const getPerformanceLevel = () => {
+    if (performancePercentage >= 70) {
+      return {
+        level: 'ممتاز',
+        color: 'text-emerald-600',
+        bgColor: 'bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200',
+        progressColor: 'text-emerald-500'
+      };
+    }
+    if (performancePercentage >= 55) {
+      return {
+        level: 'جيد',
+        color: 'text-green-600',
+        bgColor: 'bg-gradient-to-br from-green-50 to-lime-50 border-green-200',
+        progressColor: 'text-green-500'
+      };
+    }
+    if (performancePercentage >= 35) {
+      return {
+        level: 'ضعيف',
+        color: 'text-yellow-600',
+        bgColor: 'bg-gradient-to-br from-yellow-50 to-amber-50 border-yellow-200',
+        progressColor: 'text-yellow-500'
+      };
+    }
+    return {
+      level: 'سيء',
+      color: 'text-red-600',
+      bgColor: 'bg-gradient-to-br from-red-50 to-pink-50 border-red-200',
+      progressColor: 'text-red-500'
+    };
+  };
+
+  const performance = getPerformanceLevel();
+
+  const PerformanceIndicator = () => (
+    <div className={`
+      rounded-xl p-4 border transition-all duration-500 flex flex-col items-center justify-center text-center
+      ${performance.bgColor}
+    `}>
+      <div className="relative w-20 h-20">
+        <svg className="w-full h-full" viewBox="0 0 36 36" transform="rotate(-90)">
+          <path
+            className="text-gray-200"
+            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3.5"
+          />
+          <path
+            className={performance.progressColor}
+            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3.5"
+            strokeDasharray={`${performancePercentage}, 100`}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dasharray 0.5s ease-in-out' }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className={`text-xl font-bold ${performance.color}`}>
+            {performancePercentage}%
+          </span>
+        </div>
+      </div>
+      <p className="text-sm font-bold mt-2 text-gray-800">مؤشر الأداء</p>
+      <p className={`text-xs font-medium ${performance.color}`}>
+        أداء {performance.level}
+      </p>
+    </div>
+  );
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
       <StatCard
@@ -200,6 +278,7 @@ const LiveStats: React.FC<LiveStatsProps> = ({ orders }) => {
         bgColor="bg-gradient-to-br from-gray-50 to-slate-50"
         statKey="rejected"
       />
+      <PerformanceIndicator />
     </div>
   );
 };

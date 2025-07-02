@@ -255,32 +255,40 @@ export default function Home() {
           <main>
             {activeTab === 'dashboard' && <Dashboard />}
             {activeTab === 'orders' && (
-              <OrdersTable 
-                orders={filteredOrders} 
-                onUpdateOrder={handleUpdateOrder} 
-              />
+              <div className="text-gray-900">
+                <OrdersTable 
+                  orders={filteredOrders} 
+                  onUpdateOrder={handleUpdateOrder} 
+                />
+              </div>
             )}
             {activeTab === 'export' && (
-              <BostaExport
-                orders={filteredOrders}
-                selectedOrders={selectedOrders}
-                onSelectOrder={handleSelectOrder}
-                onSelectAll={handleSelectAll}
-                onDeselectAll={handleDeselectAll}
-                onUpdateOrder={handleUpdateOrder}
-              />
+              <div className="text-gray-900">
+                <BostaExport
+                  orders={filteredOrders}
+                  selectedOrders={selectedOrders}
+                  onSelectOrder={handleSelectOrder}
+                  onSelectAll={handleSelectAll}
+                  onDeselectAll={handleDeselectAll}
+                  onUpdateOrder={handleUpdateOrder}
+                />
+              </div>
             )}
             {activeTab === 'archive' && (
-              <ArchiveTable 
-                orders={filteredOrders} 
-                onUpdateOrder={handleUpdateOrder} 
-              />
+              <div className="text-gray-900">
+                <ArchiveTable 
+                  orders={filteredOrders} 
+                  onUpdateOrder={handleUpdateOrder} 
+                />
+              </div>
             )}
             {activeTab === 'rejected' && (
-              <RejectedTable 
-                orders={filteredOrders} 
-                onUpdateOrder={handleUpdateOrder} 
-              />
+              <div className="text-gray-900">
+                <RejectedTable 
+                  orders={filteredOrders} 
+                  onUpdateOrder={handleUpdateOrder} 
+                />
+              </div>
             )}
           </main>
         </div>
