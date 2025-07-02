@@ -113,20 +113,29 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   };
 
   const mapOrderToBosta = (order: Order) => {
-    // Reverting to the international format by cleaning and ensuring country code
-    const formatToInternational = (phone: string) => {
+    // This function now formats the phone number to the local Egyptian format (01...).
+    const formatToLocalEgyptian = (phone: string) => {
       if (!phone) return '';
       const cleaned = phone.replace(/\D/g, '');
-      if (cleaned.startsWith('20')) return cleaned;
-      if (cleaned.startsWith('01') && cleaned.length === 11) return `20${cleaned.substring(1)}`;
-      if (cleaned.startsWith('1') && cleaned.length === 10) return `20${cleaned}`;
-      return cleaned;
+      // Handles formats like +201..., 201...
+      if (cleaned.startsWith('201') && cleaned.length === 12) {
+        return `0${cleaned.substring(2)}`; // returns 01...
+      }
+      // Handles 11-digit numbers that already start with 01
+      if (cleaned.startsWith('01') && cleaned.length === 11) {
+        return cleaned;
+      }
+      // Handles 10-digit numbers like 11...
+      if (cleaned.startsWith('1') && cleaned.length === 10) {
+        return `0${cleaned}`;
+      }
+      return cleaned; // Fallback
     };
     
     return {
       'Full Name': order.name,
-      'Phone': formatToInternational(order.phone),
-      'Second Phone': order.whatsapp ? formatToInternational(order.whatsapp) : '',
+      'Phone': formatToLocalEgyptian(order.phone),
+      'Second Phone': order.whatsapp ? formatToLocalEgyptian(order.whatsapp) : '',
       'City': order.governorate,
       'Area': order.area || 'منطقة أخرى', // Default value if area is missing
       'Street Name': order.address,
@@ -159,10 +168,22 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
         setIsExporting(false);
         return;
       }
+      
       const bostaData = selectedOrdersData.map(mapOrderToBosta);
       
-      // Create a new workbook and a worksheet
+      // Create a new workbook and a worksheet, forcing phone columns to be text
       const ws = XLSX.utils.json_to_sheet(bostaData);
+      
+      // Manually set the type for phone number columns to Text ('s')
+      const range = XLSX.utils.decode_range(ws['!ref'] as string);
+      for (let R = range.s.r + 1; R <= range.e.r; ++R) { // Start from row 2 (skip header)
+        const phoneCellAddress = XLSX.utils.encode_cell({c: 1, r: R}); // Column B
+        const secondPhoneCellAddress = XLSX.utils.encode_cell({c: 2, r: R}); // Column C
+        
+        if(ws[phoneCellAddress]) ws[phoneCellAddress].t = 's';
+        if(ws[secondPhoneCellAddress]) ws[secondPhoneCellAddress].t = 's';
+      }
+
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Bosta Orders");
 
