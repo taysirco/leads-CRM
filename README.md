@@ -97,9 +97,14 @@ npm install
 2. **إعداد المتغيرات البيئية:**
 أنشئ ملف `.env.local` في جذر المشروع:
 ```env
+# Google Sheets API Credentials
 GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@project.iam.gserviceaccount.com
 GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY\n-----END PRIVATE KEY-----\n"
 GOOGLE_SHEET_ID=your-google-sheet-id
+
+# Application Login Credentials
+APP_USERNAME=smart123
+APP_PASSWORD=Zz2122@1
 ```
 
 3. **تشغيل الخادم:**
