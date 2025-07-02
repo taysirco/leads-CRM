@@ -30,10 +30,11 @@ export default function Dashboard() {
   return (
     <div>
       <h2 className="text-2xl font-bold mb-4">نظرة عامة</h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <StatCard label="إجمالي الطلبات" value={overall.total} icon="📊" />
         <StatCard label="طلبات جديدة" value={overall.new} icon="🆕" />
         <StatCard label="مؤكدة" value={overall.confirmed} icon="✅" />
+        <StatCard label="مرفوضة" value={overall.rejected} icon="❌" />
         <StatCard label="طلبات اليوم" value={overall.today} icon="📅" />
       </div>
 
