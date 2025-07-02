@@ -69,7 +69,7 @@ export async function fetchLeads() {
   }, {} as { [key: string]: number });
 
   const leads = rows.slice(1).map((row, index) => {
-    const getVal = (headerName: string) => row[headerMap[headerName]] || '';
+    const getVal = (headerName: string) => String(row[headerMap[headerName]] || '');
 
     return {
       id: index + 2,

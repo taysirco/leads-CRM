@@ -22,10 +22,19 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, icon }) => (
 export default function Dashboard() {
   const { data, error } = useSWR('/api/orders?stats=true', fetcher, { refreshInterval: 30000 });
 
-  if (error) return <div>فشل في جلب الإحصائيات</div>;
+  if (error) return <div>فشل في جلب الإحصائيات: {error.message}</div>;
   if (!data) return <div>جاري تحميل الإحصائيات...</div>;
 
+  // Handle API error response
+  if (data.error) {
+    return <div>حدث خطأ: {data.error}</div>;
+  }
+
   const { overall, byProduct } = data.data;
+
+  if (!overall || !byProduct) {
+    return <div>البيانات غير مكتملة.</div>;
+  }
 
   return (
     <div>
