@@ -111,13 +111,33 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
     }
   };
 
+  const formatToLocalEgyptian = (phone: string): string => {
+    if (!phone) return '';
+    let cleaned = phone.replace(/\D/g, ''); // Remove all non-digits
+    
+    // If it starts with 201 and is 12 digits long (e.g., 20111...
+    if (cleaned.startsWith('201') && cleaned.length === 12) {
+      return `0${cleaned.substring(2)}`; // Returns 011...
+    }
+    // If it's already in the correct local format (01... and 11 digits)
+    if (cleaned.startsWith('01') && cleaned.length === 11) {
+      return cleaned;
+    }
+    // If it's a 10-digit number starting with 1 (e.g., 111...
+    if (cleaned.startsWith('1') && cleaned.length === 10) {
+      return `0${cleaned}`;
+    }
+    // Fallback for other formats, return the cleaned digits
+    return cleaned;
+  };
+
   const mapOrderToBosta = (order: Order) => {
     // This mapping is now updated to match the official Bosta template columns and rules.
     return {
       // --- Customer Information ---
       'Full Name': order.name,
-      'Phone': order.phone.replace(/\D/g, ''), // Clean phone number
-      'Second Phone': order.whatsapp ? order.whatsapp.replace(/\D/g, '') : '',
+      'Phone': formatToLocalEgyptian(order.phone),
+      'Second Phone': order.whatsapp ? formatToLocalEgyptian(order.whatsapp) : '',
       'City': order.governorate,
       'Area': order.area || 'منطقة أخرى', // Default value if area is missing
       'Street Name': order.address,
