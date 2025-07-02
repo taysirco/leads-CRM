@@ -1,3 +1,4 @@
+import { google } from 'googleapis';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { formatEgyptianPhone } from './phoneFormatter';
 
@@ -12,6 +13,25 @@ const doc = new GoogleSpreadsheet(SHEET_ID);
 // Temporary any type for rows until proper typings are added
 type GoogleSpreadsheetRow = any;
 
+const getAuth = () => {
+  let rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
+  if (!rawKey && process.env.GOOGLE_PRIVATE_KEY_BASE64) {
+    rawKey = Buffer.from(process.env.GOOGLE_PRIVATE_KEY_BASE64, 'base64').toString('utf8');
+  }
+  if (!rawKey) {
+    throw new Error('GOOGLE_PRIVATE_KEY or GOOGLE_PRIVATE_KEY_BASE64 must be provided');
+  }
+  const private_key = rawKey.replace(/\\n/g, '\n');
+
+  return new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      private_key,
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+};
+
 async function authenticate() {
   console.log("--- Authenticating with Environment Variables ---");
   console.log("Found GOOGLE_SHEET_ID:", !!process.env.GOOGLE_SHEET_ID);
@@ -23,24 +43,26 @@ async function authenticate() {
     throw new Error('Service account email is not set');
   }
   
-  let rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
-  
-  if (!rawKey && process.env.GOOGLE_PRIVATE_KEY_BASE64) {
-    console.log("Found GOOGLE_PRIVATE_KEY_BASE64, decoding...");
-    const decodedKey = Buffer.from(process.env.GOOGLE_PRIVATE_KEY_BASE64, 'base64').toString('utf8');
-    rawKey = decodedKey;
-  }
+  await doc.useServiceAccountAuth({
+    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    private_key: process.env.GOOGLE_PRIVATE_KEY || '',
+  });
+  await doc.loadInfo();
+}
 
+async function authenticateForUpdate() {
+  let rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
+  if (!rawKey && process.env.GOOGLE_PRIVATE_KEY_BASE64) {
+    rawKey = Buffer.from(process.env.GOOGLE_PRIVATE_KEY_BASE64, 'base64').toString('utf8');
+  }
   if (!rawKey) {
     throw new Error('GOOGLE_PRIVATE_KEY or GOOGLE_PRIVATE_KEY_BASE64 must be provided');
   }
-
-  // Final check and replacement for escaped newlines, just in case
   const private_key = rawKey.replace(/\\n/g, '\n');
 
   await doc.useServiceAccountAuth({
     client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    private_key: private_key,
+    private_key,
   });
   await doc.loadInfo();
 }
@@ -73,54 +95,47 @@ export type LeadRow = {
 };
 
 export async function fetchLeads() {
-  const sheet = await getSheet('leads');
-  // Load all cells in the sheet to access formatted values
-  await sheet.loadCells(); 
-  const rows = (await sheet.getRows()) as GoogleSpreadsheetRow[];
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
 
-  const leads = rows.map((r: any, index: number) => {
-    const rowIndex = r.rowIndex - 1; // getRows is 1-based, we need 0-based for loadCells
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range: 'leads', // Assuming your sheet name is 'leads'
+    valueRenderOption: 'FORMATTED_VALUE', // This is the key to solving the #ERROR! issue
+  });
 
-    // Function to get value, falling back to formatted value if raw is null/error
-    const getCellValue = (colIndex: number) => {
-      const rawValue = r._rawData[colIndex];
-      if (rawValue === null || (typeof rawValue === 'object' && rawValue.errorValue)) {
-        // If raw value is null or an error, try the formatted value from the cell
-        const cell = sheet.getCell(rowIndex, colIndex);
-        return cell.formattedValue || ''; // Use formattedValue as fallback
-      }
-      return rawValue || '';
-    };
+  const rows = response.data.values;
+  if (!rows || rows.length === 0) {
+    return [];
+  }
 
-    // Assuming column indices: Phone is 2, WhatsApp is 3
-    // NOTE: This is fragile. A better solution would be to map headers to indices once.
-    const phoneColIndex = 2; 
-    const whatsappColIndex = 3;
+  const headers = rows[0];
+  const headerMap = headers.reduce((map, header, index) => {
+    map[header] = index;
+    return map;
+  }, {} as { [key: string]: number });
 
-    const rawPhone = getCellValue(phoneColIndex);
-    const rawWhatsapp = getCellValue(whatsappColIndex);
-    
-    const formattedPhone = formatEgyptianPhone(rawPhone);
-    const formattedWhatsapp = formatEgyptianPhone(rawWhatsapp);
+  const leads = rows.slice(1).map((row, index) => {
+    const getVal = (headerName: string) => row[headerMap[headerName]] || '';
 
     return {
       id: index + 2,
       rowIndex: index,
-      orderDate: r['تاريخ الطلب'] ?? '',
-      name: r['الاسم'] ?? '',
-      phone: formattedPhone,
-      whatsapp: formattedWhatsapp,
-      governorate: r['المحافظة'] ?? '',
-      area: r['المنطقة'] ?? '',
-      address: r['العنوان'] ?? '',
-      orderDetails: r['تفاصيل الطلب'] ?? '',
-      quantity: r['الكمية'] ?? '',
-      totalPrice: r['توتال السعر شامل الشحن'] ?? '',
-      productName: r['اسم المنتج'] ?? '',
-      status: r['الحالة'] ?? '',
-      notes: r['ملاحظات'] ?? '',
-      source: r['المصدر'] ?? '',
-      whatsappSent: r['ارسال واتس اب'] ?? '',
+      orderDate: getVal('تاريخ الطلب'),
+      name: getVal('الاسم'),
+      phone: formatEgyptianPhone(getVal('رقم الهاتف')),
+      whatsapp: formatEgyptianPhone(getVal('رقم الواتس')),
+      governorate: getVal('المحافظة'),
+      area: getVal('المنطقة'),
+      address: getVal('العنوان'),
+      orderDetails: getVal('تفاصيل الطلب'),
+      quantity: getVal('الكمية'),
+      totalPrice: getVal('توتال السعر شامل الشحن'),
+      productName: getVal('اسم المنتج'),
+      status: getVal('الحالة'),
+      notes: getVal('ملاحظات'),
+      source: getVal('المصدر'),
+      whatsappSent: getVal('ارسال واتس اب'),
     };
   });
 
@@ -128,11 +143,10 @@ export async function fetchLeads() {
 }
 
 export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
-  console.log(`updateLead: Updating row ${rowNumber} with:`, updates);
-  
-  const sheet = await getSheet('leads');
-  // Convert display row number back to array index
-  const arrayIndex = rowNumber - 2; // Row 2 = index 0, Row 3 = index 1, etc.
+  console.log(`updateLead: Authenticating for update...`);
+  await authenticateForUpdate();
+  const sheet = await getSheet('leads'); // This will use the old method, which is fine for updates
+  const arrayIndex = rowNumber - 2;
   const rows = (await sheet.getRows()) as GoogleSpreadsheetRow[];
   
   console.log(`updateLead: Total rows available: ${rows.length}, trying to access index: ${arrayIndex}`);
