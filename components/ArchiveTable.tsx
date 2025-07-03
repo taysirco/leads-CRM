@@ -47,7 +47,7 @@ export default function ArchiveTable({ orders, onUpdateOrder }: ArchiveTableProp
     <div className="bg-white shadow-lg rounded-lg overflow-hidden">
       <div className="p-4 bg-gray-50 border-b">
         <div className="flex justify-between items-center">
-          <h2 className="text-xl font-semibold">الأرشيف (الطلبات المشحونة)</h2>
+          <h2 className="text-xl font-semibold">طلبات الشحن (الأرشيف)</h2>
           <input
             type="text"
             placeholder="بحث في الطلبات المشحونة..."

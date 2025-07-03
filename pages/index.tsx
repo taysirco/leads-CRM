@@ -222,7 +222,7 @@ export default function Home() {
                 { id: 'dashboard', name: 'لوحة التحكم', icon: '📊' },
                 { id: 'orders', name: 'الطلبات النشطة', icon: '📋' },
                 { id: 'export', name: 'تصدير بوسطة', icon: '📤' },
-                { id: 'archive', name: 'الأرشيف', icon: '📁' },
+                { id: 'archive', name: 'طلبات الشحن', icon: '🚚' },
                 { id: 'rejected', name: 'الطلبات المهملة', icon: '🗑️' }
               ].map((tab) => (
                 <button
