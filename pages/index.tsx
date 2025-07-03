@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Dashboard from '../components/Dashboard';
 import OrdersTable from '../components/OrdersTable';
 import BostaExport from '../components/BostaExport';
@@ -123,6 +123,21 @@ export default function Home() {
     setSelectedOrders([]);
   };
 
+  // Calculate counts for each tab independently
+  const tabCounts = useMemo(() => {
+    const allOrders = data?.data || [];
+    return {
+      orders: allOrders.filter((order: any) => 
+        !order.status || 
+        order.status === 'جديد' || 
+        order.status === 'في انتظار تأكيد العميل' || 
+        order.status === 'لم يرد' || 
+        order.status === 'تم التواصل معه واتساب'
+      ).length,
+      export: allOrders.filter((order: any) => order.status === 'تم التأكيد').length,
+    };
+  }, [data]);
+
   // Filter orders based on active tab
   const getFilteredOrders = () => {
     if (!orders) return [];
@@ -236,14 +251,14 @@ export default function Home() {
                 >
                   <span>{tab.icon}</span>
                   <span>{tab.name}</span>
-                  {(tab.id === 'orders' && filteredOrders.length > 0) && (
+                  {(tab.id === 'orders' && tabCounts.orders > 0) && (
                     <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
-                      {filteredOrders.length}
+                      {tabCounts.orders}
                     </span>
                   )}
-                  {(tab.id === 'export' && filteredOrders.length > 0) && (
+                  {(tab.id === 'export' && tabCounts.export > 0) && (
                     <span className="bg-green-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
-                      {filteredOrders.length}
+                      {tabCounts.export}
                     </span>
                   )}
                 </button>
