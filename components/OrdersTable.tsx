@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import StatusBadge from './StatusBadge';
 import WhatsAppTemplates from './WhatsAppTemplates';
 import { testPhoneFormatter, formatPhoneForDisplay } from '../lib/phoneFormatter';
+import { cleanText, getUniqueProducts, compareCleanText, testProductCleaning } from '../lib/textCleaner';
 
 interface Order {
   id: number;
@@ -42,6 +43,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+  const [productFilter, setProductFilter] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingNotes, setEditingNotes] = useState('');
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
@@ -61,12 +63,85 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
       
       const matchesStatus = !statusFilter || order.status === statusFilter;
       const matchesSource = !sourceFilter || order.source === sourceFilter;
+      const matchesProduct = !productFilter || cleanText(order.productName) === productFilter;
       
-      return matchesSearch && matchesStatus && matchesSource;
+      return matchesSearch && matchesStatus && matchesSource && matchesProduct;
     });
-  }, [orders, searchTerm, statusFilter, sourceFilter]);
+  }, [orders, searchTerm, statusFilter, sourceFilter, productFilter]);
 
   const sources = [...new Set(orders.map(o => o.source).filter(Boolean))];
+  
+  // استخدام الدالة المشتركة لإنشاء قائمة منتجات نظيفة ومرتبة
+  const products = useMemo(() => {
+    const uniqueProducts = getUniqueProducts(orders);
+    
+    // Debug: إذا كان لا يزال هناك تكرار، سنطبع تفاصيل في الكونسول
+    if (process.env.NODE_ENV === 'development') {
+      // تشغيل اختبار تنظيف المنتجات
+      testProductCleaning();
+      
+      const originalProducts = orders.map(o => o.productName).filter(Boolean);
+      const originalUnique = [...new Set(originalProducts)];
+      
+      // فحص خاص للمنتج المذكور من المستخدم
+      const k19Products = originalProducts.filter(p => 
+        p.toLowerCase().includes('موبايل') && 
+        p.toLowerCase().includes('k19')
+      );
+      
+      if (k19Products.length > 0) {
+        console.log('\n🔍 تحليل خاص لمنتج "موبايل المهام الخاصة K19":');
+        console.log('الأشكال الموجودة:', k19Products);
+        k19Products.forEach((product, i) => {
+          console.log(`${i + 1}. "${product}" → "${cleanText(product)}"`);
+        });
+        
+        const cleanedK19 = [...new Set(k19Products.map(cleanText))];
+        console.log('الأشكال المنظفة الفريدة:', cleanedK19);
+        
+        if (cleanedK19.length > 1) {
+          console.log('❌ لا يزال هناك تكرار في هذا المنتج!');
+        } else {
+          console.log('✅ تم توحيد المنتج بنجاح');
+        }
+      }
+      
+      if (originalUnique.length !== uniqueProducts.length) {
+        console.log('🚨 تم اكتشاف تكرار في أسماء المنتجات!');
+        console.log('عدد المنتجات الأصلية الفريدة:', originalUnique.length);
+        console.log('عدد المنتجات المنظفة الفريدة:', uniqueProducts.length);
+        console.log('المنتجات الأصلية:', originalUnique);
+        console.log('المنتجات المنظفة:', uniqueProducts);
+        
+        // تحليل مفصل
+        const duplicateAnalysis = new Map<string, string[]>();
+        orders.forEach(order => {
+          const original = order.productName || '';
+          const cleaned = cleanText(original);
+          
+          if (!duplicateAnalysis.has(cleaned)) {
+            duplicateAnalysis.set(cleaned, []);
+          }
+          if (!duplicateAnalysis.get(cleaned)!.includes(original)) {
+            duplicateAnalysis.get(cleaned)!.push(original);
+          }
+        });
+        
+        duplicateAnalysis.forEach((originals, cleaned) => {
+          if (originals.length > 1) {
+            console.log(`\n📦 المنتج المنظف: "${cleaned}"`);
+            console.log('الأشكال المختلفة:');
+            originals.forEach((original, i) => {
+              console.log(`  ${i + 1}. "${original}" (طول: ${original.length})`);
+              console.log(`     رموز: ${original.split('').map(c => c.charCodeAt(0)).join(', ')}`);
+            });
+          }
+        });
+      }
+    }
+    
+    return uniqueProducts;
+  }, [orders]);
 
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return '';
@@ -198,7 +273,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
       <div className="bg-white shadow-xl rounded-2xl overflow-hidden border border-gray-100">
         {/* Enhanced Filters Section */}
         <div className="bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200 p-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-800">البحث</label>
               <div className="relative">
@@ -239,6 +314,19 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 <option value="">كل المصادر</option>
                 {sources.map(source => (
                   <option key={source} value={source}>{source}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-800">المنتج</label>
+              <select
+                value={productFilter}
+                onChange={(e) => setProductFilter(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white shadow-sm text-gray-900"
+              >
+                <option value="">كل المنتجات</option>
+                {products.map(product => (
+                  <option key={product} value={product}>{product}</option>
                 ))}
               </select>
             </div>

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import StatusBadge from './StatusBadge';
 import { formatPhoneForDisplay } from '../lib/phoneFormatter';
+import { cleanText, getUniqueProducts } from '../lib/textCleaner';
 
 interface Order {
   id: number;
@@ -31,6 +32,7 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
   const [searchTerm, setSearchTerm] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [governorateFilter, setGovernorateFilter] = useState('');
+  const [productFilter, setProductFilter] = useState('');
   const [loadingOrders, setLoadingOrders] = useState<Set<number>>(new Set());
 
   // Calculate statistics
@@ -82,13 +84,19 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
       
       const matchesSource = !sourceFilter || order.source === sourceFilter;
       const matchesGovernorate = !governorateFilter || order.governorate === governorateFilter;
+      const matchesProduct = !productFilter || cleanText(order.productName) === productFilter;
 
-      return matchesSearch && matchesSource && matchesGovernorate;
+      return matchesSearch && matchesSource && matchesGovernorate && matchesProduct;
     });
-  }, [orders, searchTerm, sourceFilter, governorateFilter]);
+  }, [orders, searchTerm, sourceFilter, governorateFilter, productFilter]);
 
   const uniqueSources = [...new Set(orders.map(order => order.source).filter(Boolean))];
   const uniqueGovernorates = [...new Set(orders.map(order => order.governorate).filter(Boolean))];
+  
+  // استخدام الدالة المشتركة لإنشاء قائمة منتجات نظيفة ومرتبة
+  const uniqueProducts = useMemo(() => {
+    return getUniqueProducts(orders);
+  }, [orders]);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -220,7 +228,7 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
 
       {/* Search and Filters */}
       <div className="bg-white p-6 rounded-lg shadow-sm border">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">البحث بالاسم أو الهاتف</label>
             <input
@@ -256,6 +264,20 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
               <option value="">جميع المحافظات</option>
               {uniqueGovernorates.map(gov => (
                 <option key={gov} value={gov}>{gov}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">المنتج</label>
+            <select
+              value={productFilter}
+              onChange={(e) => setProductFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">جميع المنتجات</option>
+              {uniqueProducts.map(product => (
+                <option key={product} value={product}>{product}</option>
               ))}
             </select>
           </div>

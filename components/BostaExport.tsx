@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
+import { cleanText, getUniqueProducts } from '../lib/textCleaner';
 
 interface Order {
   id: number;
@@ -36,6 +37,30 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   const [loadingOrders, setLoadingOrders] = useState<Set<number>>(new Set());
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [productFilter, setProductFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+
+  // Filter orders based on search and filters
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => {
+      const matchesSearch = !searchTerm || 
+        order.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.phone.includes(searchTerm);
+      
+      const matchesProduct = !productFilter || cleanText(order.productName) === productFilter;
+      const matchesSource = !sourceFilter || order.source === sourceFilter;
+      
+      return matchesSearch && matchesProduct && matchesSource;
+    });
+  }, [orders, searchTerm, productFilter, sourceFilter]);
+
+  // استخدام الدالة المشتركة لإنشاء قائمة منتجات ومصادر نظيفة ومرتبة
+  const products = useMemo(() => {
+    return getUniqueProducts(orders);
+  }, [orders]);
+  
+  const sources = [...new Set(orders.map(o => o.source).filter(Boolean))];
 
   const handleRevertStatus = async (orderId: number) => {
     setLoadingOrders(prev => new Set(prev.add(orderId)));
@@ -212,6 +237,48 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
           </div>
         </div>
 
+        {/* Filters Section */}
+        <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">البحث</label>
+              <input
+                type="text"
+                placeholder="بحث بالاسم أو الهاتف..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">المنتج</label>
+              <select
+                value={productFilter}
+                onChange={(e) => setProductFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">كل المنتجات</option>
+                {products.map(product => (
+                  <option key={product} value={product}>{product}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">المصدر</label>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">كل المصادر</option>
+                {sources.map(source => (
+                  <option key={source} value={source}>{source}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <h3 className="font-medium text-blue-800 mb-2">تصدير الطلبات المؤكدة:</h3>
           <ul className="text-sm text-blue-700 space-y-1">
@@ -219,6 +286,9 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
             <li>• سيتم استخدام البيانات المتاحة. قد تحتاج إلى إكمال البيانات المفقودة في ملف Excel.</li>
             <li className="font-bold">
               • إجمالي الطلبات المؤكدة: <span className="text-blue-700">{orders.length}</span>
+            </li>
+            <li className="font-bold">
+              • الطلبات المعروضة: <span className="text-blue-700">{filteredOrders.length}</span>
             </li>
           </ul>
         </div>
@@ -230,8 +300,8 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                 <th className="px-3 py-2 text-right">
                   <input
                     type="checkbox"
-                    checked={selectedOrders.length === orders.length && orders.length > 0}
-                    onChange={selectedOrders.length === orders.length ? onDeselectAll : onSelectAll}
+                    checked={selectedOrders.length === filteredOrders.length && filteredOrders.length > 0}
+                    onChange={selectedOrders.length === filteredOrders.length ? onDeselectAll : onSelectAll}
                     className="rounded"
                   />
                 </th>
@@ -248,7 +318,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {orders.map((order) => {
+              {filteredOrders.map((order) => {
                 const isLoading = loadingOrders.has(order.id);
                 return (
                   <tr key={order.id} className={`hover:bg-gray-50 ${isLoading ? 'opacity-70' : ''}`}>

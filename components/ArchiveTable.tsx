@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import StatusBadge from './StatusBadge';
+import { cleanText, getUniqueProducts } from '../lib/textCleaner';
 
 interface Order {
   id: number;
@@ -28,6 +29,7 @@ interface ArchiveTableProps {
 
 export default function ArchiveTable({ orders, onUpdateOrder }: ArchiveTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [productFilter, setProductFilter] = useState('');
 
   const shippedOrders = useMemo(() => {
     return orders.filter(order => {
@@ -39,22 +41,48 @@ export default function ArchiveTable({ orders, onUpdateOrder }: ArchiveTableProp
         order.phone.includes(searchTerm) ||
         (order.notes && order.notes.toLowerCase().includes(searchTerm.toLowerCase()));
       
-      return matchesSearch;
+      const matchesProduct = !productFilter || cleanText(order.productName) === productFilter;
+      
+      return matchesSearch && matchesProduct;
     });
-  }, [orders, searchTerm]);
+  }, [orders, searchTerm, productFilter]);
+
+  // استخدام الدالة المشتركة لإنشاء قائمة منتجات نظيفة ومرتبة للطلبات المشحونة
+  const products = useMemo(() => {
+    const shippedOrders = orders.filter(o => o.status === 'تم الشحن');
+    return getUniqueProducts(shippedOrders);
+  }, [orders]);
 
   return (
     <div className="bg-white shadow-lg rounded-lg overflow-hidden">
       <div className="p-4 bg-gray-50 border-b">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">طلبات الشحن (الأرشيف)</h2>
-          <input
-            type="text"
-            placeholder="بحث في الطلبات المشحونة..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-1/3 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">البحث</label>
+            <input
+              type="text"
+              placeholder="بحث بالاسم أو الهاتف..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">المنتج</label>
+            <select
+              value={productFilter}
+              onChange={(e) => setProductFilter(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">كل المنتجات</option>
+              {products.map(product => (
+                <option key={product} value={product}>{product}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <p className="text-sm text-gray-600 mt-2">
           يتم عرض {shippedOrders.length} طلب تم شحنه.
