@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import StatusBadge from './StatusBadge';
 import WhatsAppTemplates from './WhatsAppTemplates';
 import { testPhoneFormatter, formatPhoneForDisplay } from '../lib/phoneFormatter';
-import { cleanText, getUniqueProducts, compareCleanText, testProductCleaning } from '../lib/textCleaner';
+import { cleanText, getUniqueProducts, compareCleanText, testProductCleaning, analyzeOrderStatuses, testStatusFilter } from '../lib/textCleaner';
 
 interface Order {
   id: number;
@@ -53,21 +53,181 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   const [optimisticUpdates, setOptimisticUpdates] = useState<Map<number, Partial<Order>>>(new Map());
   const [showSuccessMessage, setShowSuccessMessage] = useState<number | null>(null);
   const [copySuccess, setCopySuccess] = useState('');
+  
+  // حالات التحديد الجماعي
+  const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
+  const [bulkStatusModalOpen, setBulkStatusModalOpen] = useState(false);
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [bulkSuccessMessage, setBulkSuccessMessage] = useState('');
+  
+  // للتحكم في تشغيل التحليل مرة واحدة فقط
+  const statusAnalysisDone = React.useRef(false);
+  const productAnalysisDone = React.useRef(false);
+
+  // إعادة تعيين التحديدات عند تغيير الفلاتر
+  React.useEffect(() => {
+    setSelectedOrders(new Set());
+  }, [searchTerm, statusFilter, sourceFilter, productFilter]);
+
+  const getOrderWithUpdates = (order: Order) => {
+    const updates = optimisticUpdates.get(order.id);
+    return updates ? { ...order, ...updates } : order;
+  };
+
+  // دوال التحديد الجماعي
+  const handleSelectOrder = (orderId: number) => {
+    setSelectedOrders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const allVisibleOrderIds = new Set(filteredOrders.map(order => order.id));
+    setSelectedOrders(allVisibleOrderIds);
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedOrders(new Set());
+  };
+
+  const handleBulkStatusUpdate = async (newStatus: string) => {
+    if (selectedOrders.size === 0) {
+      alert('يرجى تحديد طلب واحد على الأقل');
+      return;
+    }
+
+    setIsBulkLoading(true);
+    setBulkStatusModalOpen(false);
+
+    try {
+      // تحديث جميع الطلبات المحددة
+      const updatePromises = Array.from(selectedOrders).map(orderId => 
+        onUpdateOrder(orderId, { status: newStatus })
+      );
+
+      await Promise.all(updatePromises);
+      
+      // إظهار رسالة نجاح
+      setBulkSuccessMessage(`تم تحديث ${selectedOrders.size} طلب بنجاح إلى حالة "${newStatus}"`);
+      setTimeout(() => setBulkSuccessMessage(''), 5000);
+      
+      // إلغاء التحديد
+      setSelectedOrders(new Set());
+      
+    } catch (error) {
+      console.error('Failed to update orders:', error);
+      alert('فشل في تحديث بعض الطلبات. حاول مرة أخرى.');
+    } finally {
+      setIsBulkLoading(false);
+    }
+  };
 
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-      const matchesSearch = !searchTerm || 
-        order.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.phone.includes(searchTerm) ||
-        order.whatsapp.includes(searchTerm);
+    const results = orders.filter(order => {
+      // الحصول على الطلب مع التحديثات التفاؤلية
+      const orderWithUpdates = getOrderWithUpdates(order);
       
-      const matchesStatus = !statusFilter || order.status === statusFilter;
-      const matchesSource = !sourceFilter || order.source === sourceFilter;
-      const matchesProduct = !productFilter || cleanText(order.productName) === productFilter;
+      const matchesSearch = !searchTerm || 
+        orderWithUpdates.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        orderWithUpdates.phone.includes(searchTerm) ||
+        orderWithUpdates.whatsapp.includes(searchTerm);
+      
+      // تحسين فلتر الحالة للتعامل مع القيم الفارغة والمسافات
+      const orderStatus = (orderWithUpdates.status || 'جديد').trim();
+      const selectedStatus = statusFilter.trim();
+      
+      // معالجة خاصة للحالات الفارغة
+      let matchesStatus = false;
+      if (!selectedStatus) {
+        // إذا لم يكن هناك فلتر محدد، أظهر كل الطلبات
+        matchesStatus = true;
+      } else if (selectedStatus === 'جديد') {
+        // إذا كان الفلتر "جديد"، أظهر الطلبات الجديدة أو التي بدون حالة
+        matchesStatus = orderStatus === 'جديد' || !orderWithUpdates.status;
+      } else {
+        // للحالات الأخرى، طابق تماماً
+        matchesStatus = orderStatus === selectedStatus;
+      }
+      
+      const matchesSource = !sourceFilter || orderWithUpdates.source === sourceFilter;
+      const matchesProduct = !productFilter || cleanText(orderWithUpdates.productName) === productFilter;
+      
+      // Debug info for status filter
+      if (process.env.NODE_ENV === 'development' && statusFilter) {
+        let matchType = '';
+        if (!selectedStatus) {
+          matchType = 'no filter';
+        } else if (selectedStatus === 'جديد' && !orderWithUpdates.status) {
+          matchType = 'empty status treated as جديد';
+        } else if (orderStatus === selectedStatus) {
+          matchType = 'exact match';
+        } else {
+          matchType = 'no match';
+        }
+        
+        console.log('Status Filter Debug:', {
+          orderId: orderWithUpdates.id,
+          orderStatus: `"${orderStatus}"`,
+          selectedStatus: `"${selectedStatus}"`,
+          matchesStatus,
+          matchType,
+          originalStatus: `"${order.status}"`,
+          updatedStatus: `"${orderWithUpdates.status}"`,
+          isEmptyOriginal: !order.status,
+          isEmptyUpdated: !orderWithUpdates.status
+        });
+      }
       
       return matchesSearch && matchesStatus && matchesSource && matchesProduct;
     });
-  }, [orders, searchTerm, statusFilter, sourceFilter, productFilter]);
+    
+    // معلومات إضافية عن نتائج الفلتر
+    if (process.env.NODE_ENV === 'development') {
+      console.log('\n🔢 نتائج الفلتر:');
+      console.log(`إجمالي الطلبات: ${orders.length}`);
+      console.log(`الطلبات المفلترة: ${results.length}`);
+      console.log(`فلاتر نشطة:`);
+      console.log(`  - البحث: ${searchTerm ? `"${searchTerm}"` : 'غير نشط'}`);
+      console.log(`  - الحالة: ${statusFilter ? `"${statusFilter}"` : 'غير نشط'}`);
+      console.log(`  - المصدر: ${sourceFilter ? `"${sourceFilter}"` : 'غير نشط'}`);
+      console.log(`  - المنتج: ${productFilter ? `"${productFilter}"` : 'غير نشط'}`);
+      
+      if (statusFilter && results.length === 0) {
+        console.log('⚠️ فلتر الحالة لا يُظهر أي نتائج!');
+        const statusMatches = orders.filter(order => {
+          const orderStatus = (order.status || 'جديد').trim();
+          return orderStatus === statusFilter.trim();
+        });
+        console.log(`طلبات تطابق الحالة بدون فلاتر أخرى: ${statusMatches.length}`);
+      }
+    }
+    
+    return results;
+  }, [orders, searchTerm, statusFilter, sourceFilter, productFilter, optimisticUpdates]);
+
+  // مفاتيح الاختصار للعمليات الجماعية
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ctrl+A لتحديد الكل
+      if (event.ctrlKey && event.key === 'a' && filteredOrders.length > 0) {
+        event.preventDefault();
+        handleSelectAll();
+      }
+      // Escape لإلغاء التحديد
+      if (event.key === 'Escape' && selectedOrders.size > 0) {
+        handleDeselectAll();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [filteredOrders.length, selectedOrders.size]);
 
   const sources = [...new Set(orders.map(o => o.source).filter(Boolean))];
   
@@ -77,8 +237,24 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
     
     // Debug: إذا كان لا يزال هناك تكرار، سنطبع تفاصيل في الكونسول
     if (process.env.NODE_ENV === 'development') {
-      // تشغيل اختبار تنظيف المنتجات
-      testProductCleaning();
+      // تحليل حالات الطلبات (فقط مرة واحدة عند التحميل)
+      if (!statusAnalysisDone.current) {
+        console.log('\n📊 تحليل شامل لحالات الطلبات:');
+        analyzeOrderStatuses(orders);
+        statusAnalysisDone.current = true;
+      }
+      
+      // اختبار فلتر الحالة إذا كان محدد
+      if (statusFilter) {
+        console.log(`\n🔍 اختبار فلتر الحالة: "${statusFilter}"`);
+        testStatusFilter(orders, statusFilter);
+      }
+      
+      // تشغيل اختبار تنظيف المنتجات (فقط مرة واحدة)
+      if (!productAnalysisDone.current) {
+        testProductCleaning();
+        productAnalysisDone.current = true;
+      }
       
       const originalProducts = orders.map(o => o.productName).filter(Boolean);
       const originalUnique = [...new Set(originalProducts)];
@@ -129,7 +305,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
         
         duplicateAnalysis.forEach((originals, cleaned) => {
           if (originals.length > 1) {
-            console.log(`\n📦 المنتج المنظف: "${cleaned}"`);
+            console.log(`\n�� المنتج المنظف: "${cleaned}"`);
             console.log('الأشكال المختلفة:');
             originals.forEach((original, i) => {
               console.log(`  ${i + 1}. "${original}" (طول: ${original.length})`);
@@ -146,11 +322,6 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return '';
     return phone.startsWith('+') ? phone.substring(1) : phone;
-  };
-
-  const getOrderWithUpdates = (order: Order) => {
-    const updates = optimisticUpdates.get(order.id);
-    return updates ? { ...order, ...updates } : order;
   };
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
@@ -269,6 +440,32 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
         </div>
       )}
 
+      {/* Bulk Success Toast */}
+      {bulkSuccessMessage && (
+        <div className="fixed bottom-6 left-6 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-6 py-4 rounded-xl shadow-lg animate-bounce z-50 max-w-md">
+          <div className="flex items-center gap-3">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <p className="font-medium">تم التحديث بنجاح!</p>
+              <p className="text-sm opacity-90">{bulkSuccessMessage}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Loading Overlay */}
+      {isBulkLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 shadow-2xl flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <p className="text-gray-700 font-medium">جاري تحديث الطلبات...</p>
+            <p className="text-sm text-gray-500">يرجى الانتظار</p>
+          </div>
+        </div>
+      )}
+
       {/* Main Container */}
       <div className="bg-white shadow-xl rounded-2xl overflow-hidden border border-gray-100">
         {/* Enhanced Filters Section */}
@@ -340,11 +537,79 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
           </div>
         </div>
 
+        {/* شريط العمليات الجماعية */}
+        {filteredOrders.length > 0 && (
+          <div className="bg-white border-b border-gray-200 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
+                      onChange={selectedOrders.size === filteredOrders.length ? handleDeselectAll : handleSelectAll}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    تحديد الكل ({filteredOrders.length})
+                  </label>
+                </div>
+                
+                {selectedOrders.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-blue-600 font-medium">
+                      تم تحديد {selectedOrders.size} طلب
+                    </span>
+                    <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-blue-500 transition-all duration-300"
+                        style={{ width: `${(selectedOrders.size / filteredOrders.length) * 100}%` }}
+                      ></div>
+                    </div>
+                    <button
+                      onClick={handleDeselectAll}
+                      className="text-sm text-gray-500 hover:text-gray-700 underline"
+                    >
+                      إلغاء التحديد
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {selectedOrders.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setBulkStatusModalOpen(true)}
+                    disabled={isBulkLoading}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all duration-200"
+                  >
+                    {isBulkLoading ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    )}
+                    تغيير الحالة ({selectedOrders.size})
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Enhanced Table */}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gradient-to-r from-gray-100 to-gray-50 border-b-2 border-gray-200">
               <tr>
+                <th className="px-4 py-4 text-right text-sm font-bold text-gray-800 tracking-wider w-12">
+                  <input
+                    type="checkbox"
+                    checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
+                    onChange={selectedOrders.size === filteredOrders.length ? handleDeselectAll : handleSelectAll}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                </th>
                 <th className="px-6 py-4 text-right text-sm font-bold text-gray-800 tracking-wider">رقم الطلب</th>
                 <th className="px-6 py-4 text-right text-sm font-bold text-gray-800 tracking-wider">العميل</th>
                 <th className="px-6 py-4 text-right text-sm font-bold text-gray-800 tracking-wider">التواصل</th>
@@ -362,7 +627,15 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 
                 return (
                   <React.Fragment key={order.id}>
-                    <tr className={`hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 ${isLoading ? 'opacity-75' : ''} ${expandedRow === order.id ? 'bg-blue-50' : ''}`}>
+                    <tr className={`hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 ${isLoading ? 'opacity-75' : ''} ${expandedRow === order.id ? 'bg-blue-50' : ''} ${selectedOrders.has(order.id) ? 'bg-blue-50 border-blue-200' : ''}`}>
+                      <td className="px-4 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedOrders.has(order.id)}
+                          onChange={() => handleSelectOrder(order.id)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col space-y-1">
                           <span className="font-bold text-lg text-gray-900">#{order.id}</span>
@@ -501,7 +774,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     </tr>
                     {expandedRow === order.id && (
                       <tr>
-                        <td colSpan={7} className="px-6 py-6 bg-gradient-to-r from-blue-50 to-indigo-50">
+                        <td colSpan={8} className="px-6 py-6 bg-gradient-to-r from-blue-50 to-indigo-50">
                           <div className="bg-white rounded-xl p-6 shadow-sm border border-blue-100">
                             <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                               <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -740,6 +1013,67 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                   حفظ التغييرات
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* نافذة تغيير الحالة الجماعية */}
+      {bulkStatusModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-t-2xl">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold flex items-center gap-3">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  تغيير الحالة الجماعية
+                </h3>
+                <button
+                  onClick={() => setBulkStatusModalOpen(false)}
+                  className="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white hover:bg-opacity-20 rounded-full"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-6">
+                <p className="text-gray-700 mb-2">
+                  سيتم تغيير حالة <span className="font-bold text-blue-600">{selectedOrders.size}</span> طلب
+                </p>
+                <p className="text-sm text-gray-500">
+                  اختر الحالة الجديدة من القائمة أدناه
+                </p>
+              </div>
+              
+              <div className="space-y-3">
+                {statuses.map(status => (
+                  <button
+                    key={status}
+                    onClick={() => handleBulkStatusUpdate(status)}
+                    className="w-full text-right px-4 py-3 border border-gray-300 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 flex items-center justify-between group"
+                  >
+                    <span className="font-medium text-gray-900">{status}</span>
+                    <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+              
+              <div className="flex justify-end gap-4 mt-6 pt-6 border-t border-gray-200">
+                <button
+                  onClick={() => setBulkStatusModalOpen(false)}
+                  className="px-6 py-3 text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all duration-200 font-medium"
+                >
+                  إلغاء
                 </button>
               </div>
             </div>

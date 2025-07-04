@@ -129,4 +129,85 @@ export const testProductCleaning = (): void => {
   } else {
     console.log('❌ فشل التوحيد! لا تزال هناك أشكال مختلفة');
   }
+};
+
+// دالة تشخيص حالات الطلبات
+export const analyzeOrderStatuses = (orders: Array<{ id: number; status: string }>): void => {
+  console.log('🔍 تحليل حالات الطلبات:');
+  
+  const statusMap = new Map<string, number>();
+  const emptyStatuses: number[] = [];
+  
+  orders.forEach(order => {
+    const status = order.status || '';
+    const trimmedStatus = status.trim();
+    
+    if (!trimmedStatus) {
+      emptyStatuses.push(order.id);
+    } else {
+      statusMap.set(trimmedStatus, (statusMap.get(trimmedStatus) || 0) + 1);
+    }
+  });
+  
+  console.log('\n📈 إحصائيات الحالات:');
+  console.log(`إجمالي الطلبات: ${orders.length}`);
+  console.log(`طلبات بدون حالة: ${emptyStatuses.length}`);
+  console.log(`حالات فريدة: ${statusMap.size}`);
+  
+  if (emptyStatuses.length > 0) {
+    console.log('\n⚠️ طلبات بدون حالة محددة:', emptyStatuses.slice(0, 10));
+    if (emptyStatuses.length > 10) {
+      console.log(`... و ${emptyStatuses.length - 10} طلب آخر`);
+    }
+  }
+  
+  console.log('\n📋 جميع الحالات الموجودة:');
+  Array.from(statusMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([status, count]) => {
+      console.log(`  "${status}" → ${count} طلب`);
+      
+      // فحص الأحرف غير المرئية في أسماء الحالات
+      if (status.length !== status.trim().length) {
+        console.log(`    ⚠️ يحتوي على مسافات زائدة`);
+      }
+      
+      const hasInvisibleChars = /[\u200B-\u200D\uFEFF]/.test(status);
+      if (hasInvisibleChars) {
+        console.log(`    ⚠️ يحتوي على أحرف غير مرئية`);
+      }
+    });
+};
+
+// دالة اختبار فلتر الحالة
+export const testStatusFilter = (orders: Array<{ id: number; status: string }>, filterStatus: string): void => {
+  console.log(`🧪 اختبار فلتر الحالة: "${filterStatus}"`);
+  
+  const matchingOrders = orders.filter(order => {
+    const orderStatus = (order.status || 'جديد').trim();
+    const selectedStatus = filterStatus.trim();
+    return orderStatus === selectedStatus;
+  });
+  
+  console.log(`\n📊 نتائج الفلتر:`);
+  console.log(`الطلبات المطابقة: ${matchingOrders.length} من ${orders.length}`);
+  
+  if (matchingOrders.length > 0) {
+    console.log('أمثلة على الطلبات المطابقة:');
+    matchingOrders.slice(0, 5).forEach(order => {
+      console.log(`  طلب #${order.id}: "${order.status}"`);
+    });
+  } else {
+    console.log('⚠️ لا توجد طلبات مطابقة للفلتر');
+    
+    // اقتراح حالات مشابهة
+    const similarStatuses = orders
+      .map(o => o.status || 'جديد')
+      .filter((status, index, array) => array.indexOf(status) === index)
+      .filter(status => status.toLowerCase().includes(filterStatus.toLowerCase()));
+    
+    if (similarStatuses.length > 0) {
+      console.log('حالات مشابهة موجودة:', similarStatuses);
+    }
+  }
 }; 
