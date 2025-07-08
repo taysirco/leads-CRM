@@ -130,29 +130,38 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   };
 
   const mapOrderToBosta = (order: Order) => {
-    // This function now formats the phone number to the local Egyptian format (01...).
-    const formatToLocalEgyptian = (phone: string) => {
+    // دالة لتنسيق رقم الهاتف بالصيغة الدولية لمصر
+    const formatPhoneWithCountryCode = (phone: string): string => {
       if (!phone) return '';
-      const cleaned = phone.replace(/\D/g, '');
-      // Handles formats like +201..., 201...
-      if (cleaned.startsWith('201') && cleaned.length === 12) {
-        return `0${cleaned.substring(2)}`; // returns 01...
-      }
-      // Handles 11-digit numbers that already start with 01
+      
+      // إزالة كل ما هو ليس رقماً
+      let cleaned = phone.replace(/\D/g, '');
+      
+      // إذا كان يبدأ بـ 01 وهو رقم مصري صحيح (11 رقم)
       if (cleaned.startsWith('01') && cleaned.length === 11) {
+        // استبدل الـ 0 بـ 20
+        return `2${cleaned}`;
+      }
+      
+      // إذا كان يبدأ بـ 1 (بدون الصفر) وهو 10 أرقام
+      if (cleaned.startsWith('1') && cleaned.length === 10) {
+        // أضف 20 في البداية
+        return `20${cleaned}`;
+      }
+      
+      // إذا كان بالفعل بالصيغة الدولية (يبدأ بـ 201 وهو 12 رقم)
+      if (cleaned.startsWith('201') && cleaned.length === 12) {
         return cleaned;
       }
-      // Handles 10-digit numbers like 11...
-      if (cleaned.startsWith('1') && cleaned.length === 10) {
-        return `0${cleaned}`;
-      }
-      return cleaned; // Fallback
+      
+      // إذا لم يطابق أي من الحالات، أرجعه كما هو بعد التنظيف
+      return cleaned;
     };
     
     return {
       'Full Name': order.name,
-      'Phone': formatToLocalEgyptian(order.phone),
-      'Second Phone': order.whatsapp ? formatToLocalEgyptian(order.whatsapp) : '',
+      'Phone': formatPhoneWithCountryCode(order.phone),
+      'Second Phone': order.whatsapp ? formatPhoneWithCountryCode(order.whatsapp) : '',
       'City': order.governorate,
       'Area': order.area || 'منطقة أخرى', // Default value if area is missing
       'Street Name': order.address,

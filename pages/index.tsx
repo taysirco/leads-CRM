@@ -32,7 +32,7 @@ const fetcher = async (url: string) => {
 };
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'export' | 'archive' | 'rejected'>('orders');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'follow-up' | 'export' | 'archive' | 'rejected'>('orders');
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState<any>({
@@ -130,8 +130,10 @@ export default function Home() {
       orders: allOrders.filter((order: any) => 
         !order.status || 
         order.status === 'جديد' || 
+        order.status === 'لم يرد'
+      ).length,
+      followUp: allOrders.filter((order: any) => 
         order.status === 'في انتظار تأكيد العميل' || 
-        order.status === 'لم يرد' || 
         order.status === 'تم التواصل معه واتساب'
       ).length,
       export: allOrders.filter((order: any) => order.status === 'تم التأكيد').length,
@@ -142,24 +144,42 @@ export default function Home() {
   const getFilteredOrders = () => {
     if (!orders) return [];
     
+    let filteredOrders = [];
+    
     switch (activeTab) {
       case 'orders':
-        return orders.filter((order: any) => 
+        filteredOrders = orders.filter((order: any) => 
           !order.status || 
           order.status === 'جديد' || 
+          order.status === 'لم يرد'
+        );
+        // ترتيب الطلبات النشطة حسب التاريخ - الأحدث أولاً
+        filteredOrders = filteredOrders.sort((a: any, b: any) => {
+          const dateA = new Date(a.orderDate);
+          const dateB = new Date(b.orderDate);
+          return dateB.getTime() - dateA.getTime();
+        });
+        break;
+      case 'follow-up':
+        filteredOrders = orders.filter((order: any) => 
           order.status === 'في انتظار تأكيد العميل' || 
-          order.status === 'لم يرد' || 
           order.status === 'تم التواصل معه واتساب'
         );
+        break;
       case 'export':
-        return orders.filter((order: any) => order.status === 'تم التأكيد');
+        filteredOrders = orders.filter((order: any) => order.status === 'تم التأكيد');
+        break;
       case 'archive':
-        return orders.filter((order: any) => order.status === 'تم الشحن');
+        filteredOrders = orders.filter((order: any) => order.status === 'تم الشحن');
+        break;
       case 'rejected':
-        return orders.filter((order: any) => order.status === 'رفض التأكيد');
+        filteredOrders = orders.filter((order: any) => order.status === 'رفض التأكيد');
+        break;
       default:
-        return orders;
+        filteredOrders = orders;
     }
+    
+    return filteredOrders;
   };
 
   if (error) return (
@@ -236,6 +256,7 @@ export default function Home() {
               {[
                 { id: 'dashboard', name: 'لوحة التحكم', icon: '📊' },
                 { id: 'orders', name: 'الطلبات النشطة', icon: '📋' },
+                { id: 'follow-up', name: 'متابعة', icon: '👁️' },
                 { id: 'export', name: 'تصدير بوسطة', icon: '📤' },
                 { id: 'archive', name: 'طلبات الشحن', icon: '🚚' },
                 { id: 'rejected', name: 'الطلبات المهملة', icon: '🗑️' }
@@ -256,6 +277,11 @@ export default function Home() {
                       {tabCounts.orders}
                     </span>
                   )}
+                  {(tab.id === 'follow-up' && tabCounts.followUp > 0) && (
+                    <span className="bg-orange-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                      {tabCounts.followUp}
+                    </span>
+                  )}
                   {(tab.id === 'export' && tabCounts.export > 0) && (
                     <span className="bg-green-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
                       {tabCounts.export}
@@ -270,6 +296,14 @@ export default function Home() {
           <main>
             {activeTab === 'dashboard' && <Dashboard />}
             {activeTab === 'orders' && (
+              <div className="text-gray-900">
+                <OrdersTable 
+                  orders={filteredOrders} 
+                  onUpdateOrder={handleUpdateOrder} 
+                />
+              </div>
+            )}
+            {activeTab === 'follow-up' && (
               <div className="text-gray-900">
                 <OrdersTable 
                   orders={filteredOrders} 
