@@ -153,8 +153,17 @@ export default function Home() {
           order.status === 'جديد' || 
           order.status === 'لم يرد'
         );
-        // ترتيب الطلبات النشطة حسب التاريخ - الأحدث أولاً
+        // ترتيب الطلبات النشطة: الطلبات الجديدة أولاً ثم حسب التاريخ - الأحدث أولاً
         filteredOrders = filteredOrders.sort((a: any, b: any) => {
+          // ترتيب حسب الحالة أولاً: الطلبات الجديدة (بدون حالة أو "جديد") في الأعلى
+          const statusA = a.status || 'جديد';
+          const statusB = b.status || 'جديد';
+          
+          // إعطاء أولوية للطلبات الجديدة
+          if (statusA === 'جديد' && statusB !== 'جديد') return -1;
+          if (statusA !== 'جديد' && statusB === 'جديد') return 1;
+          
+          // إذا كانت الحالات متشابهة، ترتيب حسب التاريخ - الأحدث أولاً
           const dateA = new Date(a.orderDate);
           const dateB = new Date(b.orderDate);
           return dateB.getTime() - dateA.getTime();
