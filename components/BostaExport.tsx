@@ -130,38 +130,21 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   };
 
   const mapOrderToBosta = (order: Order) => {
-    // دالة لتنسيق رقم الهاتف بالصيغة الدولية لمصر
-    const formatPhoneWithCountryCode = (phone: string): string => {
+    // دالة لتنظيف رقم الهاتف فقط (بدون إضافة مفاتح دولة)
+    const cleanPhoneNumber = (phone: string): string => {
       if (!phone) return '';
       
       // إزالة كل ما هو ليس رقماً
       let cleaned = phone.replace(/\D/g, '');
       
-      // إذا كان يبدأ بـ 01 وهو رقم مصري صحيح (11 رقم)
-      if (cleaned.startsWith('01') && cleaned.length === 11) {
-        // استبدل الـ 0 بـ 20
-        return `2${cleaned}`;
-      }
-      
-      // إذا كان يبدأ بـ 1 (بدون الصفر) وهو 10 أرقام
-      if (cleaned.startsWith('1') && cleaned.length === 10) {
-        // أضف 20 في البداية
-        return `20${cleaned}`;
-      }
-      
-      // إذا كان بالفعل بالصيغة الدولية (يبدأ بـ 201 وهو 12 رقم)
-      if (cleaned.startsWith('201') && cleaned.length === 12) {
-        return cleaned;
-      }
-      
-      // إذا لم يطابق أي من الحالات، أرجعه كما هو بعد التنظيف
+      // إرجاع الرقم كما هو بعد التنظيف
       return cleaned;
     };
     
     return {
       'Full Name': order.name,
-      'Phone': formatPhoneWithCountryCode(order.phone),
-      'Second Phone': order.whatsapp ? formatPhoneWithCountryCode(order.whatsapp) : '',
+      'Phone': cleanPhoneNumber(order.phone),
+      'Second Phone': order.whatsapp ? cleanPhoneNumber(order.whatsapp) : '',
       'City': order.governorate,
       'Area': order.area || 'منطقة أخرى', // Default value if area is missing
       'Street Name': order.address,
