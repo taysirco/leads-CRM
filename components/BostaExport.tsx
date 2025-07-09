@@ -130,21 +130,44 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   };
 
   const mapOrderToBosta = (order: Order) => {
-    // دالة لتنظيف رقم الهاتف فقط (بدون إضافة مفاتح دولة)
-    const cleanPhoneNumber = (phone: string): string => {
+    // دالة لتحويل رقم الهاتف إلى الصيغة المحلية المصرية (01xxxxxxxxx)
+    const formatToLocalEgyptianNumber = (phone: string): string => {
       if (!phone) return '';
       
       // إزالة كل ما هو ليس رقماً
       let cleaned = phone.replace(/\D/g, '');
       
-      // إرجاع الرقم كما هو بعد التنظيف
+      // إذا كان الرقم يبدأ بـ 20 (مفتاح مصر) وطوله 12 رقم
+      if (cleaned.startsWith('20') && cleaned.length === 12) {
+        // إزالة الـ 20 وإضافة 0 في البداية
+        return '0' + cleaned.substring(2);
+      }
+      
+      // إذا كان الرقم يبدأ بـ 2 فقط (بدون الصفر) وطوله 11 رقم
+      if (cleaned.startsWith('2') && cleaned.length === 11) {
+        // إزالة الـ 2 وإضافة 0 في البداية
+        return '0' + cleaned.substring(1);
+      }
+      
+      // إذا كان الرقم يبدأ بـ 1 وطوله 10 أرقام (رقم مصري بدون الصفر)
+      if (cleaned.startsWith('1') && cleaned.length === 10) {
+        // إضافة 0 في البداية
+        return '0' + cleaned;
+      }
+      
+      // إذا كان الرقم بالفعل يبدأ بـ 01 وطوله 11 رقم
+      if (cleaned.startsWith('01') && cleaned.length === 11) {
+        return cleaned;
+      }
+      
+      // إذا لم يطابق أي من الحالات، إرجاع الرقم كما هو بعد التنظيف
       return cleaned;
     };
     
     return {
       'Full Name': order.name,
-      'Phone': cleanPhoneNumber(order.phone),
-      'Second Phone': order.whatsapp ? cleanPhoneNumber(order.whatsapp) : '',
+      'Phone': formatToLocalEgyptianNumber(order.phone),
+      'Second Phone': order.whatsapp ? formatToLocalEgyptianNumber(order.whatsapp) : '',
       'City': order.governorate,
       'Area': order.area || 'منطقة أخرى', // Default value if area is missing
       'Street Name': order.address,
