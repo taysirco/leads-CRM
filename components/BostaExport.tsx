@@ -163,12 +163,128 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       // إذا لم يطابق أي من الحالات، إرجاع الرقم كما هو بعد التنظيف
       return cleaned;
     };
+
+    // دالة لتحويل أسماء المحافظات إلى الأسماء العربية الصحيحة
+    const normalizeGovernorateName = (governorate: string): string => {
+      if (!governorate) return '';
+      
+      // تنظيف النص من المسافات الزائدة والأحرف الخاصة
+      const cleaned = governorate.trim();
+      
+      // قاموس التحويل للمحافظات
+      const governorateMap: { [key: string]: string } = {
+        // الأسماء الصحيحة (تبقى كما هي)
+        'الشرقية': 'الشرقية',
+        'بني سويف': 'بني سويف',
+        'الإسماعيلية': 'الإسماعيلية',
+        'جنوب سيناء': 'جنوب سيناء',
+        'سوهاج': 'سوهاج',
+        'كفر الشيخ': 'كفر الشيخ',
+        'القليوبية': 'القليوبية',
+        'الجيزة': 'الجيزة',
+        'شمال سيناء': 'شمال سيناء',
+        'القاهرة': 'القاهرة',
+        'الأقصر': 'الأقصر',
+        'السويس': 'السويس',
+        'مرسى مطروح': 'مرسى مطروح',
+        'البحيرة': 'البحيرة',
+        'الغربية': 'الغربية',
+        'الدقهلية': 'الدقهلية',
+        'دمياط': 'دمياط',
+        'المنيا': 'المنيا',
+        'بور سعيد': 'بور سعيد',
+        'الوادي الجديد': 'الوادي الجديد',
+        'الإسكندرية': 'الإسكندرية',
+        'أسيوط': 'أسيوط',
+        'الفيوم': 'الفيوم',
+        'قنا': 'قنا',
+        'المنوفية': 'المنوفية',
+        'البحر الأحمر': 'البحر الأحمر',
+        'أسوان': 'أسوان',
+        
+        // الأسماء الإنجليزية
+        'ash sharqia': 'الشرقية',
+        'beni suef': 'بني سويف',
+        'ismailia': 'الإسماعيلية',
+        'south sinai': 'جنوب سيناء',
+        'sohag': 'سوهاج',
+        'kafr el sheikh': 'كفر الشيخ',
+        'qalyubia': 'القليوبية',
+        'giza': 'الجيزة',
+        'north sinai': 'شمال سيناء',
+        'cairo': 'القاهرة',
+        'luxor': 'الأقصر',
+        'suez': 'السويس',
+        'matrouh': 'مرسى مطروح',
+        'beheira': 'البحيرة',
+        'gharbia': 'الغربية',
+        'dakahlia': 'الدقهلية',
+        'damietta': 'دمياط',
+        'minya': 'المنيا',
+        'port said': 'بور سعيد',
+        'new valley': 'الوادي الجديد',
+        'alexandria': 'الإسكندرية',
+        'assiut': 'أسيوط',
+        'faiyum': 'الفيوم',
+        'qena': 'قنا',
+        'menofia': 'المنوفية',
+        'red sea': 'البحر الأحمر',
+        'aswan': 'أسوان',
+        
+        // أسماء مشابهة أو متغيرات شائعة
+        'شرقية': 'الشرقية',
+        'بنى سويف': 'بني سويف',
+        'اسماعيلية': 'الإسماعيلية',
+        'إسماعيلية': 'الإسماعيلية',
+        'سيناء الجنوبية': 'جنوب سيناء',
+        'جنوب سينا': 'جنوب سيناء',
+        'سينا الجنوبية': 'جنوب سيناء',
+        'قليوبية': 'القليوبية',
+        'جيزة': 'الجيزة',
+        'سيناء الشمالية': 'شمال سيناء',
+        'شمال سينا': 'شمال سيناء',
+        'سينا الشمالية': 'شمال سيناء',
+        'قاهرة': 'القاهرة',
+        'اقصر': 'الأقصر',
+        'أقصر': 'الأقصر',
+        'لوكسور': 'الأقصر',
+        'مطروح': 'مرسى مطروح',
+        'بحيرة': 'البحيرة',
+        'غربية': 'الغربية',
+        'دقهلية': 'الدقهلية',
+        'منيا': 'المنيا',
+        'بورسعيد': 'بور سعيد',
+        'اسكندرية': 'الإسكندرية',
+        'اسيوط': 'أسيوط',
+        'فيوم': 'الفيوم',
+        'منوفية': 'المنوفية',
+        'اسوان': 'أسوان'
+      };
+      
+      // البحث المباشر
+      const directMatch = governorateMap[cleaned];
+      if (directMatch) return directMatch;
+      
+      // البحث بدون حساسية للحروف الكبيرة والصغيرة
+      const lowerCaseMatch = governorateMap[cleaned.toLowerCase()];
+      if (lowerCaseMatch) return lowerCaseMatch;
+      
+      // البحث الذكي للأسماء المشابهة
+      for (const [key, value] of Object.entries(governorateMap)) {
+        if (cleaned.includes(key) || key.includes(cleaned)) {
+          return value;
+        }
+      }
+      
+      // إذا لم يتم العثور على تطابق، إرجاع النص الأصلي
+      return cleaned;
+    };
     
     return {
       'Full Name': order.name,
       'Phone': formatToLocalEgyptianNumber(order.phone),
       'Second Phone': order.whatsapp ? formatToLocalEgyptianNumber(order.whatsapp) : '',
-      'City': order.governorate,
+      'City': normalizeGovernorateName(order.governorate),
       'Area': order.area || 'منطقة أخرى', // Default value if area is missing
       'Street Name': order.address,
       'Building#, Floor#, and Apartment#': '', // Optional, leave empty
