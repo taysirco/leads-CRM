@@ -171,9 +171,9 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       // تنظيف النص من المسافات الزائدة والأحرف الخاصة
       const cleaned = governorate.trim();
       
-      // قاموس التحويل للمحافظات
+      // قاموس التحويل للمحافظات - الأسماء العربية الدقيقة فقط
       const governorateMap: { [key: string]: string } = {
-        // الأسماء الصحيحة (تبقى كما هي)
+        // الأسماء الصحيحة المطلوبة (تبقى كما هي)
         'الشرقية': 'الشرقية',
         'بني سويف': 'بني سويف',
         'الإسماعيلية': 'الإسماعيلية',
