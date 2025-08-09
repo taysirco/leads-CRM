@@ -100,13 +100,53 @@ export default function Home() {
 
   const handleAssign = async () => {
     try {
+      addNotification({ 
+        type: 'warning', 
+        title: 'جاري التوزيع...', 
+        message: 'جاري توزيع الليدز غير المعيّنة بالتساوي بين الموظفين', 
+        duration: 3000 
+      });
+      
       const res = await fetch('/api/assign', { method: 'POST' });
       const data = await res.json();
+      
       if (!res.ok) throw new Error(data.message || 'فشل التوزيع');
-      addNotification({ type: 'success', title: 'تم التوزيع', message: 'تم توزيع الليدز غير المعيّنة بالتساوي', duration: 4000 });
-      mutate();
+      
+      // رسالة تفصيلية عن نتيجة التوزيع
+      let message = data.message;
+      if (data.distributed > 0) {
+        const distDetails = Object.entries(data.currentDistribution || {})
+          .map(([emp, count]) => {
+            const name = emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'رائد';
+            return `${name}: ${count}`;
+          })
+          .join(' | ');
+        message += `\n📊 التوزيع النهائي: ${distDetails}`;
+        
+        if (data.remainingUnassigned > 0) {
+          message += `\n⚠️ ${data.remainingUnassigned} ليد متبقي غير معين`;
+        }
+        
+        if (!data.isBalanced) {
+          message += `\n⚡ فارق التوزيع: ${data.balanceDifference} (قد تحتاج توزيع إضافي)`;
+        }
+      }
+      
+      addNotification({ 
+        type: data.distributed > 0 ? 'success' : 'warning', 
+        title: data.distributed > 0 ? '✅ تم التوزيع بنجاح' : 'ℹ️ لا يوجد توزيع مطلوب', 
+        message, 
+        duration: data.distributed > 0 ? 8000 : 4000 
+      });
+      
+      await mutate(); // تحديث البيانات بعد التوزيع
     } catch (e: any) {
-      addNotification({ type: 'error', title: 'فشل التوزيع', message: e.message, duration: 5000 });
+      addNotification({ 
+        type: 'error', 
+        title: '❌ فشل التوزيع', 
+        message: e.message + '\n💡 تأكد من الاتصال بالإنترنت وحاول مرة أخرى', 
+        duration: 6000 
+      });
     }
   };
 
@@ -194,6 +234,31 @@ export default function Home() {
     return filteredOrders;
   };
 
+  // حساب إحصائيات التوزيع للعرض
+  const distributionStats = useMemo(() => {
+    const employees = ['heba.', 'ahmed.', 'raed.'];
+    const counts = { 'heba.': 0, 'ahmed.': 0, 'raed.': 0, 'غير معين': 0 };
+    
+    orders.forEach((order: any) => {
+      const assignee = (order.assignee || '').trim();
+      if (employees.includes(assignee)) {
+        counts[assignee as keyof typeof counts]++;
+      } else {
+        counts['غير معين']++;
+      }
+    });
+    
+    const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+    const employeeCounts = [counts['heba.'], counts['ahmed.'], counts['raed.']];
+    const max = Math.max(...employeeCounts);
+    const min = Math.min(...employeeCounts);
+    const imbalance = max - min;
+    const maxAllowed = Math.ceil(total * 0.1); // 10% كحد أقصى للاختلاف
+    const isBalanced = total > 0 ? imbalance <= maxAllowed : true;
+    
+    return { counts, total, imbalance, isBalanced, maxAllowed };
+  }, [orders]);
+
   if (error) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="text-center">
@@ -237,15 +302,49 @@ export default function Home() {
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">نظام إدارة الطلبات</h1>
                 <p className="text-gray-600 mt-2">إدارة شاملة لطلبات العملاء مع تزامن فوري مع Google Sheets</p>
+                {user && (
+                  <div className="flex items-center gap-4 mt-2">
+                    <span className="text-sm text-blue-600 font-medium">
+                      مرحباً {user.displayName || user.username} ({user.role === 'admin' ? 'مدير النظام' : 'موظف كول سنتر'})
+                    </span>
+                    {user.role === 'admin' && (
+                      <div className={`text-xs px-2 py-1 rounded-full ${
+                        distributionStats.isBalanced ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {distributionStats.isBalanced ? '✅ توزيع متوازن' : `⚠️ فارق: ${distributionStats.imbalance}`}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               {user?.role === 'admin' && (
                 <div className="flex items-center gap-2">
+                  <div className="text-right text-sm text-gray-600 mr-4">
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <span>إجمالي: {distributionStats.total}</span>
+                      <span className={distributionStats.counts['غير معين'] > 0 ? 'text-orange-600 font-medium' : ''}>
+                        غير معين: {distributionStats.counts['غير معين']}
+                      </span>
+                      <span>هبة: {distributionStats.counts['heba.']}</span>
+                      <span>أحمد: {distributionStats.counts['ahmed.']}</span>
+                      <span>رائد: {distributionStats.counts['raed.']}</span>
+                      <span className="text-gray-500">
+                        حد الفارق: {distributionStats.maxAllowed}
+                      </span>
+                    </div>
+                  </div>
                   <button
                     onClick={handleAssign}
-                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-xl"
-                    title="توزيع تلقائي لليدز غير المعيّنة"
+                    className={`px-4 py-2 rounded-xl font-medium transition-colors ${
+                      distributionStats.counts['غير معين'] > 0 || !distributionStats.isBalanced
+                        ? 'bg-red-500 hover:bg-red-600 text-white shadow-md animate-pulse'
+                        : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                    }`}
+                    title={`توزيع تلقائي لليدز غير المعيّنة (${distributionStats.counts['غير معين']} ليد)`}
                   >
-                    توزيع الليدز
+                    {distributionStats.counts['غير معين'] > 0 
+                      ? `⚡ توزيع ${distributionStats.counts['غير معين']} ليد` 
+                      : '🔄 إعادة توزيع'}
                   </button>
                   <button
                     onClick={() => setShowSettings(true)}

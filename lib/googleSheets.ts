@@ -207,6 +207,48 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   }
 }
 
+export async function updateLeadsBatch(rows: Array<{ rowNumber: number; assignee: string }>) {
+  if (!rows || rows.length === 0) return;
+
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  // جلب رؤوس الأعمدة للحصول على رقم عمود "المسؤول"
+  const headersResponse = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range: `${SHEET_NAME}!1:1`,
+  });
+  const headers = headersResponse.data.values?.[0] || [];
+  const headerMap: { [key: string]: number } = headers.reduce((map: { [key: string]: number }, header, index) => {
+    map[(header || '').toLowerCase()] = index;
+    return map;
+  }, {});
+
+  const possibleHeadersForAssignee = ['المسؤول', 'assigned_to'];
+  let assigneeColIndex: number | undefined;
+  for (const h of possibleHeadersForAssignee) {
+    const idx = headerMap[h.toLowerCase()];
+    if (idx !== undefined) { assigneeColIndex = idx; break; }
+  }
+  if (assigneeColIndex === undefined) {
+    throw new Error('لم يتم العثور على عمود "المسؤول" في الشيت');
+  }
+  const assigneeColumnLetter = String.fromCharCode('A'.charCodeAt(0) + assigneeColIndex);
+
+  const data = rows.map(r => ({
+    range: `${SHEET_NAME}!${assigneeColumnLetter}${r.rowNumber}`,
+    values: [[r.assignee]],
+  }));
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: SHEET_ID,
+    requestBody: {
+      valueInputOption: 'USER_ENTERED',
+      data,
+    },
+  });
+}
+
 export async function getOrderStatistics() {
   const leads = await fetchLeads();
   const today = new Date().toISOString().split('T')[0];
