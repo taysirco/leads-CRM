@@ -29,20 +29,28 @@ export default function EmployeeReports() {
   const byAssignee = stats?.byAssignee || {};
   const byAssigneeByProduct = stats?.byAssigneeByProduct || {};
 
-  // حساب إحصائيات شاملة ومؤشرات الأداء
+  // حساب إحصائيات شاملة ومؤشرات الأداء محسنة
   const employees = ['heba.', 'ahmed.', 'raed.'];
+  
+  // إجمالي الليدز المعينة للموظفين فقط (بدون غير المعين)
+  const assignedLeads = employees.reduce((sum, emp) => sum + (byAssignee[emp]?.total || 0), 0);
   const totalLeads = Object.values(byAssignee).reduce((sum: number, emp: any) => sum + emp.total, 0);
   
-  // حساب معدلات التحويل لكل موظف
+  // حساب معدل التحويل الصحيح: (المؤكد / إجمالي الليدز المعينة) * 100
   const getConversionRate = (emp: EmployeeStats) => {
-    const processed = emp.confirmed + emp.rejected;
-    return processed > 0 ? ((emp.confirmed / processed) * 100).toFixed(1) : '0.0';
+    return emp.total > 0 ? ((emp.confirmed / emp.total) * 100).toFixed(1) : '0.0';
   };
 
-  // حساب معدل الرد
+  // حساب معدل الرد الصحيح: (المؤكد + المرفوض) / إجمالي الليدز * 100
   const getResponseRate = (emp: EmployeeStats) => {
-    const responded = emp.confirmed + emp.rejected + emp.pending + emp.contacted;
-    return emp.total > 0 ? ((responded / emp.total) * 100).toFixed(1) : '0.0';
+    const actualResponses = emp.confirmed + emp.rejected; // فقط الردود الحقيقية
+    return emp.total > 0 ? ((actualResponses / emp.total) * 100).toFixed(1) : '0.0';
+  };
+
+  // حساب معدل المعالجة: (المؤكد + المرفوض + المشحون) / إجمالي الليدز * 100
+  const getProcessingRate = (emp: EmployeeStats) => {
+    const processed = emp.confirmed + emp.rejected + emp.shipped;
+    return emp.total > 0 ? ((processed / emp.total) * 100).toFixed(1) : '0.0';
   };
 
   // فحص التوازن في التوزيع
@@ -51,7 +59,7 @@ export default function EmployeeReports() {
     const max = Math.max(...counts);
     const min = Math.min(...counts);
     const difference = max - min;
-    const maxAllowed = Math.ceil(totalLeads * 0.1); // 10% كحد أقصى للاختلاف
+    const maxAllowed = Math.ceil(assignedLeads * 0.1); // 10% كحد أقصى للاختلاف
     
     return {
       isBalanced: difference <= maxAllowed,
@@ -62,6 +70,26 @@ export default function EmployeeReports() {
   };
 
   const balance = checkDistributionBalance();
+
+  // حساب الإحصائيات الإجمالية الصحيحة
+  const overallStats = {
+    totalLeads: assignedLeads,
+    totalConfirmed: employees.reduce((sum, emp) => sum + (byAssignee[emp]?.confirmed || 0), 0),
+    totalRejected: employees.reduce((sum, emp) => sum + (byAssignee[emp]?.rejected || 0), 0),
+    totalPending: employees.reduce((sum, emp) => sum + (byAssignee[emp]?.pending || 0), 0),
+    totalContacted: employees.reduce((sum, emp) => sum + (byAssignee[emp]?.contacted || 0), 0),
+    totalNoAnswer: employees.reduce((sum, emp) => sum + (byAssignee[emp]?.noAnswer || 0), 0),
+    totalShipped: employees.reduce((sum, emp) => sum + (byAssignee[emp]?.shipped || 0), 0),
+    totalNew: employees.reduce((sum, emp) => sum + (byAssignee[emp]?.new || 0), 0),
+  };
+
+  // معدل التأكيد العام الصحيح
+  const overallConfirmationRate = assignedLeads > 0 
+    ? ((overallStats.totalConfirmed / assignedLeads) * 100).toFixed(1)
+    : '0.0';
+
+  // إجمالي في الانتظار (pending + contacted)
+  const totalWaiting = overallStats.totalPending + overallStats.totalContacted;
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -79,27 +107,22 @@ export default function EmployeeReports() {
         </div>
       </div>
 
-      {/* إحصائيات إجمالية */}
+      {/* إحصائيات إجمالية محسنة */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-blue-50 p-4 rounded-lg">
-          <h3 className="font-semibold text-blue-900">إجمالي الليدز</h3>
-          <p className="text-2xl font-bold text-blue-600">{totalLeads}</p>
+          <h3 className="font-semibold text-blue-900">إجمالي الليدز المعينة</h3>
+          <p className="text-2xl font-bold text-blue-600">{assignedLeads}</p>
+          <p className="text-xs text-blue-500">من أصل {totalLeads} ليد</p>
         </div>
         <div className="bg-green-50 p-4 rounded-lg">
           <h3 className="font-semibold text-green-900">معدل التأكيد العام</h3>
-          <p className="text-2xl font-bold text-green-600">
-            {totalLeads > 0 ? (
-              (Object.values(byAssignee).reduce((sum: number, emp: any) => sum + emp.confirmed, 0) / 
-               Object.values(byAssignee).reduce((sum: number, emp: any) => sum + emp.confirmed + emp.rejected, 0) * 100
-              ).toFixed(1)
-            ) : '0.0'}%
-          </p>
+          <p className="text-2xl font-bold text-green-600">{overallConfirmationRate}%</p>
+          <p className="text-xs text-green-500">{overallStats.totalConfirmed} من {assignedLeads}</p>
         </div>
         <div className="bg-yellow-50 p-4 rounded-lg">
           <h3 className="font-semibold text-yellow-900">في الانتظار</h3>
-          <p className="text-2xl font-bold text-yellow-600">
-            {Object.values(byAssignee).reduce((sum: number, emp: any) => sum + emp.pending + emp.contacted, 0)}
-          </p>
+          <p className="text-2xl font-bold text-yellow-600">{totalWaiting}</p>
+          <p className="text-xs text-yellow-500">انتظار: {overallStats.totalPending} | تواصل: {overallStats.totalContacted}</p>
         </div>
         <div className="bg-red-50 p-4 rounded-lg">
           <h3 className="font-semibold text-red-900">فارق التوزيع</h3>
@@ -117,19 +140,21 @@ export default function EmployeeReports() {
               const empData = byAssignee[emp] || { total: 0, confirmed: 0, rejected: 0, pending: 0, noAnswer: 0, contacted: 0, shipped: 0, new: 0, today: 0 };
               const conversionRate = getConversionRate(empData);
               const responseRate = getResponseRate(empData);
-              const share = totalLeads > 0 ? ((empData.total / totalLeads) * 100).toFixed(1) : '0.0';
+              const processingRate = getProcessingRate(empData);
+              const share = assignedLeads > 0 ? ((empData.total / assignedLeads) * 100).toFixed(1) : '0.0';
               
               return (
                 <div key={emp} className="border rounded-lg p-4 bg-gray-50">
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h4 className="font-bold text-lg">{emp === 'heba.' ? '👩‍💼 هبة' : emp === 'ahmed.' ? '👨‍💼 أحمد' : '👨‍💼 رائد'}</h4>
-                      <p className="text-sm text-gray-600">نصيب: {share}% من إجمالي الليدز</p>
+                      <p className="text-sm text-gray-600">نصيب: {share}% من الليدز المعينة ({empData.total} ليد)</p>
                     </div>
                     <div className="text-right">
                       <div className={`px-2 py-1 rounded text-xs font-medium ${
                         parseFloat(conversionRate) >= 30 ? 'bg-green-100 text-green-800' :
                         parseFloat(conversionRate) >= 20 ? 'bg-yellow-100 text-yellow-800' :
+                        parseFloat(conversionRate) >= 10 ? 'bg-orange-100 text-orange-800' :
                         'bg-red-100 text-red-800'
                       }`}>
                         معدل التحويل: {conversionRate}%
@@ -157,10 +182,22 @@ export default function EmployeeReports() {
                   </div>
                   
                   <div className="mt-3 pt-3 border-t border-gray-200">
-                    <div className="flex justify-between text-xs text-gray-600">
-                      <span>معدل الرد: {responseRate}%</span>
-                      <span>في الانتظار: {empData.pending + empData.contacted}</span>
-                      <span>اليوم: {empData.today}</span>
+                    <div className="grid grid-cols-3 gap-4 text-xs text-gray-600">
+                      <div className="text-center">
+                        <span className="font-medium text-gray-700">معدل الرد</span>
+                        <div className="font-bold text-blue-600">{responseRate}%</div>
+                        <span className="text-gray-500">({empData.confirmed + empData.rejected}/{empData.total})</span>
+                      </div>
+                      <div className="text-center">
+                        <span className="font-medium text-gray-700">في الانتظار</span>
+                        <div className="font-bold text-yellow-600">{empData.pending + empData.contacted}</div>
+                        <span className="text-gray-500">انتظار + تواصل</span>
+                      </div>
+                      <div className="text-center">
+                        <span className="font-medium text-gray-700">اليوم</span>
+                        <div className="font-bold text-purple-600">{empData.today}</div>
+                        <span className="text-gray-500">ليد جديد</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -187,15 +224,16 @@ export default function EmployeeReports() {
                       {Object.entries(empProducts)
                         .sort(([,a]: any, [,b]: any) => b.total - a.total)
                         .map(([product, stats]: any) => {
-                          const productConversion = stats.confirmed + stats.rejected > 0 
-                            ? ((stats.confirmed / (stats.confirmed + stats.rejected)) * 100).toFixed(1)
+                          // معدل التحويل الصحيح: confirmed / total
+                          const productConversion = stats.total > 0 
+                            ? ((stats.confirmed / stats.total) * 100).toFixed(1)
                             : '0.0';
                           
                           return (
                             <div key={product} className="flex justify-between items-center text-sm py-2 px-3 bg-gray-50 rounded">
                               <div className="flex-1">
                                 <p className="font-medium text-gray-800 truncate">{product}</p>
-                                <p className="text-xs text-gray-500">تحويل: {productConversion}%</p>
+                                <p className="text-xs text-gray-500">تحويل: {productConversion}% | رد: {stats.confirmed + stats.rejected}/{stats.total}</p>
                               </div>
                               <div className="text-right space-x-2 rtl:space-x-reverse">
                                 <span className="inline-block w-8 text-center text-green-600 font-medium">{stats.confirmed}</span>
@@ -210,6 +248,56 @@ export default function EmployeeReports() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      </div>
+
+      {/* معلومات إضافية وإحصائيات تفصيلية */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-purple-50 p-4 rounded-lg">
+          <h4 className="font-semibold text-purple-900 mb-2">📋 ملخص الحالات</h4>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between"><span>جديد:</span><span className="font-bold">{overallStats.totalNew}</span></div>
+            <div className="flex justify-between"><span>مؤكد:</span><span className="font-bold text-green-600">{overallStats.totalConfirmed}</span></div>
+            <div className="flex justify-between"><span>مرفوض:</span><span className="font-bold text-red-600">{overallStats.totalRejected}</span></div>
+            <div className="flex justify-between"><span>لم يرد:</span><span className="font-bold text-gray-600">{overallStats.totalNoAnswer}</span></div>
+            <div className="flex justify-between"><span>مشحون:</span><span className="font-bold text-blue-600">{overallStats.totalShipped}</span></div>
+          </div>
+        </div>
+        
+        <div className="bg-indigo-50 p-4 rounded-lg">
+          <h4 className="font-semibold text-indigo-900 mb-2">📊 معدلات الأداء</h4>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span>معدل الرد العام:</span>
+              <span className="font-bold">{assignedLeads > 0 ? (((overallStats.totalConfirmed + overallStats.totalRejected) / assignedLeads) * 100).toFixed(1) : '0.0'}%</span>
+            </div>
+            <div className="flex justify-between">
+              <span>معدل الرفض:</span>
+              <span className="font-bold">{assignedLeads > 0 ? ((overallStats.totalRejected / assignedLeads) * 100).toFixed(1) : '0.0'}%</span>
+            </div>
+            <div className="flex justify-between">
+              <span>معدل عدم الرد:</span>
+              <span className="font-bold">{assignedLeads > 0 ? ((overallStats.totalNoAnswer / assignedLeads) * 100).toFixed(1) : '0.0'}%</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-cyan-50 p-4 rounded-lg">
+          <h4 className="font-semibold text-cyan-900 mb-2">⏱️ حالة العمل</h4>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span>معالج كاملاً:</span>
+              <span className="font-bold">{overallStats.totalConfirmed + overallStats.totalRejected + overallStats.totalShipped}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>قيد المعالجة:</span>
+              <span className="font-bold text-yellow-600">{totalWaiting}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>يحتاج متابعة:</span>
+              <span className="font-bold text-orange-600">{overallStats.totalNew + overallStats.totalNoAnswer}</span>
+            </div>
           </div>
         </div>
       </div>
