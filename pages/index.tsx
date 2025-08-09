@@ -11,6 +11,8 @@ import LiveStats from '../components/LiveStats';
 import EnhancedAlerts from '../components/EnhancedAlerts';
 import NotificationSettingsComponent from '../components/NotificationSettings';
 import { useNotifications } from '../hooks/useNotifications';
+import { useCurrentUser } from '../hooks/useCurrentUser';
+import EmployeeReports from '../components/EmployeeReports';
 
 interface Lead {
   id: number;
@@ -32,7 +34,8 @@ const fetcher = async (url: string) => {
 };
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'follow-up' | 'export' | 'archive' | 'rejected'>('orders');
+  const { user } = useCurrentUser();
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'follow-up' | 'export' | 'archive' | 'rejected' | 'reports'>('orders');
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState<any>({
@@ -64,10 +67,8 @@ export default function Home() {
     { refreshInterval: notificationSettings.autoRefresh ? notificationSettings.refreshInterval * 1000 : 0 }
   );
   
-  // Get all orders for notification system
   const orders = data?.data || [];
   
-  // Initialize notification system
   const { 
     notifications, 
     addNotification, 
@@ -75,7 +76,6 @@ export default function Home() {
     removeAllNotifications 
   } = useNotifications(orders, hasInteracted);
 
-  // Get new orders count for enhanced alerts
   const newOrdersCount = notifications.filter(n => n.type === 'new_order').length;
 
   const handleUpdateOrder = async (orderId: number, updates: any): Promise<void> => {
@@ -88,7 +88,6 @@ export default function Home() {
       await mutate();
     } catch (error) {
       console.error('Error updating order:', error);
-      // Show error notification
       addNotification({
         type: 'error',
         title: 'خطأ في التحديث',
@@ -96,6 +95,18 @@ export default function Home() {
         duration: 5000
       });
       throw error;
+    }
+  };
+
+  const handleAssign = async () => {
+    try {
+      const res = await fetch('/api/assign', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'فشل التوزيع');
+      addNotification({ type: 'success', title: 'تم التوزيع', message: 'تم توزيع الليدز غير المعيّنة بالتساوي', duration: 4000 });
+      mutate();
+    } catch (e: any) {
+      addNotification({ type: 'error', title: 'فشل التوزيع', message: e.message, duration: 5000 });
     }
   };
 
@@ -123,7 +134,6 @@ export default function Home() {
     setSelectedOrders([]);
   };
 
-  // Calculate counts for each tab independently
   const tabCounts = useMemo(() => {
     const allOrders = data?.data || [];
     return {
@@ -140,11 +150,10 @@ export default function Home() {
     };
   }, [data]);
 
-  // Filter orders based on active tab
   const getFilteredOrders = () => {
     if (!orders) return [];
     
-    let filteredOrders = [];
+    let filteredOrders = [] as any[];
     
     switch (activeTab) {
       case 'orders':
@@ -153,17 +162,11 @@ export default function Home() {
           order.status === 'جديد' || 
           order.status === 'لم يرد'
         );
-        // ترتيب الطلبات النشطة: الطلبات الجديدة أولاً ثم حسب التاريخ - الأحدث أولاً
         filteredOrders = filteredOrders.sort((a: any, b: any) => {
-          // ترتيب حسب الحالة أولاً: الطلبات الجديدة (بدون حالة أو "جديد") في الأعلى
           const statusA = a.status || 'جديد';
           const statusB = b.status || 'جديد';
-          
-          // إعطاء أولوية للطلبات الجديدة
           if (statusA === 'جديد' && statusB !== 'جديد') return -1;
           if (statusA !== 'جديد' && statusB === 'جديد') return 1;
-          
-          // إذا كانت الحالات متشابهة، ترتيب حسب التاريخ - الأحدث أولاً
           const dateA = new Date(a.orderDate);
           const dateB = new Date(b.orderDate);
           return dateB.getTime() - dateA.getTime();
@@ -195,7 +198,7 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="text-center">
         <p className="text-red-600 text-xl">فشل في جلب البيانات</p>
-        <p className="text-gray-600 mt-2">{error.message}</p>
+        <p className="text-gray-600 mt-2">{(error as any).message}</p>
       </div>
     </div>
   );
@@ -213,17 +216,12 @@ export default function Home() {
 
   return (
     <>
-      {/* Enhanced Alert System */}
       <EnhancedAlerts 
         hasNewOrders={newOrdersCount > 0}
         newOrdersCount={newOrdersCount}
         initialUserInteraction={hasInteracted}
       />
-      
-      {/* Notification Permission Request */}
       <NotificationPermission />
-      
-      {/* Notification System */}
       <NotificationSystem
         notifications={notifications}
         onDismiss={removeNotification}
@@ -240,26 +238,38 @@ export default function Home() {
                 <h1 className="text-3xl font-bold text-gray-900">نظام إدارة الطلبات</h1>
                 <p className="text-gray-600 mt-2">إدارة شاملة لطلبات العملاء مع تزامن فوري مع Google Sheets</p>
               </div>
-              
-              {/* Settings Button */}
-              <button
-                onClick={() => setShowSettings(true)}
-                className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-4 py-2 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
-                title="إعدادات الإشعارات"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                الإعدادات
-              </button>
+              {user?.role === 'admin' && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleAssign}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-xl"
+                    title="توزيع تلقائي لليدز غير المعيّنة"
+                  >
+                    توزيع الليدز
+                  </button>
+                  <button
+                    onClick={() => setShowSettings(true)}
+                    className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-4 py-2 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
+                    title="إعدادات الإشعارات"
+                  >
+                    الإعدادات
+                  </button>
+                </div>
+              )}
+              {user?.role !== 'admin' && (
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-4 py-2 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
+                  title="إعدادات الإشعارات"
+                >
+                  الإعدادات
+                </button>
+              )}
             </div>
           </header>
 
-          {/* Live Statistics */}
           <LiveStats orders={orders} />
 
-          {/* Navigation Tabs */}
           <div className="bg-white rounded-lg shadow-sm mb-6 p-1">
             <nav className="flex space-x-1 space-x-reverse">
               {[
@@ -268,8 +278,9 @@ export default function Home() {
                 { id: 'follow-up', name: 'متابعة', icon: '👁️' },
                 { id: 'export', name: 'تصدير بوسطة', icon: '📤' },
                 { id: 'archive', name: 'طلبات الشحن', icon: '🚚' },
-                { id: 'rejected', name: 'الطلبات المهملة', icon: '🗑️' }
-              ].map((tab) => (
+                { id: 'rejected', name: 'الطلبات المهملة', icon: '🗑️' },
+                ...(user?.role === 'admin' ? [{ id: 'reports', name: 'تقارير الموظفين', icon: '📈' }] as any : []),
+              ].map((tab: any) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
@@ -301,7 +312,6 @@ export default function Home() {
             </nav>
           </div>
 
-          {/* Content */}
           <main>
             {activeTab === 'dashboard' && <Dashboard />}
             {activeTab === 'orders' && (
@@ -348,11 +358,15 @@ export default function Home() {
                 />
               </div>
             )}
+            {activeTab === 'reports' && user?.role === 'admin' && (
+              <div className="text-gray-900">
+                <EmployeeReports />
+              </div>
+            )}
           </main>
         </div>
       </div>
 
-      {/* Notification Settings Modal */}
       <NotificationSettingsComponent
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}

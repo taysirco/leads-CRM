@@ -45,6 +45,7 @@ export type LeadRow = {
   notes: string;
   source: string;
   whatsappSent: string; // ارسال واتس اب
+  assignee?: string; // المسؤول (Q/R column)
 };
 
 export async function fetchLeads() {
@@ -68,7 +69,7 @@ export async function fetchLeads() {
     return map;
   }, {});
   
-  const fieldToHeaderMap: { [K in keyof Omit<LeadRow, 'id' | 'rowIndex'>]: string[] } = {
+  const fieldToHeaderMap: { [K in keyof Omit<LeadRow, 'id' | 'rowIndex'>]-?: string[] } = {
     orderDate: ['تاريخ الطلب'],
     name: ['الاسم', 'اسم العميل'],
     phone: ['رقم الهاتف', 'الهاتف'],
@@ -84,7 +85,8 @@ export async function fetchLeads() {
     notes: ['ملاحظات'],
     source: ['المصدر'],
     whatsappSent: ['ارسال واتس اب'],
-  };
+    assignee: ['المسؤول', 'assigned_to'],
+  } as any;
 
   const leads = rows.slice(1).map((row, index) => {
     const getVal = (possibleHeaders: string[]) => {
@@ -115,7 +117,8 @@ export async function fetchLeads() {
       notes: getVal(fieldToHeaderMap.notes),
       source: getVal(fieldToHeaderMap.source),
       whatsappSent: getVal(fieldToHeaderMap.whatsappSent),
-    };
+      assignee: getVal(fieldToHeaderMap.assignee),
+    } as LeadRow;
   });
 
   return leads;
@@ -140,7 +143,7 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
     return map;
   }, {});
 
-  const fieldToHeaderMap: { [K in keyof Omit<LeadRow, 'id' | 'rowIndex'>]: string[] } = {
+  const fieldToHeaderMap: { [K in keyof Omit<LeadRow, 'id' | 'rowIndex'>]-?: string[] } = {
     orderDate: ['تاريخ الطلب'],
     name: ['الاسم', 'اسم العميل'],
     phone: ['رقم الهاتف', 'الهاتف'],
@@ -156,7 +159,8 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
     notes: ['ملاحظات'],
     source: ['المصدر'],
     whatsappSent: ['ارسال واتس اب'],
-  };
+    assignee: ['المسؤول', 'assigned_to'],
+  } as any;
 
   const data = (Object.entries(updates) as [keyof LeadRow, any][]).map(([key, value]) => {
     if (key === 'id' || key === 'rowIndex') return null;
@@ -225,10 +229,13 @@ export async function getOrderStatistics() {
   // Per-Product and Per-Source Statistics
   const productStats: { [productName: string]: typeof overallStats } = {};
   const sourceStats: { [sourceName: string]: typeof overallStats } = {};
+  const assigneeStats: { [assignee: string]: typeof overallStats } = {};
+  const assigneeProductStats: { [assignee: string]: { [productName: string]: typeof overallStats } } = {};
 
   leads.forEach((lead) => {
     const productName = normalize(lead.productName || 'منتج غير محدد');
     const sourceName = normalize(lead.source || 'مصدر غير محدد');
+    const assigneeName = normalize(lead.assignee || 'غير معين');
 
     // Initialize stats object if it doesn't exist
     if (!productStats[productName]) {
@@ -236,6 +243,15 @@ export async function getOrderStatistics() {
     }
     if (!sourceStats[sourceName]) {
       sourceStats[sourceName] = { total: 0, new: 0, confirmed: 0, pending: 0, rejected: 0, noAnswer: 0, contacted: 0, shipped: 0, today: 0 };
+    }
+    if (!assigneeStats[assigneeName]) {
+      assigneeStats[assigneeName] = { total: 0, new: 0, confirmed: 0, pending: 0, rejected: 0, noAnswer: 0, contacted: 0, shipped: 0, today: 0 };
+    }
+    if (!assigneeProductStats[assigneeName]) {
+      assigneeProductStats[assigneeName] = {};
+    }
+    if (!assigneeProductStats[assigneeName][productName]) {
+      assigneeProductStats[assigneeName][productName] = { total: 0, new: 0, confirmed: 0, pending: 0, rejected: 0, noAnswer: 0, contacted: 0, shipped: 0, today: 0 };
     }
 
     // Increment counters for product
@@ -259,7 +275,29 @@ export async function getOrderStatistics() {
     if (lead.status === 'تم التواصل معه واتساب') sourceStats[sourceName].contacted++;
     if (lead.status === 'تم الشحن') sourceStats[sourceName].shipped++;
     if (lead.orderDate && lead.orderDate.startsWith(today)) sourceStats[sourceName].today++;
+
+    // Increment counters for assignee
+    assigneeStats[assigneeName].total++;
+    if (!lead.status || lead.status === 'جديد') assigneeStats[assigneeName].new++;
+    if (lead.status === 'تم التأكيد') assigneeStats[assigneeName].confirmed++;
+    if (lead.status === 'في انتظار تأكيد العميل') assigneeStats[assigneeName].pending++;
+    if (lead.status === 'رفض التأكيد') assigneeStats[assigneeName].rejected++;
+    if (lead.status === 'لم يرد') assigneeStats[assigneeName].noAnswer++;
+    if (lead.status === 'تم التواصل معه واتساب') assigneeStats[assigneeName].contacted++;
+    if (lead.status === 'تم الشحن') assigneeStats[assigneeName].shipped++;
+    if (lead.orderDate && lead.orderDate.startsWith(today)) assigneeStats[assigneeName].today++;
+
+    // Assignee by product
+    assigneeProductStats[assigneeName][productName].total++;
+    if (!lead.status || lead.status === 'جديد') assigneeProductStats[assigneeName][productName].new++;
+    if (lead.status === 'تم التأكيد') assigneeProductStats[assigneeName][productName].confirmed++;
+    if (lead.status === 'في انتظار تأكيد العميل') assigneeProductStats[assigneeName][productName].pending++;
+    if (lead.status === 'رفض التأكيد') assigneeProductStats[assigneeName][productName].rejected++;
+    if (lead.status === 'لم يرد') assigneeProductStats[assigneeName][productName].noAnswer++;
+    if (lead.status === 'تم التواصل معه واتساب') assigneeProductStats[assigneeName][productName].contacted++;
+    if (lead.status === 'تم الشحن') assigneeProductStats[assigneeName][productName].shipped++;
+    if (lead.orderDate && lead.orderDate.startsWith(today)) assigneeProductStats[assigneeName][productName].today++;
   });
 
-  return { overall: overallStats, byProduct: productStats, bySource: sourceStats };
+  return { overall: overallStats, byProduct: productStats, bySource: sourceStats, byAssignee: assigneeStats, byAssigneeByProduct: assigneeProductStats };
 } 

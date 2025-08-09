@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { fetchLeads, updateLead, getOrderStatistics } from '../../lib/googleSheets';
+import { fetchLeads, updateLead, getOrderStatistics, LeadRow } from '../../lib/googleSheets';
+
+const EMPLOYEES = ['heba.', 'ahmed.', 'raed.'];
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'GET') {
@@ -10,8 +12,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(200).json({ data: stats });
       }
       
-      const leads = await fetchLeads();
-      res.status(200).json({ data: leads });
+      const role = req.cookies['user_role'] || 'admin';
+      const username = decodeURIComponent(req.cookies['user_name'] || '');
+
+      let leads = await fetchLeads();
+
+      // توزيع تلقائي: عيّن أي ليد غير معيّن على الموظف الأقل حملاً حالياً
+      const counts: Record<string, number> = Object.fromEntries(EMPLOYEES.map(e => [e, 0]));
+      for (const l of leads) {
+        const a = (l.assignee || '').trim();
+        if (EMPLOYEES.includes(a)) counts[a]++;
+      }
+      const unassigned = leads.filter(l => !l.assignee || String(l.assignee).trim() === '');
+      const updates: Promise<any>[] = [];
+      for (const l of unassigned) {
+        // اختر الأقل عدداً الآن
+        const nextAssignee = EMPLOYEES.slice().sort((a, b) => counts[a] - counts[b])[0];
+        counts[nextAssignee]++;
+        updates.push(updateLead(l.rowIndex, { assignee: nextAssignee }));
+      }
+      if (updates.length > 0) {
+        await Promise.all(updates);
+        // أعد الجلب بعد التوزيع
+        leads = await fetchLeads();
+      }
+
+      // فلترة حسب الموظف إن كان وكيل
+      let filtered: LeadRow[] = leads;
+      if (role === 'agent' && username) {
+        const normalized = (s: string) => (s || '').toLowerCase().trim();
+        filtered = leads.filter(l => normalized(l.assignee || '') === normalized(username));
+      }
+
+      res.status(200).json({ data: filtered });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
