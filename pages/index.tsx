@@ -34,7 +34,7 @@ const fetcher = async (url: string) => {
 
 export default function Home() {
   const { user } = useCurrentUser();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'follow-up' | 'export' | 'archive' | 'rejected'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'follow-up' | 'export' | 'archive' | 'rejected'>('orders');
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState<any>({
