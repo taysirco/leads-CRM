@@ -15,7 +15,7 @@ interface StatCardProps {
 const StatCard: React.FC<StatCardProps> = ({ label, value, icon, bgColor = 'bg-white', textColor = 'text-gray-900' }) => (
   <div className={`${bgColor} rounded-lg shadow-sm border p-6 text-center`}>
     <div className={`text-4xl mb-2`}>{icon}</div>
-    <div className={`text-sm font-medium ${textColor.replace('text-', 'text-').replace('-900', '-600')} mb-1`}>{label}</div>
+    <div className={`text-sm font-medium text-gray-600 mb-1`}>{label}</div>
     <div className={`text-2xl font-bold ${textColor}`}>{value}</div>
   </div>
 );
@@ -197,7 +197,7 @@ export default function Dashboard() {
             }`}>
               {balance.isBalanced ? '✅ توزيع متوازن' : '⚠️ توزيع غير متوازن'}
             </div>
-            <span className="text-sm text-gray-600">آخر تحديث: {new Date().toLocaleTimeString('ar-EG')}</span>
+            <span className="text-sm text-gray-700">آخر تحديث: {new Date().toLocaleTimeString('ar-EG')}</span>
           </div>
         </div>
 
@@ -208,35 +208,35 @@ export default function Dashboard() {
             value={assignedLeads} 
             icon="👥"
             bgColor="bg-blue-50" 
-            textColor="text-blue-900"
+            textColor="text-blue-800"
           />
           <StatCard 
             label="معدل التأكيد العام" 
             value={parseFloat(overallConfirmationRate)} 
             icon="✅"
             bgColor="bg-green-50" 
-            textColor="text-green-900"
+            textColor="text-green-800"
           />
           <StatCard 
             label="في الانتظار" 
             value={overallStats.totalWaiting} 
             icon="⏳"
             bgColor="bg-yellow-50" 
-            textColor="text-yellow-900"
+            textColor="text-yellow-800"
           />
           <StatCard 
             label="معدل الحسم" 
             value={parseFloat(overallDecisionRate)} 
             icon="📊"
             bgColor="bg-purple-50" 
-            textColor="text-purple-900"
+            textColor="text-purple-800"
           />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* تقرير مفصل لكل موظف */}
           <div>
-            <h3 className="font-semibold mb-4 text-lg">📈 أداء الموظفين المفصل</h3>
+            <h3 className="font-semibold mb-4 text-lg text-gray-900">📈 أداء الموظفين المفصل</h3>
             <div className="space-y-4">
               {employees.map(emp => {
                 const empData = byAssignee[emp] || { total: 0, confirmed: 0, rejected: 0, pending: 0, noAnswer: 0, contacted: 0, shipped: 0, new: 0, today: 0 };
@@ -252,8 +252,8 @@ export default function Dashboard() {
                   <div key={emp} className="border rounded-lg p-4 bg-gray-50">
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <h4 className="font-bold text-lg">{emp === 'heba.' ? '👩‍💼 هبة' : emp === 'ahmed.' ? '👨‍💼 أحمد' : '👨‍💼 رائد'}</h4>
-                        <p className="text-sm text-gray-600">نصيب: {share}% من الليدز المعينة ({empData.total} ليد)</p>
+                        <h4 className="font-bold text-lg text-gray-900">{emp === 'heba.' ? '👩‍💼 هبة' : emp === 'ahmed.' ? '👨‍💼 أحمد' : '👨‍💼 رائد'}</h4>
+                        <p className="text-sm text-gray-700">نصيب: {share}% من الليدز المعينة ({empData.total} ليد)</p>
                       </div>
                       <div className="text-right">
                         <div className={`px-2 py-1 rounded text-xs font-medium ${
@@ -269,35 +269,35 @@ export default function Dashboard() {
                     
                     <div className="grid grid-cols-3 gap-3 text-sm mb-3">
                       <div className="text-center bg-green-100 p-2 rounded">
-                        <p className="font-semibold text-green-700">{realConfirmed}</p>
-                        <p className="text-xs text-green-600">مؤكد</p>
-                        <p className="text-xs text-gray-500">({empData.confirmed} + {empData.shipped})</p>
+                        <p className="font-semibold text-green-800">{realConfirmed}</p>
+                        <p className="text-xs text-green-700">مؤكد</p>
+                        <p className="text-xs text-gray-600">({empData.confirmed} + {empData.shipped})</p>
                       </div>
                       <div className="text-center bg-red-100 p-2 rounded">
-                        <p className="font-semibold text-red-700">{empData.rejected}</p>
-                        <p className="text-xs text-red-600">مرفوض</p>
+                        <p className="font-semibold text-red-800">{empData.rejected}</p>
+                        <p className="text-xs text-red-700">مرفوض</p>
                       </div>
                       <div className="text-center bg-yellow-100 p-2 rounded">
-                        <p className="font-semibold text-yellow-700">{realWaiting}</p>
-                        <p className="text-xs text-yellow-600">في الانتظار</p>
+                        <p className="font-semibold text-yellow-800">{realWaiting}</p>
+                        <p className="text-xs text-yellow-700">في الانتظار</p>
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-3 gap-4 text-xs text-gray-600 pt-3 border-t">
+                    <div className="grid grid-cols-3 gap-4 text-xs text-gray-700 pt-3 border-t">
                       <div className="text-center">
-                        <span className="font-medium text-gray-700">معدل التحويل</span>
-                        <div className="font-bold text-green-600">{conversionRate}%</div>
-                        <span className="text-gray-500">({realConfirmed}/{empData.total})</span>
+                        <span className="font-medium text-gray-800">معدل التحويل</span>
+                        <div className="font-bold text-green-700">{conversionRate}%</div>
+                        <span className="text-gray-600">({realConfirmed}/{empData.total})</span>
                       </div>
                       <div className="text-center">
-                        <span className="font-medium text-gray-700">معدل الحسم</span>
-                        <div className="font-bold text-blue-600">{decisionRate}%</div>
-                        <span className="text-gray-500">تم البت فيه</span>
+                        <span className="font-medium text-gray-800">معدل الحسم</span>
+                        <div className="font-bold text-blue-700">{decisionRate}%</div>
+                        <span className="text-gray-600">تم البت فيه</span>
                       </div>
                       <div className="text-center">
-                        <span className="font-medium text-gray-700">في الانتظار</span>
-                        <div className="font-bold text-yellow-600">{waitingRate}%</div>
-                        <span className="text-gray-500">يحتاج متابعة</span>
+                        <span className="font-medium text-gray-800">في الانتظار</span>
+                        <div className="font-bold text-yellow-700">{waitingRate}%</div>
+                        <span className="text-gray-600">يحتاج متابعة</span>
                       </div>
                     </div>
                   </div>
@@ -308,7 +308,7 @@ export default function Dashboard() {
 
           {/* أداء حسب المنتج بالمنطق المحسن */}
           <div>
-            <h3 className="font-semibold mb-4 text-lg">🛍️ الأداء حسب المنتج</h3>
+            <h3 className="font-semibold mb-4 text-lg text-gray-900">🛍️ الأداء حسب المنتج</h3>
             <div className="space-y-4 max-h-[500px] overflow-auto">
               {employees.map(emp => {
                 const empProducts = byAssigneeByProduct[emp] || {};
@@ -318,7 +318,7 @@ export default function Dashboard() {
                   <div key={emp} className="border rounded-lg p-4">
                     <h4 className="font-medium mb-3 text-gray-900">{empName}</h4>
                     {Object.keys(empProducts).length === 0 ? (
-                      <p className="text-sm text-gray-500 italic">لا توجد منتجات مُعينة</p>
+                      <p className="text-sm text-gray-600 italic">لا توجد منتجات مُعينة</p>
                     ) : (
                       <div className="space-y-2">
                         {Object.entries(empProducts)
@@ -339,16 +339,16 @@ export default function Dashboard() {
                             return (
                               <div key={product} className="flex justify-between items-center text-sm py-2 px-3 bg-gray-50 rounded">
                                 <div className="flex-1">
-                                  <p className="font-medium text-gray-800 truncate">{product}</p>
-                                  <p className="text-xs text-gray-500">
+                                  <p className="font-medium text-gray-900 truncate">{product}</p>
+                                  <p className="text-xs text-gray-600">
                                     تحويل: {productConversion}% | حسم: {decisionRate}% 
                                     ({decided}/{stats.total})
                                   </p>
                                 </div>
                                 <div className="text-right space-x-2 rtl:space-x-reverse">
-                                  <span className="inline-block w-8 text-center text-green-600 font-medium" title="مؤكد (تأكيد + شحن)">{realConfirmed}</span>
-                                  <span className="inline-block w-8 text-center text-red-600 font-medium">{stats.rejected}</span>
-                                  <span className="inline-block w-10 text-center text-gray-700 font-medium text-xs border-r pr-2">{stats.total}</span>
+                                  <span className="inline-block w-8 text-center text-green-700 font-medium" title="مؤكد (تأكيد + شحن)">{realConfirmed}</span>
+                                  <span className="inline-block w-8 text-center text-red-700 font-medium">{stats.rejected}</span>
+                                  <span className="inline-block w-10 text-center text-gray-800 font-medium text-xs border-r pr-2">{stats.total}</span>
                                 </div>
                               </div>
                             );
@@ -367,15 +367,15 @@ export default function Dashboard() {
           <div className="bg-purple-50 p-4 rounded-lg">
             <h4 className="font-semibold text-purple-900 mb-2">📋 ملخص الحالات</h4>
             <div className="space-y-1 text-sm">
-              <div className="flex justify-between"><span>مؤكد (تأكيد + شحن):</span><span className="font-bold text-green-600">{overallStats.totalConfirmed}</span></div>
-              <div className="flex justify-between pl-4"><span>- تأكيد فقط:</span><span className="text-green-500">{overallStats.totalConfirmedOnly}</span></div>
-              <div className="flex justify-between pl-4"><span>- مشحون:</span><span className="text-green-500">{overallStats.totalShipped}</span></div>
-              <div className="flex justify-between"><span>مرفوض:</span><span className="font-bold text-red-600">{overallStats.totalRejected}</span></div>
-              <div className="flex justify-between"><span>في الانتظار:</span><span className="font-bold text-yellow-600">{overallStats.totalWaiting}</span></div>
-              <div className="flex justify-between pl-4"><span>- جديد:</span><span className="text-yellow-500">{overallStats.totalNew}</span></div>
-              <div className="flex justify-between pl-4"><span>- لم يرد:</span><span className="text-yellow-500">{overallStats.totalNoAnswer}</span></div>
-              <div className="flex justify-between pl-4"><span>- انتظار تأكيد:</span><span className="text-yellow-500">{overallStats.totalPending}</span></div>
-              <div className="flex justify-between pl-4"><span>- تواصل واتساب:</span><span className="text-yellow-500">{overallStats.totalContacted}</span></div>
+              <div className="flex justify-between"><span className="text-gray-700">مؤكد (تأكيد + شحن):</span><span className="font-bold text-green-700">{overallStats.totalConfirmed}</span></div>
+              <div className="flex justify-between pl-4"><span className="text-gray-600">- تأكيد فقط:</span><span className="text-green-600">{overallStats.totalConfirmedOnly}</span></div>
+              <div className="flex justify-between pl-4"><span className="text-gray-600">- مشحون:</span><span className="text-green-600">{overallStats.totalShipped}</span></div>
+              <div className="flex justify-between"><span className="text-gray-700">مرفوض:</span><span className="font-bold text-red-700">{overallStats.totalRejected}</span></div>
+              <div className="flex justify-between"><span className="text-gray-700">في الانتظار:</span><span className="font-bold text-yellow-700">{overallStats.totalWaiting}</span></div>
+              <div className="flex justify-between pl-4"><span className="text-gray-600">- جديد:</span><span className="text-yellow-600">{overallStats.totalNew}</span></div>
+              <div className="flex justify-between pl-4"><span className="text-gray-600">- لم يرد:</span><span className="text-yellow-600">{overallStats.totalNoAnswer}</span></div>
+              <div className="flex justify-between pl-4"><span className="text-gray-600">- انتظار تأكيد:</span><span className="text-yellow-600">{overallStats.totalPending}</span></div>
+              <div className="flex justify-between pl-4"><span className="text-gray-600">- تواصل واتساب:</span><span className="text-yellow-600">{overallStats.totalContacted}</span></div>
             </div>
           </div>
           
@@ -383,20 +383,20 @@ export default function Dashboard() {
             <h4 className="font-semibold text-indigo-900 mb-2">📊 معدلات الأداء</h4>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span>معدل التحويل العام:</span>
-                <span className="font-bold text-green-600">{overallConfirmationRate}%</span>
+                <span className="text-gray-700">معدل التحويل العام:</span>
+                <span className="font-bold text-green-700">{overallConfirmationRate}%</span>
               </div>
               <div className="flex justify-between">
-                <span>معدل الرفض:</span>
-                <span className="font-bold text-red-600">{assignedLeads > 0 ? ((overallStats.totalRejected / assignedLeads) * 100).toFixed(1) : '0.0'}%</span>
+                <span className="text-gray-700">معدل الرفض:</span>
+                <span className="font-bold text-red-700">{assignedLeads > 0 ? ((overallStats.totalRejected / assignedLeads) * 100).toFixed(1) : '0.0'}%</span>
               </div>
               <div className="flex justify-between">
-                <span>معدل الحسم:</span>
-                <span className="font-bold text-blue-600">{overallDecisionRate}%</span>
+                <span className="text-gray-700">معدل الحسم:</span>
+                <span className="font-bold text-blue-700">{overallDecisionRate}%</span>
               </div>
               <div className="flex justify-between">
-                <span>معدل الانتظار:</span>
-                <span className="font-bold text-yellow-600">{assignedLeads > 0 ? ((overallStats.totalWaiting / assignedLeads) * 100).toFixed(1) : '0.0'}%</span>
+                <span className="text-gray-700">معدل الانتظار:</span>
+                <span className="font-bold text-yellow-700">{assignedLeads > 0 ? ((overallStats.totalWaiting / assignedLeads) * 100).toFixed(1) : '0.0'}%</span>
               </div>
             </div>
           </div>
@@ -405,16 +405,16 @@ export default function Dashboard() {
             <h4 className="font-semibold text-cyan-900 mb-2">⏱️ حالة العمل</h4>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span>تم البت فيه:</span>
-                <span className="font-bold text-blue-600">{overallStats.totalConfirmed + overallStats.totalRejected}</span>
+                <span className="text-gray-700">تم البت فيه:</span>
+                <span className="font-bold text-blue-700">{overallStats.totalConfirmed + overallStats.totalRejected}</span>
               </div>
               <div className="flex justify-between">
-                <span>يحتاج متابعة:</span>
-                <span className="font-bold text-orange-600">{overallStats.totalWaiting}</span>
+                <span className="text-gray-700">يحتاج متابعة:</span>
+                <span className="font-bold text-orange-700">{overallStats.totalWaiting}</span>
               </div>
               <div className="flex justify-between">
-                <span>إنتاجية اليوم:</span>
-                <span className="font-bold text-purple-600">{employees.reduce((sum, emp) => sum + (byAssignee[emp]?.today || 0), 0)}</span>
+                <span className="text-gray-700">إنتاجية اليوم:</span>
+                <span className="font-bold text-purple-700">{employees.reduce((sum, emp) => sum + (byAssignee[emp]?.today || 0), 0)}</span>
               </div>
             </div>
           </div>
@@ -430,12 +430,12 @@ export default function Dashboard() {
             <div className="grid grid-cols-3 gap-4 text-sm">
               {employees.map(emp => (
                 <div key={emp} className="text-center">
-                  <p className="font-medium">{emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'رائد'}</p>
-                  <p className="text-lg font-bold">{balance.counts[emp]}</p>
+                  <p className="font-medium text-gray-800">{emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'رائد'}</p>
+                  <p className="text-lg font-bold text-gray-900">{balance.counts[emp]}</p>
                 </div>
               ))}
             </div>
-            <p className="text-xs text-orange-600 mt-2">
+            <p className="text-xs text-orange-700 mt-2">
               💡 توصية: استخدم زر "توزيع الليدز" لإعادة توزيع الليدز غير المُعينة بالتساوي.
             </p>
           </div>
