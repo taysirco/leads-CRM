@@ -12,7 +12,6 @@ import EnhancedAlerts from '../components/EnhancedAlerts';
 import NotificationSettingsComponent from '../components/NotificationSettings';
 import { useNotifications } from '../hooks/useNotifications';
 import { useCurrentUser } from '../hooks/useCurrentUser';
-import EmployeeReports from '../components/EmployeeReports';
 
 interface Lead {
   id: number;
@@ -35,7 +34,7 @@ const fetcher = async (url: string) => {
 
 export default function Home() {
   const { user } = useCurrentUser();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'follow-up' | 'export' | 'archive' | 'rejected' | 'reports'>('orders');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'follow-up' | 'export' | 'archive' | 'rejected'>('dashboard');
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState<any>({
@@ -190,12 +189,12 @@ export default function Home() {
     };
   }, [data]);
 
-  const getFilteredOrders = () => {
+  const getFilteredOrders = (tabId: string) => {
     if (!orders) return [];
     
     let filteredOrders = [] as any[];
     
-    switch (activeTab) {
+    switch (tabId) {
       case 'orders':
         filteredOrders = orders.filter((order: any) => 
           !order.status || 
@@ -277,7 +276,7 @@ export default function Home() {
     </div>
   );
 
-  const filteredOrders = getFilteredOrders();
+  const filteredOrders = getFilteredOrders(activeTab);
 
   return (
     <>
@@ -378,7 +377,6 @@ export default function Home() {
                 { id: 'export', name: 'تصدير بوسطة', icon: '📤' },
                 { id: 'archive', name: 'طلبات الشحن', icon: '🚚' },
                 { id: 'rejected', name: 'الطلبات المهملة', icon: '🗑️' },
-                ...(user?.role === 'admin' ? [{ id: 'reports', name: 'تقارير الموظفين', icon: '📈' }] as any : []),
               ].map((tab: any) => (
                 <button
                   key={tab.id}
@@ -411,58 +409,44 @@ export default function Home() {
             </nav>
           </div>
 
-          <main>
+          {/* Tab Content */}
+          <div className="space-y-6">
             {activeTab === 'dashboard' && <Dashboard />}
             {activeTab === 'orders' && (
-              <div className="text-gray-900">
-                <OrdersTable 
-                  orders={filteredOrders} 
-                  onUpdateOrder={handleUpdateOrder} 
-                />
-              </div>
+              <OrdersTable
+                orders={getFilteredOrders('orders')}
+                onUpdateOrder={handleUpdateOrder}
+              />
             )}
             {activeTab === 'follow-up' && (
-              <div className="text-gray-900">
-                <OrdersTable 
-                  orders={filteredOrders} 
-                  onUpdateOrder={handleUpdateOrder} 
-                />
-              </div>
+              <OrdersTable
+                orders={getFilteredOrders('follow-up')}
+                onUpdateOrder={handleUpdateOrder}
+              />
             )}
             {activeTab === 'export' && (
-              <div className="text-gray-900">
-                <BostaExport
-                  orders={filteredOrders}
-                  selectedOrders={selectedOrders}
-                  onSelectOrder={handleSelectOrder}
-                  onSelectAll={handleSelectAll}
-                  onDeselectAll={handleDeselectAll}
-                  onUpdateOrder={handleUpdateOrder}
-                />
-              </div>
+              <BostaExport 
+                orders={getFilteredOrders('export')}
+                selectedOrders={selectedOrders}
+                onSelectOrder={handleSelectOrder}
+                onSelectAll={handleSelectAll}
+                onDeselectAll={handleDeselectAll}
+                onUpdateOrder={handleUpdateOrder}
+              />
             )}
             {activeTab === 'archive' && (
-              <div className="text-gray-900">
-                <ArchiveTable 
-                  orders={filteredOrders} 
-                  onUpdateOrder={handleUpdateOrder} 
-                />
-              </div>
+              <ArchiveTable 
+                orders={getFilteredOrders('archive')} 
+                onUpdateOrder={handleUpdateOrder}
+              />
             )}
             {activeTab === 'rejected' && (
-              <div className="text-gray-900">
-                <RejectedTable 
-                  orders={filteredOrders} 
-                  onUpdateOrder={handleUpdateOrder} 
-                />
-              </div>
+              <RejectedTable 
+                orders={getFilteredOrders('rejected')} 
+                onUpdateOrder={handleUpdateOrder}
+              />
             )}
-            {activeTab === 'reports' && user?.role === 'admin' && (
-              <div className="text-gray-900">
-                <EmployeeReports />
-              </div>
-            )}
-          </main>
+          </div>
         </div>
       </div>
 
