@@ -495,9 +495,9 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white shadow-sm text-gray-900"
               >
-                <option value="">كل الحالات</option>
+                <option value="" className="text-gray-900 bg-white">كل الحالات</option>
                 {statuses.map(status => (
-                  <option key={status} value={status}>{status}</option>
+                  <option key={status} value={status} className="text-gray-900 bg-white">{status}</option>
                 ))}
               </select>
             </div>
@@ -508,9 +508,9 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 onChange={(e) => setSourceFilter(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white shadow-sm text-gray-900"
               >
-                <option value="">كل المصادر</option>
+                <option value="" className="text-gray-900 bg-white">كل المصادر</option>
                 {sources.map(source => (
-                  <option key={source} value={source}>{source}</option>
+                  <option key={source} value={source} className="text-gray-900 bg-white">{source}</option>
                 ))}
               </select>
             </div>
@@ -521,9 +521,9 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 onChange={(e) => setProductFilter(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white shadow-sm text-gray-900"
               >
-                <option value="">كل المنتجات</option>
+                <option value="" className="text-gray-900 bg-white">كل المنتجات</option>
                 {products.map(product => (
-                  <option key={product} value={product}>{product}</option>
+                  <option key={product} value={product} className="text-gray-900 bg-white">{product}</option>
                 ))}
               </select>
             </div>
@@ -724,12 +724,12 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                             value={order.status || 'جديد'}
                             onChange={(e) => handleStatusChange(order.id, e.target.value)}
                             disabled={isLoading}
-                            className={`text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 transition-all ${
-                              isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-400 bg-white shadow-sm'
+                            className={`text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 transition-all text-gray-900 bg-white ${
+                              isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-400 shadow-sm'
                             }`}
                           >
                             {statuses.map(status => (
-                              <option key={status} value={status}>{status}</option>
+                              <option key={status} value={status} className="text-gray-900 bg-white">{status}</option>
                             ))}
                           </select>
                           {isLoading && (
@@ -954,10 +954,10 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                   <select
                     value={editingOrder.status}
                     onChange={(e) => handleUpdateField('status', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 bg-white"
                   >
                     {statuses.map(status => (
-                      <option key={status} value={status}>{status}</option>
+                      <option key={status} value={status} className="text-gray-900 bg-white">{status}</option>
                     ))}
                   </select>
                 </div>

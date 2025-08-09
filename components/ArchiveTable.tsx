@@ -75,11 +75,11 @@ export default function ArchiveTable({ orders, onUpdateOrder }: ArchiveTableProp
             <select
               value={productFilter}
               onChange={(e) => setProductFilter(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
             >
-              <option value="">كل المنتجات</option>
+              <option value="" className="text-gray-900 bg-white">كل المنتجات</option>
               {products.map(product => (
-                <option key={product} value={product}>{product}</option>
+                <option key={product} value={product} className="text-gray-900 bg-white">{product}</option>
               ))}
             </select>
           </div>

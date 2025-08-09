@@ -245,11 +245,11 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
             <select
               value={sourceFilter}
               onChange={(e) => setSourceFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
             >
-              <option value="">جميع المصادر</option>
+              <option value="" className="text-gray-900 bg-white">جميع المصادر</option>
               {uniqueSources.map(source => (
-                <option key={source} value={source}>{source}</option>
+                <option key={source} value={source} className="text-gray-900 bg-white">{source}</option>
               ))}
             </select>
           </div>
@@ -259,11 +259,11 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
             <select
               value={governorateFilter}
               onChange={(e) => setGovernorateFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
             >
-              <option value="">جميع المحافظات</option>
+              <option value="" className="text-gray-900 bg-white">جميع المحافظات</option>
               {uniqueGovernorates.map(gov => (
-                <option key={gov} value={gov}>{gov}</option>
+                <option key={gov} value={gov} className="text-gray-900 bg-white">{gov}</option>
               ))}
             </select>
           </div>
@@ -273,11 +273,11 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
             <select
               value={productFilter}
               onChange={(e) => setProductFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
             >
-              <option value="">جميع المنتجات</option>
+              <option value="" className="text-gray-900 bg-white">جميع المنتجات</option>
               {uniqueProducts.map(product => (
-                <option key={product} value={product}>{product}</option>
+                <option key={product} value={product} className="text-gray-900 bg-white">{product}</option>
               ))}
             </select>
           </div>

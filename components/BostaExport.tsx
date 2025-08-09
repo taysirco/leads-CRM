@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { cleanText, getUniqueProducts } from '../lib/textCleaner';
+import StatusBadge from './StatusBadge';
 
 interface Order {
   id: number;
@@ -386,11 +387,11 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
               <select
                 value={productFilter}
                 onChange={(e) => setProductFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
               >
-                <option value="">كل المنتجات</option>
+                <option value="" className="text-gray-900 bg-white">كل المنتجات</option>
                 {products.map(product => (
-                  <option key={product} value={product}>{product}</option>
+                  <option key={product} value={product} className="text-gray-900 bg-white">{product}</option>
                 ))}
               </select>
             </div>
@@ -399,11 +400,11 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
               <select
                 value={sourceFilter}
                 onChange={(e) => setSourceFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
               >
-                <option value="">كل المصادر</option>
+                <option value="" className="text-gray-900 bg-white">كل المصادر</option>
                 {sources.map(source => (
-                  <option key={source} value={source}>{source}</option>
+                  <option key={source} value={source} className="text-gray-900 bg-white">{source}</option>
                 ))}
               </select>
             </div>
@@ -471,9 +472,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                     <td className="px-3 py-2 text-gray-800">{order.productName}</td>
                     <td className="px-3 py-2 text-gray-900 font-semibold">{order.totalPrice}</td>
                     <td className="px-3 py-2">
-                      <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                        {order.status}
-                      </span>
+                      <StatusBadge status={order.status} />
                     </td>
                     <td className="px-3 py-2 flex items-center gap-2">
                       <button
