@@ -516,12 +516,13 @@ export async function fetchStock(forceFresh: boolean = false): Promise<StockItem
         minThreshold: parseInt(String(row[6])) || 10,
       };
       
-      // التأكد من أن اسم المنتج غير فارغ
-      if (stockItem.productName) {
+      // التأكد من أن اسم المنتج غير فارغ وأن المنتج صالح
+      if (stockItem.productName && stockItem.productName.length > 0) {
         console.log(`✅ منتج ${i}: "${stockItem.productName}" (الكمية: ${stockItem.currentQuantity}, ID: ${stockItem.id})`);
         stockItems.push(stockItem);
       } else {
-        console.log(`⚠️ تخطي منتج في الصف ${i + 1} - اسم المنتج فارغ`);
+        console.log(`⚠️ تخطي منتج في الصف ${i + 1} - اسم المنتج فارغ أو غير صالح`);
+        console.log(`🔍 محتوى الصف:`, row);
       }
     }
 
@@ -1005,6 +1006,117 @@ export async function testStockSheetConnection(): Promise<{ success: boolean; me
       success: false,
       message: `خطأ في الاتصال: ${error}`,
       data: null
+    };
+  }
+} 
+
+// دالة تشخيص شاملة لـ Google Sheets
+export async function diagnoseGoogleSheets(): Promise<{ success: boolean; message: string; data?: any }> {
+  try {
+    console.log('🔍 بدء تشخيص شامل لـ Google Sheets...');
+    
+    const auth = getAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
+    
+    // 1. فحص معرف الشيت
+    console.log(`📋 معرف الشيت: ${SHEET_ID}`);
+    
+    // 2. جلب معلومات الشيت العامة
+    const spreadsheet = await sheets.spreadsheets.get({
+      spreadsheetId: SHEET_ID
+    });
+    
+    console.log(`📊 اسم الملف: ${spreadsheet.data.properties?.title}`);
+    console.log(`🗂️ عدد الشيتات: ${spreadsheet.data.sheets?.length}`);
+    
+    // 3. قائمة جميع الشيتات
+    const sheetNames = spreadsheet.data.sheets?.map(sheet => sheet.properties?.title) || [];
+    console.log('📑 أسماء الشيتات الموجودة:', sheetNames);
+    
+    // 4. فحص وجود stock sheet
+    const stockSheetExists = sheetNames.includes(STOCK_SHEET_NAME);
+    console.log(`📦 وجود شيت ${STOCK_SHEET_NAME}: ${stockSheetExists}`);
+    
+    if (!stockSheetExists) {
+      console.log('❌ شيت المخزون غير موجود، سيتم إنشاؤه...');
+      await ensureStockSheetExists();
+      console.log('✅ تم إنشاء شيت المخزون');
+    }
+    
+    // 5. فحص محتويات شيت المخزون
+    console.log(`🔍 فحص محتويات شيت ${STOCK_SHEET_NAME}...`);
+    
+    const stockData = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${STOCK_SHEET_NAME}!A:H`,
+      valueRenderOption: 'UNFORMATTED_VALUE'
+    });
+    
+    const values = stockData.data.values || [];
+    console.log(`📊 عدد الصفوف في شيت المخزون: ${values.length}`);
+    
+    // طباعة كل البيانات للفحص
+    values.forEach((row, index) => {
+      console.log(`صف ${index + 1}:`, row);
+    });
+    
+    // 6. فحص العناوين
+    if (values.length > 0) {
+      const headers = values[0];
+      console.log('📝 عناوين الأعمدة:', headers);
+      
+      const expectedHeaders = ['رقم', 'اسم المنتج', 'الكمية الأولية', 'الكمية الحالية', 'آخر تحديث', 'المتردفات', 'الحد الأدنى', 'تاريخ الإنشاء'];
+      const headersMatch = expectedHeaders.every((expected, index) => 
+        headers[index] && headers[index].toString().includes(expected.substring(0, 3))
+      );
+      
+      console.log('✅ مطابقة العناوين:', headersMatch);
+    }
+    
+    // 7. معالجة البيانات وعدها
+    let productCount = 0;
+    const products = [];
+    
+    if (values.length > 1) {
+      for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        if (row && row.length > 1 && row[1]) { // التأكد من وجود اسم المنتج
+          productCount++;
+          products.push({
+            id: row[0],
+            name: row[1],
+            initialQty: row[2],
+            currentQty: row[3],
+            lastUpdate: row[4]
+          });
+        }
+      }
+    }
+    
+    console.log(`📦 عدد المنتجات الفعلي: ${productCount}`);
+    console.log('🛍️ قائمة المنتجات:', products);
+    
+    return {
+      success: true,
+      message: `تم تشخيص Google Sheets بنجاح. وُجد ${productCount} منتج في شيت ${STOCK_SHEET_NAME}`,
+      data: {
+        spreadsheetTitle: spreadsheet.data.properties?.title,
+        sheetNames,
+        stockSheetExists,
+        totalRows: values.length,
+        headers: values.length > 0 ? values[0] : [],
+        productCount,
+        products,
+        rawData: values
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ خطأ في تشخيص Google Sheets:', error);
+    return {
+      success: false,
+      message: `خطأ في التشخيص: ${error}`,
+      data: { error: error }
     };
   }
 } 

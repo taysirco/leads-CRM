@@ -8,7 +8,8 @@ import {
   getStockReports,
   addStockMovement,
   findProductBySynonyms,
-  testStockSheetConnection
+  testStockSheetConnection,
+  diagnoseGoogleSheets
 } from '../../lib/googleSheets';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -62,6 +63,15 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
         testResult,
         timestamp: new Date().toISOString(),
         message: 'تم تشغيل اختبار التزامن'
+      });
+
+    case 'diagnose':
+      console.log('🩺 بدء اختبار التشخيص للتزامن مع Google Sheets...');
+      const diagnoseResult = await diagnoseGoogleSheets();
+      return res.json({ 
+        diagnoseResult,
+        timestamp: new Date().toISOString(),
+        message: 'تم تشغيل اختبار التشخيص'
       });
 
     case 'items':
