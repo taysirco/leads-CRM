@@ -350,19 +350,19 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
 
   return (
     <>
-      <div className="bg-white shadow-lg rounded-lg p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">تصدير طلبات بوسطة</h2>
+      <div className="bg-white shadow-lg rounded-lg p-3 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 space-y-3 sm:space-y-0">
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900">تصدير طلبات بوسطة</h2>
           <div className="flex gap-2">
             <button
               onClick={onSelectAll}
-              className="px-4 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
+              className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
             >
               تحديد الكل
             </button>
             <button
               onClick={onDeselectAll}
-              className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
             >
               إلغاء التحديد
             </button>
@@ -370,24 +370,24 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
         </div>
 
         {/* Filters Section */}
-        <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gray-50 border border-gray-200 rounded-lg">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">البحث</label>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">البحث</label>
               <input
                 type="text"
                 placeholder="بحث بالاسم أو الهاتف..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">المنتج</label>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">المنتج</label>
               <select
                 value={productFilter}
                 onChange={(e) => setProductFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white text-sm"
               >
                 <option value="" className="text-gray-900 bg-white">كل المنتجات</option>
                 {products.map(product => (
@@ -396,11 +396,11 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">المصدر</label>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">المصدر</label>
               <select
                 value={sourceFilter}
                 onChange={(e) => setSourceFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white text-sm"
               >
                 <option value="" className="text-gray-900 bg-white">كل المصادر</option>
                 {sources.map(source => (
@@ -411,9 +411,9 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
           </div>
         </div>
 
-        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <h3 className="font-medium text-blue-800 mb-2">تصدير الطلبات المؤكدة:</h3>
-          <ul className="text-sm text-blue-700 space-y-1">
+        <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <h3 className="font-medium text-blue-800 mb-2 text-sm sm:text-base">تصدير الطلبات المؤكدة:</h3>
+          <ul className="text-xs sm:text-sm text-blue-700 space-y-1">
             <li>• يمكنك الآن تحديد وتصدير أي طلب مؤكد دون قيود.</li>
             <li>• سيتم استخدام البيانات المتاحة. قد تحتاج إلى إكمال البيانات المفقودة في ملف Excel.</li>
             <li className="font-bold">
@@ -425,28 +425,28 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
           </ul>
         </div>
 
-        <div className="overflow-x-auto mb-6">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto mb-4 sm:mb-6">
+          <table className="w-full text-xs sm:text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-3 py-2 text-right">
+                <th className="px-2 sm:px-3 py-2 text-right">
                   <input
                     type="checkbox"
                     checked={selectedOrders.length === filteredOrders.length && filteredOrders.length > 0}
                     onChange={selectedOrders.length === filteredOrders.length ? onDeselectAll : onSelectAll}
-                    className="rounded"
+                    className="rounded w-3 h-3 sm:w-4 sm:h-4"
                   />
                 </th>
-                <th className="px-3 py-2 text-right font-medium text-gray-700">#</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-700">الاسم</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-700">الهاتف</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-700">واتساب</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-700">المحافظة</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-700">العنوان</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-700">المنتج</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-700">السعر</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-700">الحالة</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-700">إجراءات</th>
+                <th className="px-2 sm:px-3 py-2 text-right font-medium text-gray-700">#</th>
+                <th className="px-2 sm:px-3 py-2 text-right font-medium text-gray-700">الاسم</th>
+                <th className="px-2 sm:px-3 py-2 text-right font-medium text-gray-700 hidden sm:table-cell">الهاتف</th>
+                <th className="px-2 sm:px-3 py-2 text-right font-medium text-gray-700 hidden md:table-cell">واتساب</th>
+                <th className="px-2 sm:px-3 py-2 text-right font-medium text-gray-700 hidden lg:table-cell">المحافظة</th>
+                <th className="px-2 sm:px-3 py-2 text-right font-medium text-gray-700 hidden xl:table-cell">العنوان</th>
+                <th className="px-2 sm:px-3 py-2 text-right font-medium text-gray-700 hidden sm:table-cell">المنتج</th>
+                <th className="px-2 sm:px-3 py-2 text-right font-medium text-gray-700">السعر</th>
+                <th className="px-2 sm:px-3 py-2 text-right font-medium text-gray-700 hidden sm:table-cell">الحالة</th>
+                <th className="px-2 sm:px-3 py-2 text-right font-medium text-gray-700">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -454,43 +454,55 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                 const isLoading = loadingOrders.has(order.id);
                 return (
                   <tr key={order.id} className={`hover:bg-gray-50 ${isLoading ? 'opacity-70' : ''}`}>
-                    <td className="px-3 py-2">
+                    <td className="px-2 sm:px-3 py-2">
                       <input
                         type="checkbox"
                         checked={selectedOrders.includes(order.id)}
                         onChange={() => onSelectOrder(order.id)}
-                        className="rounded"
+                        className="rounded w-3 h-3 sm:w-4 sm:h-4"
                         title={'تحديد الطلب'}
                       />
                     </td>
-                    <td className="px-3 py-2 text-gray-800">{order.id}</td>
-                    <td className="px-3 py-2 text-gray-900 font-medium">{order.name}</td>
-                    <td className="px-3 py-2 text-gray-800 font-mono">{order.phone}</td>
-                    <td className="px-3 py-2 text-gray-800 font-mono">{order.whatsapp || '-'}</td>
-                    <td className="px-3 py-2 text-gray-800">{order.governorate}</td>
-                    <td className="px-3 py-2 text-gray-700 max-w-xs truncate" title={order.address}>{order.address}</td>
-                    <td className="px-3 py-2 text-gray-800">{order.productName}</td>
-                    <td className="px-3 py-2 text-gray-900 font-semibold">{order.totalPrice}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-2 sm:px-3 py-2 text-gray-800 font-medium">{order.id}</td>
+                    <td className="px-2 sm:px-3 py-2">
+                      <div className="flex flex-col">
+                        <span className="text-gray-900 font-medium text-xs sm:text-sm">{order.name}</span>
+                        {/* عرض معلومات إضافية للهواتف المحمولة */}
+                        <div className="sm:hidden text-xs text-gray-600 space-y-1 mt-1">
+                          <div>📞 {order.phone}</div>
+                          <div>📍 {order.governorate}</div>
+                          <div>📦 {order.productName}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-2 sm:px-3 py-2 text-gray-800 font-mono hidden sm:table-cell">{order.phone}</td>
+                    <td className="px-2 sm:px-3 py-2 text-gray-800 font-mono hidden md:table-cell">{order.whatsapp || '-'}</td>
+                    <td className="px-2 sm:px-3 py-2 text-gray-800 hidden lg:table-cell">{order.governorate}</td>
+                    <td className="px-2 sm:px-3 py-2 text-gray-700 max-w-xs truncate hidden xl:table-cell" title={order.address}>{order.address}</td>
+                    <td className="px-2 sm:px-3 py-2 text-gray-800 hidden sm:table-cell">{order.productName}</td>
+                    <td className="px-2 sm:px-3 py-2 text-gray-900 font-semibold">{order.totalPrice}</td>
+                    <td className="px-2 sm:px-3 py-2 hidden sm:table-cell">
                       <StatusBadge status={order.status} />
                     </td>
-                    <td className="px-3 py-2 flex items-center gap-2">
-                      <button
-                        onClick={() => handleRevertStatus(order.id)}
-                        disabled={isLoading}
-                        className="text-sm text-blue-700 hover:text-blue-900 disabled:opacity-50"
-                        title="إعادة الطلب إلى قائمة الطلبات النشطة"
-                      >
-                        {isLoading ? 'جاري...' : 'إعادة للطلبات'}
-                      </button>
-                      <button
-                        onClick={() => openEditModal(order)}
-                        className="text-gray-600 hover:text-blue-700 disabled:opacity-50"
-                        title="تعديل الطلب"
-                        disabled={isLoading}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                      </button>
+                    <td className="px-2 sm:px-3 py-2">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2">
+                        <button
+                          onClick={() => handleRevertStatus(order.id)}
+                          disabled={isLoading}
+                          className="text-xs text-blue-700 hover:text-blue-900 disabled:opacity-50 px-2 py-1 rounded bg-blue-50 hover:bg-blue-100"
+                          title="إعادة الطلب إلى قائمة الطلبات النشطة"
+                        >
+                          {isLoading ? '...' : 'إعادة'}
+                        </button>
+                        <button
+                          onClick={() => openEditModal(order)}
+                          className="text-gray-600 hover:text-blue-700 disabled:opacity-50 p-1"
+                          title="تعديل الطلب"
+                          disabled={isLoading}
+                        >
+                          <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -499,31 +511,33 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
           </table>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-600">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+          <div className="text-xs sm:text-sm text-gray-600">
             تم تحديد {selectedOrders.length} طلب للتصدير
           </div>
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full sm:w-auto">
             <button
               onClick={handleArchiveSelected}
               disabled={selectedOrders.length === 0 || isArchiving}
-              className="px-6 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50 flex items-center gap-2"
+              className="px-4 sm:px-6 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50 flex items-center justify-center gap-2 text-sm order-2 sm:order-1"
             >
-              {isArchiving && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
-              أرشفة ما تم تصديره (تم الشحن)
+              {isArchiving && <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white"></div>}
+              <span className="hidden sm:inline">أرشفة ما تم تصديره (تم الشحن)</span>
+              <span className="sm:hidden">أرشفة المحدد</span>
             </button>
             <button
               onClick={handleExport}
               disabled={selectedOrders.length === 0 || isExporting}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-4 sm:px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm order-1 sm:order-2"
             >
               {isExporting && (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white"></div>
               )}
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              تصدير ملف بوسطة
+              <span className="hidden sm:inline">تصدير ملف بوسطة</span>
+              <span className="sm:hidden">تصدير</span>
             </button>
           </div>
         </div>
@@ -531,34 +545,34 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       
       {/* Edit Modal (Full version) */}
       {editModalOpen && editingOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">تعديل تفاصيل الطلب #{editingOrder.id}</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-lg p-3 sm:p-6 w-full max-w-xs sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-3 sm:mb-4">
+              <h3 className="text-base sm:text-lg font-semibold">تعديل تفاصيل الطلب #{editingOrder.id}</h3>
               <button onClick={() => setEditModalOpen(false)} className="text-gray-500 hover:text-gray-700">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">الاسم</label><input type="text" value={editingOrder.name} onChange={(e) => handleUpdateField('name', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف</label><input type="text" value={editingOrder.phone} onChange={(e) => handleUpdateField('phone', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">رقم الواتساب</label><input type="text" value={editingOrder.whatsapp} onChange={(e) => handleUpdateField('whatsapp', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">المحافظة</label><input type="text" value={editingOrder.governorate} onChange={(e) => handleUpdateField('governorate', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">المنطقة</label><input type="text" value={editingOrder.area} onChange={(e) => handleUpdateField('area', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">اسم المنتج</label><input type="text" value={editingOrder.productName} onChange={(e) => handleUpdateField('productName', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">الكمية</label><input type="text" value={editingOrder.quantity} onChange={(e) => handleUpdateField('quantity', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">السعر الإجمالي</label><input type="text" value={editingOrder.totalPrice} onChange={(e) => handleUpdateField('totalPrice', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">المصدر</label><input type="text" value={editingOrder.source} onChange={(e) => handleUpdateField('source', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
-              <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">العنوان الكامل</label><textarea value={editingOrder.address} onChange={(e) => handleUpdateField('address', e.target.value)} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
-              <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">تفاصيل الطلب</label><textarea value={editingOrder.orderDetails} onChange={(e) => handleUpdateField('orderDetails', e.target.value)} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
-              <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">الملاحظات</label><textarea value={editingOrder.notes} onChange={(e) => handleUpdateField('notes', e.target.value)} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900" /></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+              <div><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">الاسم</label><input type="text" value={editingOrder.name} onChange={(e) => handleUpdateField('name', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
+              <div><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">رقم الهاتف</label><input type="text" value={editingOrder.phone} onChange={(e) => handleUpdateField('phone', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
+              <div><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">رقم الواتساب</label><input type="text" value={editingOrder.whatsapp} onChange={(e) => handleUpdateField('whatsapp', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
+              <div><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">المحافظة</label><input type="text" value={editingOrder.governorate} onChange={(e) => handleUpdateField('governorate', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
+              <div><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">المنطقة</label><input type="text" value={editingOrder.area} onChange={(e) => handleUpdateField('area', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
+              <div><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">اسم المنتج</label><input type="text" value={editingOrder.productName} onChange={(e) => handleUpdateField('productName', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
+              <div><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">الكمية</label><input type="text" value={editingOrder.quantity} onChange={(e) => handleUpdateField('quantity', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
+              <div><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">السعر الإجمالي</label><input type="text" value={editingOrder.totalPrice} onChange={(e) => handleUpdateField('totalPrice', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
+              <div><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">المصدر</label><input type="text" value={editingOrder.source} onChange={(e) => handleUpdateField('source', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
+              <div className="md:col-span-2"><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">العنوان الكامل</label><textarea value={editingOrder.address} onChange={(e) => handleUpdateField('address', e.target.value)} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
+              <div className="md:col-span-2"><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">تفاصيل الطلب</label><textarea value={editingOrder.orderDetails} onChange={(e) => handleUpdateField('orderDetails', e.target.value)} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
+              <div className="md:col-span-2"><label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">الملاحظات</label><textarea value={editingOrder.notes} onChange={(e) => handleUpdateField('notes', e.target.value)} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm" /></div>
             </div>
             
-            <div className="flex justify-end gap-4 mt-6">
-              <button onClick={() => setEditModalOpen(false)} disabled={loadingOrders.has(editingOrder.id)} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">إلغاء</button>
-              <button onClick={saveOrder} disabled={loadingOrders.has(editingOrder.id)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
-                {loadingOrders.has(editingOrder.id) && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
+            <div className="flex flex-col sm:flex-row justify-end gap-3 sm:gap-4 mt-4 sm:mt-6">
+              <button onClick={() => setEditModalOpen(false)} disabled={loadingOrders.has(editingOrder.id)} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 order-2 sm:order-1 text-sm">إلغاء</button>
+              <button onClick={saveOrder} disabled={loadingOrders.has(editingOrder.id)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 order-1 sm:order-2 text-sm">
+                {loadingOrders.has(editingOrder.id) && <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white"></div>}
                 حفظ التغييرات
               </button>
             </div>

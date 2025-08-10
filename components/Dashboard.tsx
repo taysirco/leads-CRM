@@ -13,32 +13,32 @@ interface StatCardProps {
 }
 
 const StatCard: React.FC<StatCardProps> = ({ label, value, icon, bgColor = 'bg-white', textColor = 'text-gray-900' }) => (
-  <div className={`${bgColor} rounded-lg shadow-sm border p-6 text-center`}>
-    <div className={`text-4xl mb-2`}>{icon}</div>
-    <div className={`text-sm font-medium text-gray-600 mb-1`}>{label}</div>
-    <div className={`text-2xl font-bold ${textColor}`}>{value}</div>
+  <div className={`${bgColor} rounded-lg shadow-sm border p-4 sm:p-6 text-center`}>
+    <div className={`text-2xl sm:text-4xl mb-2`}>{icon}</div>
+    <div className={`text-xs sm:text-sm font-medium text-gray-600 mb-1`}>{label}</div>
+    <div className={`text-lg sm:text-2xl font-bold ${textColor}`}>{value}</div>
   </div>
 );
 
 const ReportCard: React.FC<{ title: string; stats: any }> = ({ title, stats }) => (
-  <div className="bg-white border rounded-lg p-6 shadow-sm">
-    <h3 className="font-semibold text-lg mb-4 text-gray-800">{title}</h3>
-    <div className="space-y-3">
+  <div className="bg-white border rounded-lg p-4 sm:p-6 shadow-sm">
+    <h3 className="font-semibold text-base sm:text-lg mb-4 text-gray-800">{title}</h3>
+    <div className="space-y-2 sm:space-y-3">
       <div className="flex justify-between">
-        <span className="text-gray-600">إجمالي:</span>
-        <span className="font-semibold">{stats.total}</span>
+        <span className="text-sm text-gray-600">إجمالي:</span>
+        <span className="font-semibold text-sm">{stats.total}</span>
       </div>
       <div className="flex justify-between">
-        <span className="text-gray-600">مؤكدة:</span>
-        <span className="font-semibold text-green-600">{stats.confirmed}</span>
+        <span className="text-sm text-gray-600">مؤكدة:</span>
+        <span className="font-semibold text-sm text-green-600">{stats.confirmed}</span>
       </div>
       <div className="flex justify-between">
-        <span className="text-gray-600">مرفوضة:</span>
-        <span className="font-semibold text-red-600">{stats.rejected}</span>
+        <span className="text-sm text-gray-600">مرفوضة:</span>
+        <span className="font-semibold text-sm text-red-600">{stats.rejected}</span>
       </div>
       <div className="flex justify-between">
-        <span className="text-gray-600">معدل التحويل:</span>
-        <span className="font-semibold text-blue-600">
+        <span className="text-sm text-gray-600">معدل التحويل:</span>
+        <span className="font-semibold text-sm text-blue-600">
           {stats.total > 0 ? ((stats.confirmed / stats.total) * 100).toFixed(1) : 0}%
         </span>
       </div>
@@ -148,7 +148,7 @@ export default function Dashboard() {
       };
     };
 
-    const balance = checkDistributionBalance();
+    const balanceInfo = checkDistributionBalance();
 
     // حساب الإحصائيات الإجمالية بالمنطق الصحيح
     const overallStats = {
@@ -185,24 +185,19 @@ export default function Dashboard() {
       : '0.0';
 
     return (
-      <div className="space-y-8">
-        {/* Employee Reports Header */}
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-gray-900">📈 تقارير الموظفين</h2>
-          <div className="flex items-center gap-4">
-            <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-              balance.isBalanced 
-                ? 'bg-green-100 text-green-800' 
-                : 'bg-red-100 text-red-800'
-            }`}>
-              {balance.isBalanced ? '✅ توزيع متوازن' : '⚠️ توزيع غير متوازن'}
+      <div className="space-y-4 sm:space-y-6">
+        <div className="bg-gradient-to-r from-emerald-50 to-blue-50 p-4 sm:p-6 rounded-lg border border-emerald-200">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-2 sm:space-y-0">
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">📊 تقارير الموظفين - لوحة المراقبة</h2>
+              <p className="text-sm text-gray-700">مراقبة شاملة لأداء فريق الكول سنتر</p>
             </div>
-            <span className="text-sm text-gray-700">آخر تحديث: {new Date().toLocaleTimeString('ar-EG')}</span>
+            <span className="text-xs sm:text-sm text-gray-700">آخر تحديث: {new Date().toLocaleTimeString('ar-EG')}</span>
           </div>
         </div>
 
         {/* إحصائيات إجمالية بالمنطق الصحيح */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <StatCard 
             label="إجمالي الليدز المعينة" 
             value={assignedLeads} 
@@ -233,11 +228,11 @@ export default function Dashboard() {
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
           {/* تقرير مفصل لكل موظف */}
           <div>
-            <h3 className="font-semibold mb-4 text-lg text-gray-900">📈 أداء الموظفين المفصل</h3>
-            <div className="space-y-4">
+            <h3 className="font-semibold mb-4 text-base sm:text-lg text-gray-900">📈 أداء الموظفين المفصل</h3>
+            <div className="space-y-3 sm:space-y-4">
               {employees.map(emp => {
                 const empData = byAssignee[emp] || { total: 0, confirmed: 0, rejected: 0, pending: 0, noAnswer: 0, contacted: 0, shipped: 0, new: 0, today: 0 };
                 const conversionRate = getConversionRate(empData);
@@ -249,13 +244,13 @@ export default function Dashboard() {
                 const realWaiting = getRealWaiting(empData);
                 
                 return (
-                  <div key={emp} className="border rounded-lg p-4 bg-gray-50">
-                    <div className="flex justify-between items-start mb-3">
+                  <div key={emp} className="border rounded-lg p-3 sm:p-4 bg-gray-50">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 space-y-2 sm:space-y-0">
                       <div>
-                        <h4 className="font-bold text-lg text-gray-900">{emp === 'heba.' ? '👩‍💼 هبة' : emp === 'ahmed.' ? '👨‍💼 أحمد' : '👨‍💼 رائد'}</h4>
-                        <p className="text-sm text-gray-700">نصيب: {share}% من الليدز المعينة ({empData.total} ليد)</p>
+                        <h4 className="font-bold text-base sm:text-lg text-gray-900">{emp === 'heba.' ? '👩‍💼 هبة' : emp === 'ahmed.' ? '👨‍💼 أحمد' : '👨‍💼 رائد'}</h4>
+                        <p className="text-xs sm:text-sm text-gray-700">نصيب: {share}% من الليدز المعينة ({empData.total} ليد)</p>
                       </div>
-                      <div className="text-right">
+                      <div className="sm:text-right">
                         <div className={`px-2 py-1 rounded text-xs font-medium ${
                           parseFloat(conversionRate) >= 25 ? 'bg-green-100 text-green-800' :
                           parseFloat(conversionRate) >= 15 ? 'bg-yellow-100 text-yellow-800' :
@@ -267,11 +262,11 @@ export default function Dashboard() {
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-3 gap-3 text-sm mb-3">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm mb-3">
                       <div className="text-center bg-green-100 p-2 rounded">
                         <p className="font-semibold text-green-800">{realConfirmed}</p>
                         <p className="text-xs text-green-700">مؤكد</p>
-                        <p className="text-xs text-gray-600">({empData.confirmed} + {empData.shipped})</p>
+                        <p className="text-xs text-gray-600 hidden sm:block">({empData.confirmed} + {empData.shipped})</p>
                       </div>
                       <div className="text-center bg-red-100 p-2 rounded">
                         <p className="font-semibold text-red-800">{empData.rejected}</p>
@@ -283,21 +278,21 @@ export default function Dashboard() {
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-3 gap-4 text-xs text-gray-700 pt-3 border-t">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-4 text-xs text-gray-700 pt-3 border-t">
                       <div className="text-center">
-                        <span className="font-medium text-gray-800">معدل التحويل</span>
+                        <span className="font-medium text-gray-800 text-xs">معدل التحويل</span>
                         <div className="font-bold text-green-700">{conversionRate}%</div>
-                        <span className="text-gray-600">({realConfirmed}/{empData.total})</span>
+                        <span className="text-gray-600 text-xs hidden sm:block">({realConfirmed}/{empData.total})</span>
                       </div>
                       <div className="text-center">
-                        <span className="font-medium text-gray-800">معدل الحسم</span>
+                        <span className="font-medium text-gray-800 text-xs">معدل الحسم</span>
                         <div className="font-bold text-blue-700">{decisionRate}%</div>
-                        <span className="text-gray-600">تم البت فيه</span>
+                        <span className="text-gray-600 text-xs hidden sm:block">تم البت فيه</span>
                       </div>
                       <div className="text-center">
-                        <span className="font-medium text-gray-800">في الانتظار</span>
+                        <span className="font-medium text-gray-800 text-xs">في الانتظار</span>
                         <div className="font-bold text-yellow-700">{waitingRate}%</div>
-                        <span className="text-gray-600">يحتاج متابعة</span>
+                        <span className="text-gray-600 text-xs hidden sm:block">يحتاج متابعة</span>
                       </div>
                     </div>
                   </div>
@@ -337,18 +332,27 @@ export default function Dashboard() {
                               : '0.0';
                             
                             return (
-                              <div key={product} className="flex justify-between items-center text-sm py-2 px-3 bg-gray-50 rounded">
+                              <div key={product} className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-sm py-2 px-3 bg-gray-50 rounded space-y-2 sm:space-y-0">
                                 <div className="flex-1">
-                                  <p className="font-medium text-gray-900 truncate">{product}</p>
+                                  <p className="font-medium text-gray-900 text-xs sm:text-sm">{product}</p>
                                   <p className="text-xs text-gray-600">
                                     تحويل: {productConversion}% | حسم: {decisionRate}% 
-                                    ({decided}/{stats.total})
+                                    <span className="hidden sm:inline">({decided}/{stats.total})</span>
                                   </p>
                                 </div>
-                                <div className="text-right space-x-2 rtl:space-x-reverse">
-                                  <span className="inline-block w-8 text-center text-green-700 font-medium" title="مؤكد (تأكيد + شحن)">{realConfirmed}</span>
-                                  <span className="inline-block w-8 text-center text-red-700 font-medium">{stats.rejected}</span>
-                                  <span className="inline-block w-10 text-center text-gray-800 font-medium text-xs border-r pr-2">{stats.total}</span>
+                                <div className="flex justify-between sm:justify-end space-x-4 rtl:space-x-reverse text-xs sm:text-sm">
+                                  <div className="text-center">
+                                    <span className="text-green-700 font-medium block" title="مؤكد (تأكيد + شحن)">{realConfirmed}</span>
+                                    <span className="text-gray-500 text-xs">مؤكد</span>
+                                  </div>
+                                  <div className="text-center">
+                                    <span className="text-red-700 font-medium block">{stats.rejected}</span>
+                                    <span className="text-gray-500 text-xs">مرفوض</span>
+                                  </div>
+                                  <div className="text-center">
+                                    <span className="text-gray-800 font-medium block">{stats.total}</span>
+                                    <span className="text-gray-500 text-xs">إجمالي</span>
+                                  </div>
                                 </div>
                               </div>
                             );
@@ -363,25 +367,25 @@ export default function Dashboard() {
         </div>
 
         {/* معلومات إضافية وإحصائيات تفصيلية محسنة */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-purple-50 p-4 rounded-lg">
-            <h4 className="font-semibold text-purple-900 mb-2">📋 ملخص الحالات</h4>
-            <div className="space-y-1 text-sm">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+          <div className="bg-purple-50 p-3 sm:p-4 rounded-lg">
+            <h4 className="font-semibold text-purple-900 mb-2 text-sm sm:text-base">📋 ملخص الحالات</h4>
+            <div className="space-y-1 text-xs sm:text-sm">
               <div className="flex justify-between"><span className="text-gray-700">مؤكد (تأكيد + شحن):</span><span className="font-bold text-green-700">{overallStats.totalConfirmed}</span></div>
-              <div className="flex justify-between pl-4"><span className="text-gray-600">- تأكيد فقط:</span><span className="text-green-600">{overallStats.totalConfirmedOnly}</span></div>
-              <div className="flex justify-between pl-4"><span className="text-gray-600">- مشحون:</span><span className="text-green-600">{overallStats.totalShipped}</span></div>
+              <div className="flex justify-between pl-2 sm:pl-4"><span className="text-gray-600">- تأكيد فقط:</span><span className="text-green-600">{overallStats.totalConfirmedOnly}</span></div>
+              <div className="flex justify-between pl-2 sm:pl-4"><span className="text-gray-600">- مشحون:</span><span className="text-green-600">{overallStats.totalShipped}</span></div>
               <div className="flex justify-between"><span className="text-gray-700">مرفوض:</span><span className="font-bold text-red-700">{overallStats.totalRejected}</span></div>
               <div className="flex justify-between"><span className="text-gray-700">في الانتظار:</span><span className="font-bold text-yellow-700">{overallStats.totalWaiting}</span></div>
-              <div className="flex justify-between pl-4"><span className="text-gray-600">- جديد:</span><span className="text-yellow-600">{overallStats.totalNew}</span></div>
-              <div className="flex justify-between pl-4"><span className="text-gray-600">- لم يرد:</span><span className="text-yellow-600">{overallStats.totalNoAnswer}</span></div>
-              <div className="flex justify-between pl-4"><span className="text-gray-600">- انتظار تأكيد:</span><span className="text-yellow-600">{overallStats.totalPending}</span></div>
-              <div className="flex justify-between pl-4"><span className="text-gray-600">- تواصل واتساب:</span><span className="text-yellow-600">{overallStats.totalContacted}</span></div>
+              <div className="flex justify-between pl-2 sm:pl-4"><span className="text-gray-600">- جديد:</span><span className="text-yellow-600">{overallStats.totalNew}</span></div>
+              <div className="flex justify-between pl-2 sm:pl-4"><span className="text-gray-600">- لم يرد:</span><span className="text-yellow-600">{overallStats.totalNoAnswer}</span></div>
+              <div className="flex justify-between pl-2 sm:pl-4"><span className="text-gray-600">- انتظار تأكيد:</span><span className="text-yellow-600">{overallStats.totalPending}</span></div>
+              <div className="flex justify-between pl-2 sm:pl-4"><span className="text-gray-600">- تواصل واتساب:</span><span className="text-yellow-600">{overallStats.totalContacted}</span></div>
             </div>
           </div>
           
-          <div className="bg-indigo-50 p-4 rounded-lg">
-            <h4 className="font-semibold text-indigo-900 mb-2">📊 معدلات الأداء</h4>
-            <div className="space-y-1 text-sm">
+          <div className="bg-indigo-50 p-3 sm:p-4 rounded-lg">
+            <h4 className="font-semibold text-indigo-900 mb-2 text-sm sm:text-base">📊 معدلات الأداء</h4>
+            <div className="space-y-1 text-xs sm:text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-700">معدل التحويل العام:</span>
                 <span className="font-bold text-green-700">{overallConfirmationRate}%</span>
@@ -401,37 +405,46 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="bg-cyan-50 p-4 rounded-lg">
-            <h4 className="font-semibold text-cyan-900 mb-2">⏱️ حالة العمل</h4>
-            <div className="space-y-1 text-sm">
+          <div className="bg-teal-50 p-3 sm:p-4 rounded-lg">
+            <h4 className="font-semibold text-teal-900 mb-2 text-sm sm:text-base">⚖️ توازن التوزيع</h4>
+            <div className="space-y-1 text-xs sm:text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-700">تم البت فيه:</span>
-                <span className="font-bold text-blue-700">{overallStats.totalConfirmed + overallStats.totalRejected}</span>
+                <span className="text-gray-700">حالة التوزيع:</span>
+                <span className={`font-bold ${balanceInfo.isBalanced ? 'text-green-700' : 'text-red-700'}`}>
+                  {balanceInfo.isBalanced ? '✅ متوازن' : '⚠️ غير متوازن'}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-700">يحتاج متابعة:</span>
-                <span className="font-bold text-orange-700">{overallStats.totalWaiting}</span>
+                <span className="text-gray-700">فارق التوزيع:</span>
+                <span className="font-bold text-gray-800">{balanceInfo.difference} ليد</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-700">إنتاجية اليوم:</span>
-                <span className="font-bold text-purple-700">{employees.reduce((sum, emp) => sum + (byAssignee[emp]?.today || 0), 0)}</span>
+                <span className="text-gray-700">الحد المسموح:</span>
+                <span className="font-bold text-gray-800">{balanceInfo.maxAllowed} ليد</span>
+              </div>
+              <div className="mt-2 pt-2 border-t border-teal-200">
+                <div className="grid grid-cols-3 gap-1 text-xs">
+                  <div className="text-center"><span className="text-gray-600">هبة</span><div className="font-bold">{balanceInfo.counts['heba.']}</div></div>
+                  <div className="text-center"><span className="text-gray-600">أحمد</span><div className="font-bold">{balanceInfo.counts['ahmed.']}</div></div>
+                  <div className="text-center"><span className="text-gray-600">رائد</span><div className="font-bold">{balanceInfo.counts['raed.']}</div></div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
         {/* تحذيرات وتوصيات */}
-        {!balance.isBalanced && (
-          <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-            <h4 className="font-semibold text-orange-900 mb-2">⚠️ تحذير: عدم توازن في التوزيع</h4>
-            <p className="text-sm text-orange-800 mb-2">
-              هناك فارق كبير في توزيع الليدز بين الموظفين. الفارق الحالي: {balance.difference} (الحد المسموح: {balance.maxAllowed})
+        {!balanceInfo.isBalanced && (
+          <div className="p-3 sm:p-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <h4 className="font-semibold text-orange-900 mb-2 text-sm sm:text-base">⚠️ تحذير: عدم توازن في التوزيع</h4>
+            <p className="text-xs sm:text-sm text-orange-800 mb-2">
+              هناك فارق كبير في توزيع الليدز بين الموظفين. الفارق الحالي: {balanceInfo.difference} (الحد المسموح: {balanceInfo.maxAllowed})
             </p>
-            <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 text-xs sm:text-sm">
               {employees.map(emp => (
                 <div key={emp} className="text-center">
-                  <p className="font-medium text-gray-800">{emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'رائد'}</p>
-                  <p className="text-lg font-bold text-gray-900">{balance.counts[emp]}</p>
+                  <p className="font-medium text-gray-800 text-xs sm:text-sm">{emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'رائد'}</p>
+                  <p className="text-base sm:text-lg font-bold text-gray-900">{balanceInfo.counts[emp]}</p>
                 </div>
               ))}
             </div>
@@ -445,11 +458,11 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-8 sm:space-y-12">
       {/* لوحة التحكم الأساسية */}
       <div>
-        <h2 className="text-2xl font-bold mb-6 text-gray-800 border-b pb-2">📊 نظرة عامة</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-800 border-b pb-2">📊 نظرة عامة</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <StatCard label="إجمالي الطلبات" value={overall.total} icon="📊" />
           <StatCard label="طلبات جديدة" value={overall.new} icon="🆕" />
           <StatCard label="مؤكدة" value={overall.confirmed} icon="✅" />
@@ -462,8 +475,8 @@ export default function Dashboard() {
 
       {/* تقارير حسب المنتج */}
       <div>
-        <h2 className="text-2xl font-bold mb-6 text-gray-800 border-b pb-2">🛍️ تقارير حسب المنتج</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-800 border-b pb-2">🛍️ تقارير حسب المنتج</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
           {Object.entries(byProduct).map(([productName, stats]: [string, any]) => (
             <ReportCard key={productName} title={productName} stats={stats} />
           ))}
@@ -472,8 +485,8 @@ export default function Dashboard() {
 
       {/* تقارير حسب المصدر */}
       <div>
-        <h2 className="text-2xl font-bold mb-6 text-gray-800 border-b pb-2">🌐 تقارير حسب المصدر</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-800 border-b pb-2">📈 تقارير حسب المصدر</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
           {Object.entries(bySource).map(([sourceName, stats]: [string, any]) => (
             <ReportCard key={sourceName} title={sourceName} stats={stats} />
           ))}

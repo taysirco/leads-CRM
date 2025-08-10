@@ -295,15 +295,15 @@ export default function Home() {
       />
 
       <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto p-4">
-          <header className="mb-8">
-            <div className="flex items-center justify-between">
+        <div className="max-w-7xl mx-auto p-2 sm:p-4">
+          <header className="mb-4 sm:mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">نظام إدارة الطلبات</h1>
-                <p className="text-gray-600 mt-2">إدارة شاملة لطلبات العملاء مع تزامن فوري مع Google Sheets</p>
+                <h1 className="text-xl sm:text-3xl font-bold text-gray-900">نظام إدارة الطلبات</h1>
+                <p className="text-gray-600 mt-1 sm:mt-2 text-sm sm:text-base">إدارة شاملة لطلبات العملاء مع تزامن فوري مع Google Sheets</p>
                 {user && (
-                  <div className="flex items-center gap-4 mt-2">
-                    <span className="text-sm text-blue-600 font-medium">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2">
+                    <span className="text-xs sm:text-sm text-blue-600 font-medium">
                       مرحباً {user.displayName || user.username} ({user.role === 'admin' ? 'مدير النظام' : 'موظف كول سنتر'})
                     </span>
                     {user.role === 'admin' && (
@@ -317,9 +317,9 @@ export default function Home() {
                 )}
               </div>
               {user?.role === 'admin' && (
-                <div className="flex items-center gap-2">
-                  <div className="text-right text-sm text-gray-600 mr-4">
-                    <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                  <div className="text-right text-xs sm:text-sm text-gray-600 order-2 sm:order-1 sm:mr-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-2 gap-1 sm:gap-2 text-xs">
                       <span>إجمالي: {distributionStats.total}</span>
                       <span className={distributionStats.counts['غير معين'] > 0 ? 'text-orange-600 font-medium' : ''}>
                         غير معين: {distributionStats.counts['غير معين']}
@@ -332,32 +332,34 @@ export default function Home() {
                       </span>
                     </div>
                   </div>
-                  <button
-                    onClick={handleAssign}
-                    className={`px-4 py-2 rounded-xl font-medium transition-colors ${
-                      distributionStats.counts['غير معين'] > 0 || !distributionStats.isBalanced
-                        ? 'bg-red-500 hover:bg-red-600 text-white shadow-md animate-pulse'
-                        : 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                    }`}
-                    title={`توزيع تلقائي لليدز غير المعيّنة (${distributionStats.counts['غير معين']} ليد)`}
-                  >
-                    {distributionStats.counts['غير معين'] > 0 
-                      ? `⚡ توزيع ${distributionStats.counts['غير معين']} ليد` 
-                      : '🔄 إعادة توزيع'}
-                  </button>
-                  <button
-                    onClick={() => setShowSettings(true)}
-                    className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-4 py-2 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
-                    title="إعدادات الإشعارات"
-                  >
-                    الإعدادات
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-2 order-1 sm:order-2">
+                    <button
+                      onClick={handleAssign}
+                      className={`px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-colors text-xs sm:text-sm ${
+                        distributionStats.counts['غير معين'] > 0 || !distributionStats.isBalanced
+                          ? 'bg-red-500 hover:bg-red-600 text-white shadow-md animate-pulse'
+                          : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                      }`}
+                      title={`توزيع تلقائي لليدز غير المعيّنة (${distributionStats.counts['غير معين']} ليد)`}
+                    >
+                      {distributionStats.counts['غير معين'] > 0 
+                        ? `⚡ توزيع ${distributionStats.counts['غير معين']} ليد` 
+                        : '🔄 إعادة توزيع'}
+                    </button>
+                    <button
+                      onClick={() => setShowSettings(true)}
+                      className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2 text-xs sm:text-sm"
+                      title="إعدادات الإشعارات"
+                    >
+                      الإعدادات
+                    </button>
+                  </div>
                 </div>
               )}
               {user?.role !== 'admin' && (
                 <button
                   onClick={() => setShowSettings(true)}
-                  className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-4 py-2 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
+                  className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2 text-xs sm:text-sm self-start sm:self-auto"
                   title="إعدادات الإشعارات"
                 >
                   الإعدادات
@@ -368,8 +370,8 @@ export default function Home() {
 
           <LiveStats orders={orders} />
 
-          <div className="bg-white rounded-lg shadow-sm mb-6 p-1">
-            <nav className="flex space-x-1 space-x-reverse">
+          <div className="bg-white rounded-lg shadow-sm mb-4 sm:mb-6 p-1">
+            <nav className="flex flex-wrap sm:flex-nowrap gap-1 sm:space-x-1 sm:space-x-reverse">
               {[
                 { id: 'dashboard', name: 'لوحة التحكم', icon: '📊' },
                 { id: 'orders', name: 'الطلبات النشطة', icon: '📋' },
@@ -381,26 +383,34 @@ export default function Home() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-all ${
+                  className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-md font-medium transition-all text-xs sm:text-sm ${
                     activeTab === tab.id
                       ? 'bg-blue-100 text-blue-700 shadow-sm'
                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                   }`}
                 >
-                  <span>{tab.icon}</span>
-                  <span>{tab.name}</span>
+                  <span className="text-xs sm:text-base">{tab.icon}</span>
+                  <span className="hidden sm:inline">{tab.name}</span>
+                  <span className="sm:hidden text-xs">{
+                    tab.id === 'dashboard' ? 'لوحة' :
+                    tab.id === 'orders' ? 'نشطة' :
+                    tab.id === 'follow-up' ? 'متابعة' :
+                    tab.id === 'export' ? 'تصدير' :
+                    tab.id === 'archive' ? 'شحن' :
+                    'مهملة'
+                  }</span>
                   {(tab.id === 'orders' && tabCounts.orders > 0) && (
-                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                    <span className="bg-red-500 text-white text-xs rounded-full px-1 sm:px-2 py-1 min-w-[16px] sm:min-w-[20px] text-center text-xs">
                       {tabCounts.orders}
                     </span>
                   )}
                   {(tab.id === 'follow-up' && tabCounts.followUp > 0) && (
-                    <span className="bg-orange-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                    <span className="bg-orange-500 text-white text-xs rounded-full px-1 sm:px-2 py-1 min-w-[16px] sm:min-w-[20px] text-center text-xs">
                       {tabCounts.followUp}
                     </span>
                   )}
                   {(tab.id === 'export' && tabCounts.export > 0) && (
-                    <span className="bg-green-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                    <span className="bg-green-500 text-white text-xs rounded-full px-1 sm:px-2 py-1 min-w-[16px] sm:min-w-[20px] text-center text-xs">
                       {tabCounts.export}
                     </span>
                   )}
