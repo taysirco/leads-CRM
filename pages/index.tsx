@@ -117,7 +117,7 @@ export default function Home() {
       if (data.distributed > 0) {
         const distDetails = Object.entries(data.currentDistribution || {})
           .map(([emp, count]) => {
-            const name = emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'رائد';
+            const name = emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'عائشة';
             return `${name}: ${count}`;
           })
           .join(' | ');
@@ -236,8 +236,8 @@ export default function Home() {
 
   // حساب إحصائيات التوزيع للعرض
   const distributionStats = useMemo(() => {
-    const employees = ['heba.', 'ahmed.', 'raed.'];
-    const counts = { 'heba.': 0, 'ahmed.': 0, 'raed.': 0, 'غير معين': 0 };
+    const employees = ['heba.', 'ahmed.', 'aisha.'];
+    const counts = { 'heba.': 0, 'ahmed.': 0, 'aisha.': 0, 'غير معين': 0 };
     
     orders.forEach((order: any) => {
       const assignee = (order.assignee || '').trim();
@@ -249,7 +249,7 @@ export default function Home() {
     });
     
     const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
-    const employeeCounts = [counts['heba.'], counts['ahmed.'], counts['raed.']];
+    const employeeCounts = [counts['heba.'], counts['ahmed.'], counts['aisha.']];
     const max = Math.max(...employeeCounts);
     const min = Math.min(...employeeCounts);
     const imbalance = max - min;
@@ -327,7 +327,7 @@ export default function Home() {
                       </span>
                       <span>هبة: {distributionStats.counts['heba.']}</span>
                       <span>أحمد: {distributionStats.counts['ahmed.']}</span>
-                      <span>رائد: {distributionStats.counts['raed.']}</span>
+                      <span>عائشة: {distributionStats.counts['aisha.']}</span>
                       <span className="text-gray-500">
                         حد الفارق: {distributionStats.maxAllowed}
                       </span>

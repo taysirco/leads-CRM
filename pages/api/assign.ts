@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { fetchLeads, updateLeadsBatch, LeadRow } from '../../lib/googleSheets';
 
-const EMPLOYEES = ['heba.', 'ahmed.', 'raed.'];
+const EMPLOYEES = ['heba.', 'ahmed.', 'aisha.'];
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -18,7 +18,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const leads = await fetchLeads();
 
     // حساب التوزيع الحالي
-    const currentCounts = { 'heba.': 0, 'ahmed.': 0, 'raed.': 0 };
+    const currentCounts = { 'heba.': 0, 'ahmed.': 0, 'aisha.': 0 };
     for (const lead of leads) {
       const assignee = (lead.assignee || '').trim();
       if (EMPLOYEES.includes(assignee)) {

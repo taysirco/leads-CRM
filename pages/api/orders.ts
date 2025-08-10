@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { fetchLeads, updateLead, getOrderStatistics, LeadRow, updateLeadsBatch } from '../../lib/googleSheets';
 import { deductStock } from '../../lib/googleSheets';
 
-const EMPLOYEES = ['heba.', 'ahmed.', 'raed.'];
+const EMPLOYEES = ['heba.', 'ahmed.', 'aisha.'];
 let lastAutoAssignAt = 0; // ms timestamp
 let autoAssignInProgress = false; // منع التداخل
 
@@ -29,7 +29,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         autoAssignInProgress = true;
         try {
           // حساب التوزيع الحالي
-          const currentAssignments = { 'heba.': 0, 'ahmed.': 0, 'raed.': 0 };
+          const currentAssignments = { 'heba.': 0, 'ahmed.': 0, 'aisha.': 0 };
           for (const lead of leads) {
             const assignee = (lead.assignee || '').trim();
             if (EMPLOYEES.includes(assignee)) {

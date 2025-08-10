@@ -13,17 +13,10 @@ import {
 } from '../../lib/googleSheets';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // التحقق من المصادقة
-  const authToken = req.cookies.auth_token;
-  const userRole = req.cookies.user_role;
-  
-  if (!authToken) {
-    return res.status(401).json({ error: 'غير مصرح' });
-  }
-
   // التحقق من صلاحيات الأدمن
-  if (userRole !== 'admin') {
-    return res.status(403).json({ error: 'صلاحية الأدمن فقط' });
+  const role = req.cookies['user_role'] || 'guest';
+  if (role !== 'admin') {
+    return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
   }
 
   try {
@@ -37,205 +30,345 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       default:
         return res.status(405).json({ error: 'Method not allowed' });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Stock API error:', error);
     return res.status(500).json({ error: 'خطأ في الخادم' });
   }
 }
 
-// GET: جلب المخزون والتقارير
+// GET: جلب المخزون والتقارير مع دعم فرض التحديث
 async function handleGet(req: NextApiRequest, res: NextApiResponse) {
   const { action, force } = req.query;
+  const forceRefresh = force === 'true';
+  
+  console.log(`📡 Stock API GET: action=${action}, force=${forceRefresh}`);
 
   switch (action) {
+    case 'items':
+      console.log('📦 جلب بيانات المخزون...');
+      if (forceRefresh) {
+        console.log('🔄 فرض تحديث البيانات من Google Sheets...');
+      }
+      const stockData = await fetchStock(forceRefresh);
+      console.log(`📊 تم جلب ${stockData.stockItems?.length || 0} منتج`);
+      return res.status(200).json(stockData);
+
     case 'alerts':
+      console.log('⚠️ جلب تنبيهات المخزون...');
       const alerts = await getStockAlerts();
-      return res.json({ alerts });
+      console.log(`🚨 عدد التنبيهات: ${alerts?.length || 0}`);
+      return res.status(200).json({ alerts });
 
     case 'reports':
+      console.log('📊 جلب تقارير المخزون...');
+      if (forceRefresh) {
+        console.log('🔄 فرض تحديث التقارير من Google Sheets...');
+      }
       const reports = await getStockReports();
-      return res.json({ reports });
+      console.log('📈 تم إنشاء التقارير');
+      return res.status(200).json({ reports });
 
     case 'test':
-      console.log('🧪 بدء اختبار التزامن مع Google Sheets...');
+      console.log('🧪 اختبار اتصال المخزون...');
       const testResult = await testStockSheetConnection();
-      return res.json({ 
-        testResult,
-        timestamp: new Date().toISOString(),
-        message: 'تم تشغيل اختبار التزامن'
-      });
+      return res.status(200).json({ testResult });
 
     case 'diagnose':
-      console.log('🩺 بدء اختبار التشخيص للتزامن مع Google Sheets...');
+      console.log('🩺 تشخيص شامل لـ Google Sheets...');
       const diagnoseResult = await diagnoseGoogleSheets();
-      return res.json({ 
-        diagnoseResult,
-        timestamp: new Date().toISOString(),
-        message: 'تم تشغيل اختبار التشخيص'
-      });
+      return res.status(200).json({ diagnoseResult });
 
-    case 'items':
     default:
-      const forceFresh = force === 'true';
-      console.log(`📊 طلب جلب المنتجات (force: ${forceFresh})`);
-      const stockItems = await fetchStock(forceFresh);
-      console.log(`📋 تم إرجاع ${stockItems.length} منتج إلى الواجهة`);
-      return res.json({ 
-        stockItems,
-        timestamp: new Date().toISOString(),
-        count: stockItems.length
-      });
+      return res.status(400).json({ error: 'Invalid action parameter' });
   }
 }
 
-// POST: إضافة منتج جديد أو عمليات أخرى
-async function handlePost(req: NextApiRequest, res: NextApiResponse) {
-  const { action, ...data } = req.body;
+  // POST: إضافة منتج جديد أو عمليات أخرى
+  async function handlePost(req: NextApiRequest, res: NextApiResponse) {
+    const { action, ...data } = req.body;
 
-  switch (action) {
-    case 'add_item':
-      const { productName, initialQuantity, synonyms, minThreshold } = data;
-      
-      if (!productName || initialQuantity === undefined) {
-        return res.status(400).json({ error: 'اسم المنتج والكمية مطلوبان' });
-      }
+    switch (action) {
+      case 'add_item':
+        const { productName, initialQuantity, synonyms, minThreshold } = data;
+        
+        if (!productName || !productName.trim()) {
+          return res.status(400).json({ error: 'اسم المنتج مطلوب' });
+        }
+        
+        if (initialQuantity === undefined || initialQuantity < 0) {
+          return res.status(400).json({ error: 'الكمية الأولية يجب أن تكون صفر أو أكثر' });
+        }
 
-      await addOrUpdateStockItem({
-        productName,
-        initialQuantity: parseInt(initialQuantity),
-        currentQuantity: parseInt(initialQuantity),
-        synonyms: synonyms || '',
-        minThreshold: parseInt(minThreshold) || 10
-      });
+        const parsedInitialQuantity = parseInt(initialQuantity);
+        const parsedMinThreshold = parseInt(minThreshold) || 10;
+        
+        if (parsedMinThreshold < 0) {
+          return res.status(400).json({ error: 'الحد الأدنى لا يمكن أن يكون سالباً' });
+        }
+        
+        if (parsedMinThreshold > parsedInitialQuantity) {
+          return res.status(400).json({ error: 'الحد الأدنى لا يمكن أن يكون أكبر من الكمية الأولية' });
+        }
 
-      return res.json({ 
-        success: true, 
-        message: `تم إضافة ${productName} بكمية ${initialQuantity}` 
-      });
+        console.log(`📦 إضافة منتج جديد: ${productName.trim()}, كمية: ${parsedInitialQuantity}`);
 
-    case 'add_return':
-      const { returnData } = data;
-      
-      if (!returnData.productName || !returnData.quantity) {
-        return res.status(400).json({ error: 'اسم المنتج والكمية مطلوبان للمرتجع' });
-      }
+        await addOrUpdateStockItem({
+          productName: productName.trim(),
+          initialQuantity: parsedInitialQuantity,
+          currentQuantity: parsedInitialQuantity, // الكمية الحالية = الأولية عند الإضافة
+          synonyms: synonyms?.trim() || '',
+          minThreshold: parsedMinThreshold
+        });
 
-      await addDailyReturn(returnData);
-      
-      return res.json({ 
-        success: true, 
-        message: `تم تسجيل مرتجع ${returnData.quantity} من ${returnData.productName}` 
-      });
+        return res.json({ 
+          success: true, 
+          message: `تم إضافة ${productName.trim()} بكمية ${parsedInitialQuantity} بنجاح` 
+        });
 
-    case 'add_damage':
-      const { damageData } = data;
-      
-      if (!damageData.productName || !damageData.quantity) {
-        return res.status(400).json({ error: 'اسم المنتج والكمية مطلوبان للتالف' });
-      }
+      case 'add_return':
+        const { returnData } = data;
+        
+        if (!returnData.productName || !returnData.productName.trim()) {
+          return res.status(400).json({ error: 'اسم المنتج مطلوب للمرتجع' });
+        }
+        
+        const returnQuantity = parseInt(returnData.quantity);
+        if (isNaN(returnQuantity) || returnQuantity <= 0) {
+          return res.status(400).json({ error: 'كمية المرتجع يجب أن تكون أكبر من صفر' });
+        }
 
-      // خصم الكمية التالفة من المخزون
-      const stockItems = await fetchStock(true); // استخدام force refresh
-      const stockItem = findProductBySynonyms(damageData.productName, stockItems);
-      
-      if (!stockItem) {
-        return res.status(404).json({ error: 'المنتج غير موجود في المخزون' });
-      }
+        console.log(`📦 تسجيل مرتجع: ${returnQuantity} من ${returnData.productName}`);
 
-      const newQuantity = Math.max(0, stockItem.currentQuantity - damageData.quantity);
-      
-      await addOrUpdateStockItem({
-        ...stockItem,
-        currentQuantity: newQuantity
-      });
+        // التحقق من وجود المنتج
+        const stockDataForReturn = await fetchStock(true);
+        const productForReturn = findProductBySynonyms(returnData.productName, stockDataForReturn.stockItems);
+        
+        if (!productForReturn) {
+          return res.status(404).json({ error: 'المنتج غير موجود في المخزون' });
+        }
 
-      // تسجيل حركة التالف
-      await addStockMovement({
-        productName: stockItem.productName,
-        type: damageData.type || 'damage',
-        quantity: -damageData.quantity,
-        reason: damageData.reason || 'تالف',
-        notes: damageData.notes
-      });
+        console.log(`📊 المخزون قبل المرتجع: ${productForReturn.currentQuantity}`);
+        
+        await addDailyReturn({
+          productName: returnData.productName,
+          quantity: returnQuantity,
+          reason: returnData.reason || 'other',
+          notes: returnData.notes || '',
+          date: returnData.date || new Date().toISOString().split('T')[0]
+        });
+        
+        const newQuantityAfterReturn = productForReturn.currentQuantity + returnQuantity;
+        console.log(`📊 المخزون بعد المرتجع: ${newQuantityAfterReturn}`);
+        
+        return res.json({ 
+          success: true, 
+          message: `تم تسجيل مرتجع ${returnQuantity} من ${returnData.productName}` 
+        });
 
-      return res.json({ 
-        success: true, 
-        message: `تم تسجيل تالف ${damageData.quantity} من ${stockItem.productName}. المتبقي: ${newQuantity}` 
-      });
+      case 'add_damage':
+        const { damageData } = data;
+        
+        if (!damageData.productName || !damageData.productName.trim()) {
+          return res.status(400).json({ error: 'اسم المنتج مطلوب للتالف' });
+        }
+        
+        const damageQuantity = parseInt(damageData.quantity);
+        if (isNaN(damageQuantity) || damageQuantity <= 0) {
+          return res.status(400).json({ error: 'كمية التالف يجب أن تكون أكبر من صفر' });
+        }
 
-    case 'deduct_stock':
-      const { productName: deductProduct, quantity, orderId } = data;
-      
-      const result = await deductStock(deductProduct, quantity, orderId);
-      
-      if (result.success) {
-        return res.json(result);
-      } else {
-        return res.status(400).json(result);
-      }
+        console.log(`💥 تسجيل تالف: ${damageQuantity} من ${damageData.productName}`);
 
-    default:
-      return res.status(400).json({ error: 'إجراء غير صحيح' });
+        // التحقق من وجود المنتج وكفاية المخزون
+        const stockDataForDamage = await fetchStock(true);
+        const productForDamage = findProductBySynonyms(damageData.productName, stockDataForDamage.stockItems);
+        
+        if (!productForDamage) {
+          return res.status(404).json({ error: 'المنتج غير موجود في المخزون' });
+        }
+
+        if (productForDamage.currentQuantity < damageQuantity) {
+          return res.status(400).json({ 
+            error: `المخزون غير كافي. المتوفر: ${productForDamage.currentQuantity}, المطلوب: ${damageQuantity}` 
+          });
+        }
+
+        console.log(`📊 المخزون قبل التالف: ${productForDamage.currentQuantity}`);
+
+        const newQuantityAfterDamage = Math.max(0, productForDamage.currentQuantity - damageQuantity);
+        
+        await addOrUpdateStockItem({
+          ...productForDamage,
+          currentQuantity: newQuantityAfterDamage
+        });
+
+        // تسجيل حركة التالف
+        await addStockMovement({
+          productName: productForDamage.productName,
+          type: damageData.type || 'damage',
+          quantity: -damageQuantity, // سالب لأنه خصم
+          reason: damageData.reason || 'تالف',
+          notes: damageData.notes || ''
+        });
+
+        console.log(`📊 المخزون بعد التالف: ${newQuantityAfterDamage}`);
+
+        return res.json({ 
+          success: true, 
+          message: `تم تسجيل تالف ${damageQuantity} من ${productForDamage.productName}` 
+        });
+
+      case 'deduct_stock':
+        const { productName: deductProduct, quantity, orderId } = data;
+        
+        if (!deductProduct || !deductProduct.trim()) {
+          return res.status(400).json({ error: 'اسم المنتج مطلوب' });
+        }
+        
+        const deductQuantity = parseInt(quantity);
+        if (isNaN(deductQuantity) || deductQuantity <= 0) {
+          return res.status(400).json({ error: 'الكمية يجب أن تكون أكبر من صفر' });
+        }
+
+        console.log(`📦 خصم مخزون: ${deductQuantity} من ${deductProduct} (طلب: ${orderId || 'غير محدد'})`);
+        
+        const result = await deductStock(deductProduct.trim(), deductQuantity, orderId);
+        
+        if (result.success) {
+          return res.json(result);
+        } else {
+          return res.status(400).json(result);
+        }
+
+      default:
+        return res.status(400).json({ error: 'إجراء غير صحيح' });
+    }
   }
-}
 
-// PUT: تحديث منتج موجود
-async function handlePut(req: NextApiRequest, res: NextApiResponse) {
-  const { action, ...data } = req.body;
+  // PUT: تحديث منتج موجود
+  async function handlePut(req: NextApiRequest, res: NextApiResponse) {
+    const { action, ...data } = req.body;
 
-  switch (action) {
-    case 'update_item':
-      const { id, productName, initialQuantity, currentQuantity, synonyms, minThreshold } = data;
-      
-      if (!productName) {
-        return res.status(400).json({ error: 'اسم المنتج مطلوب' });
-      }
+    switch (action) {
+      case 'update_item':
+        const { id, productName, initialQuantity, currentQuantity, synonyms, minThreshold } = data;
+        
+        if (!productName || !productName.trim()) {
+          return res.status(400).json({ error: 'اسم المنتج مطلوب' });
+        }
 
-      await addOrUpdateStockItem({
-        id,
-        productName,
-        initialQuantity: parseInt(initialQuantity),
-        currentQuantity: parseInt(currentQuantity),
-        synonyms: synonyms || '',
-        minThreshold: parseInt(minThreshold) || 10
-      });
+        const parsedInitialQuantity = parseInt(initialQuantity);
+        const parsedCurrentQuantity = parseInt(currentQuantity);
+        const parsedMinThreshold = parseInt(minThreshold) || 10;
 
-      return res.json({ 
-        success: true, 
-        message: `تم تحديث ${productName} بنجاح` 
-      });
+        if (isNaN(parsedInitialQuantity) || parsedInitialQuantity < 0) {
+          return res.status(400).json({ error: 'الكمية الأولية يجب أن تكون صفر أو أكثر' });
+        }
 
-    case 'adjust_quantity':
-      const { productName: adjustProduct, adjustment, reason } = data;
-      
-      const stockItems = await fetchStock(true); // استخدام force refresh
-      const stockItem = findProductBySynonyms(adjustProduct, stockItems);
-      
-      if (!stockItem) {
-        return res.status(404).json({ error: 'المنتج غير موجود في المخزون' });
-      }
+        if (isNaN(parsedCurrentQuantity) || parsedCurrentQuantity < 0) {
+          return res.status(400).json({ error: 'الكمية الحالية يجب أن تكون صفر أو أكثر' });
+        }
 
-      const newCurrentQuantity = Math.max(0, stockItem.currentQuantity + adjustment);
-      
-      await addOrUpdateStockItem({
-        ...stockItem,
-        currentQuantity: newCurrentQuantity
-      });
+        if (parsedMinThreshold < 0) {
+          return res.status(400).json({ error: 'الحد الأدنى لا يمكن أن يكون سالباً' });
+        }
 
-      // تسجيل حركة التعديل
-      await addStockMovement({
-        productName: stockItem.productName,
-        type: 'adjustment',
-        quantity: adjustment,
-        reason: reason || 'تعديل المخزون',
-      });
+        console.log(`✏️ تحديث منتج: ${productName.trim()}`);
+        console.log(`�� الكمية الأولية: ${parsedInitialQuantity}, الحالية: ${parsedCurrentQuantity}, الحد الأدنى: ${parsedMinThreshold}`);
 
-      return res.json({ 
-        success: true, 
-        message: `تم تعديل ${stockItem.productName}. الكمية الحالية: ${newCurrentQuantity}` 
-      });
+        await addOrUpdateStockItem({
+          id,
+          productName: productName.trim(),
+          initialQuantity: parsedInitialQuantity,
+          currentQuantity: parsedCurrentQuantity,
+          synonyms: synonyms?.trim() || '',
+          minThreshold: parsedMinThreshold
+        });
 
-    default:
-      return res.status(400).json({ error: 'إجراء غير صحيح' });
-  }
-} 
+        // تسجيل ملاحظات حول التحديث
+        let updateNotes = [];
+        const sold = parsedInitialQuantity - parsedCurrentQuantity;
+        
+        if (parsedCurrentQuantity > parsedInitialQuantity) {
+          updateNotes.push('الكمية الحالية أكبر من الأولية (ربما بسبب المرتجعات)');
+        }
+        
+        if (sold > 0) {
+          updateNotes.push(`تم بيع ${sold} قطعة`);
+        }
+        
+        if (parsedCurrentQuantity <= parsedMinThreshold) {
+          updateNotes.push('المخزون وصل للحد الأدنى أو أقل');
+        }
+
+        const responseMessage = updateNotes.length > 0 
+          ? `تم تحديث ${productName.trim()} بنجاح. ${updateNotes.join('. ')}`
+          : `تم تحديث ${productName.trim()} بنجاح`;
+
+        return res.json({ 
+          success: true, 
+          message: responseMessage,
+          notes: updateNotes
+        });
+
+      case 'adjust_quantity':
+        const { productName: adjustProduct, adjustment, reason } = data;
+        
+        if (!adjustProduct || !adjustProduct.trim()) {
+          return res.status(400).json({ error: 'اسم المنتج مطلوب' });
+        }
+
+        const parsedAdjustment = parseInt(adjustment);
+        if (isNaN(parsedAdjustment)) {
+          return res.status(400).json({ error: 'قيمة التعديل يجب أن تكون رقماً صحيحاً' });
+        }
+
+        console.log(`🔧 تعديل كمية: ${adjustProduct.trim()}, التعديل: ${parsedAdjustment}`);
+        
+        const stockDataForAdjust = await fetchStock(true);
+        const productForAdjust = findProductBySynonyms(adjustProduct.trim(), stockDataForAdjust.stockItems);
+        
+        if (!productForAdjust) {
+          return res.status(404).json({ error: 'المنتج غير موجود في المخزون' });
+        }
+
+        const oldQuantity = productForAdjust.currentQuantity;
+        const newCurrentQuantity = Math.max(0, oldQuantity + parsedAdjustment);
+        
+        // التحقق من عدم السماح بتعديل سالب يجعل المخزون أقل من صفر
+        if (parsedAdjustment < 0 && Math.abs(parsedAdjustment) > oldQuantity) {
+          return res.status(400).json({ 
+            error: `لا يمكن خصم ${Math.abs(parsedAdjustment)} لأن المخزون الحالي ${oldQuantity} فقط` 
+          });
+        }
+
+        console.log(`📊 الكمية قبل التعديل: ${oldQuantity}, بعد التعديل: ${newCurrentQuantity}`);
+        
+        await addOrUpdateStockItem({
+          ...productForAdjust,
+          currentQuantity: newCurrentQuantity
+        });
+
+        // تسجيل حركة التعديل
+        await addStockMovement({
+          productName: productForAdjust.productName,
+          type: 'adjustment',
+          quantity: parsedAdjustment,
+          reason: reason || 'تعديل المخزون اليدوي',
+        });
+
+        const adjustmentType = parsedAdjustment > 0 ? 'زيادة' : 'خصم';
+        const adjustmentMessage = `تم ${adjustmentType} ${Math.abs(parsedAdjustment)} من ${productForAdjust.productName}. الكمية الحالية: ${newCurrentQuantity}`;
+
+        return res.json({ 
+          success: true, 
+          message: adjustmentMessage,
+          oldQuantity,
+          newQuantity: newCurrentQuantity,
+          adjustment: parsedAdjustment
+        });
+
+      default:
+        return res.status(400).json({ error: 'إجراء غير صحيح' });
+    }
+  } 

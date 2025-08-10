@@ -9,6 +9,68 @@ if (!SHEET_ID) {
   throw new Error('GOOGLE_SHEET_ID environment variable is not set');
 }
 
+// نظام Cache محسن لتقليل طلبات API
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+  ttl: number; // Time to live in milliseconds
+}
+
+class GoogleSheetsCache {
+  private static cache = new Map<string, CacheEntry>();
+  private static readonly DEFAULT_TTL = 30000; // 30 seconds
+  
+  static set(key: string, data: any, ttl: number = this.DEFAULT_TTL): void {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl
+    });
+  }
+  
+  static get(key: string): any | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    
+    if (Date.now() - entry.timestamp > entry.ttl) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return entry.data;
+  }
+  
+  static clear(): void {
+    this.cache.clear();
+  }
+  
+  static invalidate(pattern: string): void {
+    for (const key of this.cache.keys()) {
+      if (key.includes(pattern)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+}
+
+// Rate limiting للتحكم في طلبات API
+class APIRateLimit {
+  private static lastCall = 0;
+  private static readonly MIN_INTERVAL = 1000; // 1 second between calls
+  
+  static async waitIfNeeded(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastCall = now - this.lastCall;
+    
+    if (timeSinceLastCall < this.MIN_INTERVAL) {
+      const waitTime = this.MIN_INTERVAL - timeSinceLastCall;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastCall = Date.now();
+  }
+}
+
 const getAuth = () => {
   let rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
   if (!rawKey && process.env.GOOGLE_PRIVATE_KEY_BASE64) {
@@ -27,6 +89,181 @@ const getAuth = () => {
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
 };
+
+// مدير الصفحات المحسن
+class SheetManager {
+  private static sheetInfoCache: { [key: string]: any } = {};
+  private static lastSheetInfoFetch = 0;
+  private static readonly SHEET_INFO_TTL = 300000; // 5 minutes
+  
+  static async getSheetInfo(forceRefresh = false): Promise<any> {
+    const cacheKey = `sheet_info_${SHEET_ID}`;
+    const cached = GoogleSheetsCache.get(cacheKey);
+    
+    if (cached && !forceRefresh) {
+      console.log('📊 استخدام معلومات الشيت المحفوظة');
+      return cached;
+    }
+    
+    try {
+      await APIRateLimit.waitIfNeeded();
+      
+      const auth = getAuth();
+      const sheets = google.sheets({ version: 'v4', auth });
+      
+      console.log('📊 جلب معلومات الشيت من Google...');
+      const response = await sheets.spreadsheets.get({
+        spreadsheetId: SHEET_ID,
+      });
+      
+      const sheetInfo = response.data;
+      GoogleSheetsCache.set(cacheKey, sheetInfo, this.SHEET_INFO_TTL);
+      
+      return sheetInfo;
+    } catch (error) {
+      console.error('❌ خطأ في جلب معلومات الشيت:', error);
+      throw error;
+    }
+  }
+  
+  static async sheetExists(sheetName: string): Promise<boolean> {
+    try {
+      const sheetInfo = await this.getSheetInfo();
+      const sheets = sheetInfo.sheets || [];
+      
+      return sheets.some((sheet: any) => sheet.properties?.title === sheetName);
+    } catch (error) {
+      console.error(`❌ خطأ في فحص وجود الشيت ${sheetName}:`, error);
+      return false;
+    }
+  }
+}
+
+// دالة محسنة لضمان وجود شيت المخزون
+async function ensureStockSheetExists(): Promise<void> {
+  try {
+    console.log('🔍 فحص وجود شيت المخزون...');
+    
+    // فحص وجود الشيت أولاً
+    const stockSheetExists = await SheetManager.sheetExists(STOCK_SHEET_NAME);
+    
+    if (stockSheetExists) {
+      console.log('✅ شيت المخزون موجود بالفعل');
+      return;
+    }
+    
+    console.log('🔨 إنشاء شيت المخزون...');
+    await APIRateLimit.waitIfNeeded();
+    
+    const auth = getAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // إنشاء الشيتات المطلوبة
+    const requests = [];
+    
+    // شيت المخزون الأساسي
+    requests.push({
+      addSheet: {
+        properties: {
+          title: STOCK_SHEET_NAME,
+          gridProperties: {
+            rowCount: 1000,
+            columnCount: 10
+          }
+        }
+      }
+    });
+
+    // شيت حركات المخزون
+    requests.push({
+      addSheet: {
+        properties: {
+          title: 'stock_movements',
+          gridProperties: {
+            rowCount: 1000,
+            columnCount: 10
+          }
+        }
+      }
+    });
+
+    // شيت المرتجعات اليومية
+    requests.push({
+      addSheet: {
+        properties: {
+          title: 'daily_returns',
+          gridProperties: {
+            rowCount: 1000,
+            columnCount: 10
+          }
+        }
+      }
+    });
+
+    // إنشاء الشيتات
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      requestBody: { requests }
+    });
+
+    // إضافة العناوين للشيت الأساسي
+    await APIRateLimit.waitIfNeeded();
+    
+    const stockHeaders = [
+      ['ID', 'اسم المنتج', 'الكمية الأولية', 'الكمية الحالية', 'آخر تحديث', 'المتردفات', 'الحد الأدنى']
+    ];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `${STOCK_SHEET_NAME}!A1:G1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: stockHeaders }
+    });
+
+    // إضافة العناوين لشيت الحركات
+    await APIRateLimit.waitIfNeeded();
+    
+    const movementHeaders = [
+      ['ID', 'نوع الحركة', 'اسم المنتج', 'الكمية', 'التاريخ', 'ملاحظات']
+    ];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: 'stock_movements!A1:F1',
+      valueInputOption: 'RAW',
+      requestBody: { values: movementHeaders }
+    });
+
+    // إضافة العناوين لشيت المرتجعات
+    await APIRateLimit.waitIfNeeded();
+    
+    const returnHeaders = [
+      ['ID', 'اسم المنتج', 'الكمية', 'نوع المرتجع', 'التاريخ', 'ملاحظات']
+    ];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: 'daily_returns!A1:F1',
+      valueInputOption: 'RAW',
+      requestBody: { values: returnHeaders }
+    });
+
+    // مسح الكاش لإجبار تحديث معلومات الشيت
+    GoogleSheetsCache.invalidate('sheet_info');
+    
+    console.log('✅ تم إنشاء شيتات المخزون بنجاح');
+    
+  } catch (error: any) {
+    // إذا كان الخطأ أن الشيت موجود بالفعل، فهذا عادي
+    if (error.message?.includes('already exists')) {
+      console.log('✅ شيت المخزون موجود بالفعل');
+      return;
+    }
+    
+    console.error('❌ خطأ في ضمان وجود شيت المخزون:', error);
+    throw error;
+  }
+}
 
 export type LeadRow = {
   id: number;
@@ -397,183 +634,135 @@ const getCurrentEgyptianDate = () => {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Africa/Cairo' }).split(' ')[0];
 };
 
-// دالة لإنشاء stock sheet إذا لم يكن موجود
-export async function ensureStockSheetExists() {
-  try {
-    const auth = getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
-
-    // محاولة الحصول على معلومات الشيت
-    try {
-      await sheets.spreadsheets.values.get({
-        spreadsheetId: SHEET_ID,
-        range: `${STOCK_SHEET_NAME}!A1:H1`,
-      });
-      console.log('Stock sheet already exists');
-      return true;
-    } catch (error) {
-      // إذا كان الشيت غير موجود، أنشئه
-      console.log('Creating stock sheet...');
-      
-      // إضافة الشيت الجديد
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: SHEET_ID,
-        requestBody: {
-          requests: [{
-            addSheet: {
-              properties: {
-                title: STOCK_SHEET_NAME,
-              }
-            }
-          }]
-        }
-      });
-
-      // إضافة عناوين الأعمدة
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SHEET_ID,
-        range: `${STOCK_SHEET_NAME}!A1:H1`,
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [[
-            'رقم',
-            'اسم المنتج',
-            'الكمية الأولية',
-            'الكمية الحالية',
-            'آخر تحديث',
-            'المتردفات',
-            'الحد الأدنى',
-            'تاريخ الإنشاء'
-          ]]
-        }
-      });
-
-      console.log('Stock sheet created successfully');
-      return true;
-    }
-  } catch (error) {
-    console.error('Error ensuring stock sheet exists:', error);
-    throw error;
-  }
-}
-
 // دالة لجلب بيانات المخزون مع تحسينات التزامن
-export async function fetchStock(forceFresh: boolean = false): Promise<StockItem[]> {
-  await ensureStockSheetExists();
+export async function fetchStock(forceFresh = false): Promise<{ stockItems: StockItem[] }> {
+  const cacheKey = `stock_items_${forceFresh ? Date.now() : 'cached'}`;
   
+  // فحص الكاش أولاً
+  if (!forceFresh) {
+    const cached = GoogleSheetsCache.get('stock_items');
+    if (cached) {
+      console.log('📦 استخدام بيانات المخزون المحفوظة');
+      return cached;
+    }
+  }
+
   try {
-    console.log(`📊 بدء جلب بيانات المخزون من ${STOCK_SHEET_NAME}... (forceFresh: ${forceFresh})`);
+    console.log(`📊 طلب جلب المنتجات (force: ${forceFresh})`);
+    
+    // ضمان وجود شيت المخزون بطريقة آمنة
+    await ensureStockSheetExists();
+    
+    await APIRateLimit.waitIfNeeded();
     
     const auth = getAuth();
     const sheets = google.sheets({ version: 'v4', auth });
-    
-    // إضافة timestamp لتجنب cache في Google Sheets
-    const timestamp = forceFresh ? `?t=${Date.now()}` : '';
+
+    console.log('📊 جلب بيانات المخزون من Google Sheets...');
     
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `${STOCK_SHEET_NAME}!A:H`,
-      valueRenderOption: 'UNFORMATTED_VALUE', // للحصول على القيم الخام
-      dateTimeRenderOption: 'FORMATTED_STRING'
+      range: `${STOCK_SHEET_NAME}!A:G`,
     });
 
-    const values = response.data.values || [];
-    console.log(`📋 تم جلب ${values.length} صف من Google Sheets (شامل العناوين)`);
-    
-    // طباعة العناوين للتأكد
-    if (values.length > 0) {
-      console.log('📝 عناوين الأعمدة:', values[0]);
-    }
-    
-    if (values.length <= 1) {
-      console.log('📝 الشيت فارغ أو يحتوي على العناوين فقط');
-      return [];
-    }
+    const rows = response.data.values || [];
+    console.log(`📊 تم جلب ${rows.length} صف من شيت المخزون`);
 
+    // تخطي الصف الأول (العناوين)
+    const dataRows = rows.slice(1);
+    
     const stockItems: StockItem[] = [];
     
-    console.log('🔄 معالجة صفوف البيانات...');
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
+    dataRows.forEach((row, index) => {
+      const rowIndex = index + 2; // +2 لأن الصف الأول عناوين والفهرس يبدأ من 1
       
-      // طباعة كل صف للتشخيص
-      console.log(`🔍 الصف ${i + 1}:`, row);
-      
-      // تخطي الصفوف الفارغة أو غير المكتملة
-      if (!row || row.length === 0 || !row[1]) {
-        console.log(`⚠️ تخطي الصف ${i + 1} (فارغ أو غير مكتمل)`);
-        continue;
+      // التحقق من وجود بيانات صالحة
+      if (!row || row.length === 0 || !row[1] || row[1].toString().trim() === '') {
+        return; // تخطي الصفوف الفارغة
       }
-      
-      const stockItem: StockItem = {
-        id: parseInt(String(row[0])) || i,
-        rowIndex: i + 1,
-        productName: String(row[1] || '').trim(),
-        initialQuantity: parseInt(String(row[2])) || 0,
-        currentQuantity: parseInt(String(row[3])) || 0,
-        lastUpdate: String(row[4] || getCurrentEgyptianDate()),
-        synonyms: String(row[5] || '').trim(),
-        minThreshold: parseInt(String(row[6])) || 10,
-      };
-      
-      // التأكد من أن اسم المنتج غير فارغ وأن المنتج صالح
-      if (stockItem.productName && stockItem.productName.length > 0) {
-        console.log(`✅ منتج ${i}: "${stockItem.productName}" (الكمية: ${stockItem.currentQuantity}, ID: ${stockItem.id})`);
-        stockItems.push(stockItem);
-      } else {
-        console.log(`⚠️ تخطي منتج في الصف ${i + 1} - اسم المنتج فارغ أو غير صالح`);
-        console.log(`🔍 محتوى الصف:`, row);
-      }
-    }
 
-    console.log(`✅ تم تحليل ${stockItems.length} منتج بنجاح من أصل ${values.length - 1} صف`);
-    console.log('📦 قائمة المنتجات:', stockItems.map(item => ({
-      id: item.id,
-      name: item.productName,
-      quantity: item.currentQuantity
-    })));
+      const stockItem: StockItem = {
+        id: parseInt(row[0]) || stockItems.length + 1,
+        rowIndex,
+        productName: row[1]?.toString().trim() || '',
+        initialQuantity: parseInt(row[2]) || 0,
+        currentQuantity: parseInt(row[3]) || parseInt(row[2]) || 0,
+        lastUpdate: row[4]?.toString() || getCurrentEgyptianDate(),
+        synonyms: row[5]?.toString() || '',
+        minThreshold: parseInt(row[6]) || 10
+      };
+
+      // التحقق من صحة اسم المنتج
+      if (stockItem.productName && stockItem.productName.length > 0) {
+        stockItems.push(stockItem);
+        console.log(`✅ تم تحليل المنتج: ${stockItem.productName} (الكمية: ${stockItem.currentQuantity})`);
+      } else {
+        console.log(`⚠️ تم تجاهل صف ${rowIndex} - اسم منتج غير صحيح`);
+      }
+    });
+
+    console.log(`📦 تم معالجة ${stockItems.length} منتج بنجاح`);
     
-    return stockItems;
+    const result = { stockItems };
+    
+    // حفظ في الكاش
+    GoogleSheetsCache.set('stock_items', result, 60000); // Cache for 1 minute
+    
+    return result;
+    
   } catch (error) {
     console.error('❌ خطأ في جلب بيانات المخزون:', error);
+    
+    // في حالة الخطأ، حاول إرجاع البيانات المحفوظة
+    const fallback = GoogleSheetsCache.get('stock_items');
+    if (fallback) {
+      console.log('🔄 استخدام البيانات المحفوظة كحل بديل');
+      return fallback;
+    }
+    
     throw error;
   }
 }
 
-// دالة للبحث عن منتج باستخدام المتردفات
-export function findProductBySynonyms(searchName: string, stockItems: StockItem[]): StockItem | null {
-  if (!searchName) return null;
-  
-  const normalizeText = (text: string) => 
-    text.toLowerCase()
-      .replace(/[أإآا]/g, 'ا')
-      .replace(/[ىي]/g, 'ي')
-      .replace(/ة/g, 'ه')
-      .replace(/[^\w\s]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+// دالة محسنة للبحث عن المنتج بالمتردفات
+export function findProductBySynonyms(productName: string, stockItems: StockItem[]): StockItem | null {
+  if (!productName || !stockItems || stockItems.length === 0) {
+    return null;
+  }
 
-  const searchNormalized = normalizeText(searchName);
+  const normalizedSearchName = productName.toLowerCase().trim()
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/[ىي]/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ');
 
   for (const item of stockItems) {
-    // مطابقة مباشرة مع اسم المنتج
-    if (normalizeText(item.productName) === searchNormalized) {
+    // البحث في الاسم الأساسي
+    const normalizedItemName = item.productName.toLowerCase().trim()
+      .replace(/[إأآا]/g, 'ا')
+      .replace(/[ىي]/g, 'ي')
+      .replace(/ة/g, 'ه')
+      .replace(/\s+/g, ' ');
+
+    if (normalizedItemName === normalizedSearchName || 
+        normalizedItemName.includes(normalizedSearchName) || 
+        normalizedSearchName.includes(normalizedItemName)) {
       return item;
     }
 
-    // مطابقة جزئية مع اسم المنتج
-    if (normalizeText(item.productName).includes(searchNormalized) || 
-        searchNormalized.includes(normalizeText(item.productName))) {
-      return item;
-    }
-
-    // مطابقة مع المتردفات
+    // البحث في المتردفات
     if (item.synonyms) {
       const synonyms = item.synonyms.split(',').map(s => s.trim());
       for (const synonym of synonyms) {
-        if (normalizeText(synonym) === searchNormalized ||
-            normalizeText(synonym).includes(searchNormalized) ||
-            searchNormalized.includes(normalizeText(synonym))) {
+        const normalizedSynonym = synonym.toLowerCase().trim()
+          .replace(/[إأآا]/g, 'ا')
+          .replace(/[ىي]/g, 'ي')
+          .replace(/ة/g, 'ه')
+          .replace(/\s+/g, ' ');
+
+        if (normalizedSynonym === normalizedSearchName || 
+            normalizedSynonym.includes(normalizedSearchName) || 
+            normalizedSearchName.includes(normalizedSynonym)) {
           return item;
         }
       }
@@ -592,7 +781,7 @@ export async function addOrUpdateStockItem(stockItem: Partial<StockItem>): Promi
     const sheets = google.sheets({ version: 'v4', auth });
     
     const stockItems = await fetchStock(true); // استخدام force refresh
-    const existingItem = stockItems.find(item => 
+    const existingItem = stockItems.stockItems.find(item => 
       item.productName.toLowerCase() === stockItem.productName?.toLowerCase()
     );
 
@@ -622,7 +811,7 @@ export async function addOrUpdateStockItem(stockItem: Partial<StockItem>): Promi
       console.log(`✅ تم تحديث المنتج: ${stockItem.productName}`);
     } else {
       // إضافة عنصر جديد - إصلاح خطأ حساب newId
-      const newId = stockItems.length > 0 ? Math.max(...stockItems.map(item => item.id)) + 1 : 1;
+      const newId = stockItems.stockItems.length > 0 ? Math.max(...stockItems.stockItems.map(item => item.id)) + 1 : 1;
       
       const newRow = [
         newId,
@@ -669,7 +858,7 @@ export async function addOrUpdateStockItem(stockItem: Partial<StockItem>): Promi
 export async function deductStock(productName: string, quantity: number, orderId?: number): Promise<{ success: boolean; message: string; availableQuantity?: number }> {
   try {
     const stockItems = await fetchStock(true); // استخدام force refresh
-    const stockItem = findProductBySynonyms(productName, stockItems);
+    const stockItem = findProductBySynonyms(productName, stockItems.stockItems);
 
     if (!stockItem) {
       return {
@@ -802,7 +991,7 @@ export async function addStockMovement(movement: Partial<StockMovement>): Promis
 export async function getStockAlerts(): Promise<StockItem[]> {
   try {
     const stockItems = await fetchStock(true); // استخدام force refresh
-    return stockItems.filter(item => 
+    return stockItems.stockItems.filter(item => 
       item.currentQuantity <= (item.minThreshold || 10)
     );
   } catch (error) {
@@ -886,7 +1075,7 @@ export async function addDailyReturn(returnItem: Partial<DailyReturn>): Promise<
 
     // تحديث المخزون (إضافة الكمية المرتجعة)
     const stockItems = await fetchStock(true); // استخدام force refresh
-    const stockItem = findProductBySynonyms(returnItem.productName || '', stockItems);
+    const stockItem = findProductBySynonyms(returnItem.productName || '', stockItems.stockItems);
     
     if (stockItem) {
       await addOrUpdateStockItem({
@@ -918,15 +1107,15 @@ export async function getStockReports() {
     const alerts = await getStockAlerts();
     
     // إحصائيات عامة
-    const totalProducts = stockItems.length;
-    const totalStockValue = stockItems.reduce((sum, item) => sum + item.currentQuantity, 0);
+    const totalProducts = stockItems.stockItems.length;
+    const totalStockValue = stockItems.stockItems.reduce((sum, item) => sum + item.currentQuantity, 0);
     const lowStockCount = alerts.length;
-    const outOfStockCount = stockItems.filter(item => item.currentQuantity <= 0).length;
+    const outOfStockCount = stockItems.stockItems.filter(item => item.currentQuantity <= 0).length;
 
     // تقرير المنتجات حسب الحالة
     const byStatus = {
-      inStock: stockItems.filter(item => item.currentQuantity > (item.minThreshold || 10)).length,
-      lowStock: stockItems.filter(item => 
+      inStock: stockItems.stockItems.filter(item => item.currentQuantity > (item.minThreshold || 10)).length,
+      lowStock: stockItems.stockItems.filter(item => 
         item.currentQuantity > 0 && item.currentQuantity <= (item.minThreshold || 10)
       ).length,
       outOfStock: outOfStockCount
@@ -940,7 +1129,7 @@ export async function getStockReports() {
         outOfStockCount
       },
       byStatus,
-      stockItems,
+      stockItems: stockItems.stockItems,
       alerts,
       lastUpdate: getCurrentEgyptianDate()
     };
@@ -962,7 +1151,7 @@ export async function testStockSheetConnection(): Promise<{ success: boolean; me
     
     // 2. اختبار القراءة
     const stockItems = await fetchStock(true); // استخدام force refresh
-    console.log('✅ تم جلب بيانات المخزون:', stockItems.length, 'منتج');
+    console.log('✅ تم جلب بيانات المخزون:', stockItems.stockItems.length, 'منتج');
     
     // 3. اختبار إضافة منتج تجريبي
     const testProduct = {
@@ -978,7 +1167,7 @@ export async function testStockSheetConnection(): Promise<{ success: boolean; me
     
     // 4. التحقق من الإضافة
     const updatedItems = await fetchStock(true); // استخدام force refresh
-    const addedProduct = updatedItems.find(item => item.productName === testProduct.productName);
+    const addedProduct = updatedItems.stockItems.find(item => item.productName === testProduct.productName);
     
     if (addedProduct) {
       console.log('✅ تم العثور على المنتج التجريبي في الشيت');
@@ -986,9 +1175,9 @@ export async function testStockSheetConnection(): Promise<{ success: boolean; me
         success: true,
         message: 'اختبار التزامن مع Google Sheets نجح بشكل كامل',
         data: {
-          totalProducts: updatedItems.length,
+          totalProducts: updatedItems.stockItems.length,
           testProduct: addedProduct,
-          allProducts: updatedItems
+          allProducts: updatedItems.stockItems
         }
       };
     } else {
@@ -996,7 +1185,7 @@ export async function testStockSheetConnection(): Promise<{ success: boolean; me
       return {
         success: false,
         message: 'فشل في العثور على المنتج بعد الإضافة',
-        data: { totalProducts: updatedItems.length }
+        data: { totalProducts: updatedItems.stockItems.length }
       };
     }
     

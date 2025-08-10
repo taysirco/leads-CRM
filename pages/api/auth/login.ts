@@ -8,7 +8,7 @@ const PASSWORD = process.env.APP_PASSWORD;
 const CALL_CENTER_USERS: { username: string; password: string; role: 'agent'; displayName: string }[] = [
   { username: 'heba.', password: '2122', role: 'agent', displayName: 'هبه' },
   { username: 'ahmed.', password: '2211', role: 'agent', displayName: 'احمد' },
-  { username: 'raed.', password: '3311', role: 'agent', displayName: 'رائد' }, // بافتراض أن اسم المستخدم لرائد هو raed.
+  { username: 'aisha.', password: '3311', role: 'agent', displayName: 'عائشة' },
 ];
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {

@@ -101,7 +101,7 @@ export default function Dashboard() {
     const byAssigneeByProduct = stats?.byAssigneeByProduct || {};
 
     // حساب إحصائيات شاملة ومؤشرات الأداء بالمنطق الصحيح
-    const employees = ['heba.', 'ahmed.', 'raed.'];
+    const employees = ['heba.', 'ahmed.', 'aisha.'];
     
     // إجمالي الليدز المعينة للموظفين فقط (بدون غير المعين)
     const assignedLeads = employees.reduce((sum, emp) => sum + (byAssignee[emp]?.total || 0), 0);
@@ -247,7 +247,7 @@ export default function Dashboard() {
                   <div key={emp} className="border rounded-lg p-3 sm:p-4 bg-gray-50">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 space-y-2 sm:space-y-0">
                       <div>
-                        <h4 className="font-bold text-base sm:text-lg text-gray-900">{emp === 'heba.' ? '👩‍💼 هبة' : emp === 'ahmed.' ? '👨‍💼 أحمد' : '👨‍💼 رائد'}</h4>
+                        <h4 className="font-bold text-base sm:text-lg text-gray-900">{emp === 'heba.' ? '👩‍💼 هبة' : emp === 'ahmed.' ? '👨‍💼 أحمد' : '👩‍💼 عائشة'}</h4>
                         <p className="text-xs sm:text-sm text-gray-700">نصيب: {share}% من الليدز المعينة ({empData.total} ليد)</p>
                       </div>
                       <div className="sm:text-right">
@@ -307,7 +307,7 @@ export default function Dashboard() {
             <div className="space-y-4 max-h-[500px] overflow-auto">
               {employees.map(emp => {
                 const empProducts = byAssigneeByProduct[emp] || {};
-                const empName = emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'رائد';
+                const empName = emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'عائشة';
                 
                 return (
                   <div key={emp} className="border rounded-lg p-4">
@@ -426,7 +426,7 @@ export default function Dashboard() {
                 <div className="grid grid-cols-3 gap-1 text-xs">
                   <div className="text-center"><span className="text-gray-600">هبة</span><div className="font-bold">{balanceInfo.counts['heba.']}</div></div>
                   <div className="text-center"><span className="text-gray-600">أحمد</span><div className="font-bold">{balanceInfo.counts['ahmed.']}</div></div>
-                  <div className="text-center"><span className="text-gray-600">رائد</span><div className="font-bold">{balanceInfo.counts['raed.']}</div></div>
+                  <div className="text-center"><span className="text-gray-600">عائشة</span><div className="font-bold">{balanceInfo.counts['aisha.']}</div></div>
                 </div>
               </div>
             </div>
@@ -443,7 +443,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-3 gap-2 sm:gap-4 text-xs sm:text-sm">
               {employees.map(emp => (
                 <div key={emp} className="text-center">
-                  <p className="font-medium text-gray-800 text-xs sm:text-sm">{emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'رائد'}</p>
+                  <p className="font-medium text-gray-800 text-xs sm:text-sm">{emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'عائشة'}</p>
                   <p className="text-base sm:text-lg font-bold text-gray-900">{balanceInfo.counts[emp]}</p>
                 </div>
               ))}
