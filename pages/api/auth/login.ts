@@ -4,12 +4,31 @@ import { serialize } from 'cookie';
 const USERNAME = process.env.APP_USERNAME;
 const PASSWORD = process.env.APP_PASSWORD;
 
-// تعريف مستخدمي الكول سنتر (يفضل لاحقاً النقل إلى متغيرات بيئة)
-const CALL_CENTER_USERS: { username: string; password: string; role: 'agent'; displayName: string }[] = [
-  { username: 'heba.', password: '2122', role: 'agent', displayName: 'هبه' },
-  { username: 'ahmed.', password: '2211', role: 'agent', displayName: 'احمد' },
-  { username: 'aisha.', password: '3311', role: 'agent', displayName: 'عائشة' },
-];
+// تهيئة مستخدمي الكول سنتر من متغير البيئة CALL_CENTER_USERS بصيغة:
+// CALL_CENTER_USERS="heba.:2122:هبه,ahmed.:2211:احمد,aisha.:3311:عائشة"
+function parseCallCenterUsers(envValue?: string) {
+  const fallback = [
+    { username: 'heba.', password: '2122', role: 'agent' as const, displayName: 'هبه' },
+    { username: 'ahmed.', password: '2211', role: 'agent' as const, displayName: 'احمد' },
+    { username: 'aisha.', password: '3311', role: 'agent' as const, displayName: 'عائشة' },
+  ];
+  if (!envValue || !envValue.trim()) return fallback;
+
+  try {
+    // يدعم الفواصل أو الفواصل المنقوطة كفاصل بين المستخدمين
+    const entries = envValue.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+    const users = entries.map(entry => {
+      const [username, password, displayName] = entry.split(':');
+      if (!username || !password) return null;
+      return { username: username.trim(), password: password.trim(), role: 'agent' as const, displayName: (displayName || username).trim() };
+    }).filter(Boolean) as { username: string; password: string; role: 'agent'; displayName: string }[];
+    return users.length > 0 ? users : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const CALL_CENTER_USERS: { username: string; password: string; role: 'agent'; displayName: string }[] = parseCallCenterUsers(process.env.CALL_CENTER_USERS);
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!USERNAME || !PASSWORD) {

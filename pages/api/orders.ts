@@ -2,7 +2,17 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { fetchLeads, updateLead, getOrderStatistics, LeadRow, updateLeadsBatch } from '../../lib/googleSheets';
 import { deductStock } from '../../lib/googleSheets';
 
-const EMPLOYEES = ['heba.', 'ahmed.', 'aisha.'];
+// استخراج قائمة الموظفين من CALL_CENTER_USERS
+function getEmployeesFromEnv(): string[] {
+  const envVal = process.env.CALL_CENTER_USERS || '';
+  const entries = envVal.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+  const users = entries.map(e => e.split(':')[0]).filter(Boolean);
+  // fallback للأسماء الافتراضية
+  const fallback = ['heba.', 'ahmed.', 'aisha.'];
+  return users.length > 0 ? users : fallback;
+}
+
+const EMPLOYEES = getEmployeesFromEnv();
 let lastAutoAssignAt = 0; // ms timestamp
 let autoAssignInProgress = false; // منع التداخل
 
@@ -29,11 +39,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         autoAssignInProgress = true;
         try {
           // حساب التوزيع الحالي
-          const currentAssignments = { 'heba.': 0, 'ahmed.': 0, 'aisha.': 0 };
+          const currentAssignments: Record<string, number> = Object.fromEntries(EMPLOYEES.map(e => [e, 0]));
           for (const lead of leads) {
             const assignee = (lead.assignee || '').trim();
             if (EMPLOYEES.includes(assignee)) {
-              currentAssignments[assignee as keyof typeof currentAssignments]++;
+              currentAssignments[assignee] = (currentAssignments[assignee] || 0) + 1;
             }
           }
 
@@ -47,14 +57,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             
             // ترتيب الموظفين حسب أقل عدد ليدز مُعينة
             const sortedEmployees = EMPLOYEES.slice().sort((a, b) => 
-              currentAssignments[a as keyof typeof currentAssignments] - 
-              currentAssignments[b as keyof typeof currentAssignments]
+              (currentAssignments[a] || 0) - (currentAssignments[b] || 0)
             );
             
             const batch = slice.map((lead, index) => {
               const assigneeIndex = index % EMPLOYEES.length;
               const assignee = sortedEmployees[assigneeIndex];
-              currentAssignments[assignee as keyof typeof currentAssignments]++;
+              currentAssignments[assignee] = (currentAssignments[assignee] || 0) + 1;
               return { rowNumber: lead.rowIndex, assignee };
             });
 

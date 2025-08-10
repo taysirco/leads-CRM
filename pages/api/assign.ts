@@ -1,7 +1,15 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { fetchLeads, updateLeadsBatch, LeadRow } from '../../lib/googleSheets';
 
-const EMPLOYEES = ['heba.', 'ahmed.', 'aisha.'];
+function getEmployeesFromEnv(): string[] {
+  const envVal = process.env.CALL_CENTER_USERS || '';
+  const entries = envVal.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+  const users = entries.map(e => e.split(':')[0]).filter(Boolean);
+  const fallback = ['heba.', 'ahmed.', 'aisha.'];
+  return users.length > 0 ? users : fallback;
+}
+
+const EMPLOYEES = getEmployeesFromEnv();
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -18,11 +26,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const leads = await fetchLeads();
 
     // حساب التوزيع الحالي
-    const currentCounts = { 'heba.': 0, 'ahmed.': 0, 'aisha.': 0 };
+    const currentCounts: Record<string, number> = Object.fromEntries(EMPLOYEES.map(e => [e, 0]));
     for (const lead of leads) {
       const assignee = (lead.assignee || '').trim();
       if (EMPLOYEES.includes(assignee)) {
-        currentCounts[assignee as keyof typeof currentCounts]++;
+        currentCounts[assignee] = (currentCounts[assignee] || 0) + 1;
       }
     }
 
@@ -42,7 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // توزيع عادل: نبدأ بالموظف الذي لديه أقل عدد
     const sortedEmployees = EMPLOYEES.slice().sort((a, b) => 
-      currentCounts[a as keyof typeof currentCounts] - currentCounts[b as keyof typeof currentCounts]
+      (currentCounts[a] || 0) - (currentCounts[b] || 0)
     );
 
     // توزيع دفعي للحفاظ على الكوتا (حد أقصى 100 في الدفعة الواحدة)
@@ -55,11 +63,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     for (let i = 0; i < totalToDistribute; i++) {
       const employeeIndex = i % EMPLOYEES.length;
       const assignee = sortedEmployees[employeeIndex];
-      currentCounts[assignee as keyof typeof currentCounts]++;
+      currentCounts[assignee] = (currentCounts[assignee] || 0) + 1;
       
       updates.push({
         rowNumber: unassigned[i].rowIndex,
-        assignee: assignee
+        assignee
       });
       distributed++;
     }
@@ -71,15 +79,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // حساب التوزيع النهائي
     const finalCounts = { ...currentCounts };
-    const balance = Math.max(...Object.values(finalCounts)) - Math.min(...Object.values(finalCounts));
+    const values = Object.values(finalCounts);
+    const balance = values.length ? Math.max(...values) - Math.min(...values) : 0;
     
     res.status(200).json({ 
       message: `تم التوزيع بنجاح! وُزعت ${distributed} ليد`,
-      distributed: distributed,
+      distributed,
       currentDistribution: finalCounts,
       remainingUnassigned: unassigned.length - distributed,
       balanceDifference: balance,
-      isBalanced: balance <= Math.ceil(leads.length * 0.1) // 10% كحد أقصى للاختلاف
+      isBalanced: values.length ? balance <= Math.ceil(leads.length * 0.1) : true
     });
   } catch (error: any) {
     console.error('❌ خطأ في التوزيع:', error);
