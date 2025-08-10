@@ -259,6 +259,18 @@ export default function Home() {
     return { counts, total, imbalance, isBalanced, maxAllowed };
   }, [orders]);
 
+  // أسماء العرض للموظفين من البيئة إن توفرت
+  const employeeDisplayNames = useMemo(() => {
+    const envVal = process.env.NEXT_PUBLIC_CALL_CENTER_USERS_DISPLAY || '';
+    // صيغة: heba.:هبة,ahmed.:أحمد,aisha.:عائشة
+    const map = new Map<string, string>();
+    envVal.split(/[,;]+/).map(s => s.trim()).filter(Boolean).forEach(pair => {
+      const [u, n] = pair.split(':');
+      if (u && n) map.set(u.trim(), n.trim());
+    });
+    return (username: string) => map.get(username) || (username === 'heba.' ? 'هبة' : username === 'ahmed.' ? 'أحمد' : username === 'aisha.' ? 'عائشة' : username);
+  }, []);
+
   if (error) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="text-center">
