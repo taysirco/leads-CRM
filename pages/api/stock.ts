@@ -7,7 +7,8 @@ import {
   getStockAlerts, 
   getStockReports,
   addStockMovement,
-  findProductBySynonyms
+  findProductBySynonyms,
+  testStockSheetConnection
 } from '../../lib/googleSheets';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -53,6 +54,15 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
     case 'reports':
       const reports = await getStockReports();
       return res.json({ reports });
+
+    case 'test':
+      console.log('🧪 بدء اختبار التزامن مع Google Sheets...');
+      const testResult = await testStockSheetConnection();
+      return res.json({ 
+        testResult,
+        timestamp: new Date().toISOString(),
+        message: 'تم تشغيل اختبار التزامن'
+      });
 
     case 'items':
     default:

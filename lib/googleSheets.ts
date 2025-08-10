@@ -462,6 +462,8 @@ export async function fetchStock(): Promise<StockItem[]> {
   await ensureStockSheetExists();
   
   try {
+    console.log(`📊 بدء جلب بيانات المخزون من ${STOCK_SHEET_NAME}...`);
+    
     const auth = getAuth();
     const sheets = google.sheets({ version: 'v4', auth });
     
@@ -471,12 +473,25 @@ export async function fetchStock(): Promise<StockItem[]> {
     });
 
     const values = response.data.values || [];
-    if (values.length <= 1) return []; // فقط العناوين أو فارغ
+    console.log(`📋 تم جلب ${values.length} صف من Google Sheets`);
+    
+    if (values.length <= 1) {
+      console.log('📝 الشيت فارغ أو يحتوي على العناوين فقط');
+      return []; // فقط العناوين أو فارغ
+    }
 
     const stockItems: StockItem[] = [];
     
+    console.log('🔄 معالجة صفوف البيانات...');
     for (let i = 1; i < values.length; i++) {
       const row = values[i];
+      
+      // تخطي الصفوف الفارغة
+      if (!row || row.length === 0 || !row[1]) {
+        console.log(`⚠️ تخطي الصف ${i + 1} (فارغ أو غير مكتمل)`);
+        continue;
+      }
+      
       const stockItem: StockItem = {
         id: parseInt(row[0]) || i,
         rowIndex: i + 1,
@@ -487,12 +502,15 @@ export async function fetchStock(): Promise<StockItem[]> {
         synonyms: row[5] || '',
         minThreshold: parseInt(row[6]) || 10,
       };
+      
+      console.log(`✅ منتج ${i}: ${stockItem.productName} (الكمية: ${stockItem.currentQuantity})`);
       stockItems.push(stockItem);
     }
 
+    console.log(`✅ تم تحليل ${stockItems.length} منتج بنجاح`);
     return stockItems;
   } catch (error) {
-    console.error('Error fetching stock:', error);
+    console.error('❌ خطأ في جلب بيانات المخزون:', error);
     throw error;
   }
 }
@@ -575,27 +593,35 @@ export async function addOrUpdateStockItem(stockItem: Partial<StockItem>): Promi
           ]]
         }
       });
+      
+      console.log(`✅ تم تحديث المنتج: ${stockItem.productName}`);
     } else {
-      // إضافة عنصر جديد
+      // إضافة عنصر جديد - إصلاح خطأ حساب newId
       const newId = stockItems.length > 0 ? Math.max(...stockItems.map(item => item.id)) + 1 : 1;
+      
+      const newRow = [
+        newId,
+        stockItem.productName || '',
+        stockItem.initialQuantity || 0,
+        (stockItem.currentQuantity ?? stockItem.initialQuantity) || 0,
+        currentDate,
+        stockItem.synonyms || '',
+        stockItem.minThreshold || 10,
+        currentDate
+      ];
+      
+      console.log(`📦 إضافة منتج جديد بـ ID: ${newId}، البيانات:`, newRow);
       
       await sheets.spreadsheets.values.append({
         spreadsheetId: SHEET_ID,
         range: `${STOCK_SHEET_NAME}!A:H`,
         valueInputOption: 'RAW',
         requestBody: {
-          values: [[
-            newId,
-            stockItem.productName || '',
-            stockItem.initialQuantity || 0,
-            (stockItem.currentQuantity ?? stockItem.initialQuantity) || 0,
-            currentDate,
-            stockItem.synonyms || '',
-            stockItem.minThreshold || 10,
-            currentDate
-          ]]
+          values: [newRow]
         }
       });
+      
+      console.log(`✅ تم إضافة المنتج الجديد: ${stockItem.productName} بنجاح`);
     }
 
     // تسجيل حركة المخزون
@@ -606,8 +632,10 @@ export async function addOrUpdateStockItem(stockItem: Partial<StockItem>): Promi
       reason: existingItem ? 'تحديث المخزون' : 'إضافة منتج جديد',
     });
 
+    console.log(`🔄 تم تسجيل حركة المخزون لـ: ${stockItem.productName}`);
+
   } catch (error) {
-    console.error('Error adding/updating stock item:', error);
+    console.error('❌ خطأ في إضافة/تحديث منتج المخزون:', error);
     throw error;
   }
 }
@@ -895,5 +923,64 @@ export async function getStockReports() {
   } catch (error) {
     console.error('Error getting stock reports:', error);
     throw error;
+  }
+} 
+
+// دالة اختبار الاتصال والكتابة في Google Sheets للمخزون
+export async function testStockSheetConnection(): Promise<{ success: boolean; message: string; data?: any }> {
+  try {
+    console.log('🔍 بدء اختبار الاتصال مع Google Sheets للمخزون...');
+    
+    // 1. إنشاء الشيت إذا لم يكن موجود
+    await ensureStockSheetExists();
+    console.log('✅ تم التأكد من وجود stock sheet');
+    
+    // 2. اختبار القراءة
+    const stockItems = await fetchStock();
+    console.log('✅ تم جلب بيانات المخزون:', stockItems.length, 'منتج');
+    
+    // 3. اختبار إضافة منتج تجريبي
+    const testProduct = {
+      productName: `منتج تجريبي ${Date.now()}`,
+      initialQuantity: 100,
+      currentQuantity: 100,
+      synonyms: 'تجريبي، اختبار',
+      minThreshold: 10
+    };
+    
+    await addOrUpdateStockItem(testProduct);
+    console.log('✅ تم إضافة منتج تجريبي بنجاح');
+    
+    // 4. التحقق من الإضافة
+    const updatedItems = await fetchStock();
+    const addedProduct = updatedItems.find(item => item.productName === testProduct.productName);
+    
+    if (addedProduct) {
+      console.log('✅ تم العثور على المنتج التجريبي في الشيت');
+      return {
+        success: true,
+        message: 'اختبار التزامن مع Google Sheets نجح بشكل كامل',
+        data: {
+          totalProducts: updatedItems.length,
+          testProduct: addedProduct,
+          allProducts: updatedItems
+        }
+      };
+    } else {
+      console.log('❌ لم يتم العثور على المنتج التجريبي');
+      return {
+        success: false,
+        message: 'فشل في العثور على المنتج بعد الإضافة',
+        data: { totalProducts: updatedItems.length }
+      };
+    }
+    
+  } catch (error) {
+    console.error('❌ خطأ في اختبار Google Sheets:', error);
+    return {
+      success: false,
+      message: `خطأ في الاتصال: ${error}`,
+      data: null
+    };
   }
 } 
