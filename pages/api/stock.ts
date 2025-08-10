@@ -44,7 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 // GET: جلب المخزون والتقارير
 async function handleGet(req: NextApiRequest, res: NextApiResponse) {
-  const { action } = req.query;
+  const { action, force } = req.query;
 
   switch (action) {
     case 'alerts':
@@ -66,8 +66,15 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
 
     case 'items':
     default:
-      const stockItems = await fetchStock();
-      return res.json({ stockItems });
+      const forceFresh = force === 'true';
+      console.log(`📊 طلب جلب المنتجات (force: ${forceFresh})`);
+      const stockItems = await fetchStock(forceFresh);
+      console.log(`📋 تم إرجاع ${stockItems.length} منتج إلى الواجهة`);
+      return res.json({ 
+        stockItems,
+        timestamp: new Date().toISOString(),
+        count: stockItems.length
+      });
   }
 }
 
@@ -118,7 +125,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
       }
 
       // خصم الكمية التالفة من المخزون
-      const stockItems = await fetchStock();
+      const stockItems = await fetchStock(true); // استخدام force refresh
       const stockItem = findProductBySynonyms(damageData.productName, stockItems);
       
       if (!stockItem) {
@@ -191,7 +198,7 @@ async function handlePut(req: NextApiRequest, res: NextApiResponse) {
     case 'adjust_quantity':
       const { productName: adjustProduct, adjustment, reason } = data;
       
-      const stockItems = await fetchStock();
+      const stockItems = await fetchStock(true); // استخدام force refresh
       const stockItem = findProductBySynonyms(adjustProduct, stockItems);
       
       if (!stockItem) {

@@ -457,27 +457,37 @@ export async function ensureStockSheetExists() {
   }
 }
 
-// دالة لجلب بيانات المخزون
-export async function fetchStock(): Promise<StockItem[]> {
+// دالة لجلب بيانات المخزون مع تحسينات التزامن
+export async function fetchStock(forceFresh: boolean = false): Promise<StockItem[]> {
   await ensureStockSheetExists();
   
   try {
-    console.log(`📊 بدء جلب بيانات المخزون من ${STOCK_SHEET_NAME}...`);
+    console.log(`📊 بدء جلب بيانات المخزون من ${STOCK_SHEET_NAME}... (forceFresh: ${forceFresh})`);
     
     const auth = getAuth();
     const sheets = google.sheets({ version: 'v4', auth });
     
+    // إضافة timestamp لتجنب cache في Google Sheets
+    const timestamp = forceFresh ? `?t=${Date.now()}` : '';
+    
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: `${STOCK_SHEET_NAME}!A:H`,
+      valueRenderOption: 'UNFORMATTED_VALUE', // للحصول على القيم الخام
+      dateTimeRenderOption: 'FORMATTED_STRING'
     });
 
     const values = response.data.values || [];
-    console.log(`📋 تم جلب ${values.length} صف من Google Sheets`);
+    console.log(`📋 تم جلب ${values.length} صف من Google Sheets (شامل العناوين)`);
+    
+    // طباعة العناوين للتأكد
+    if (values.length > 0) {
+      console.log('📝 عناوين الأعمدة:', values[0]);
+    }
     
     if (values.length <= 1) {
       console.log('📝 الشيت فارغ أو يحتوي على العناوين فقط');
-      return []; // فقط العناوين أو فارغ
+      return [];
     }
 
     const stockItems: StockItem[] = [];
@@ -486,28 +496,42 @@ export async function fetchStock(): Promise<StockItem[]> {
     for (let i = 1; i < values.length; i++) {
       const row = values[i];
       
-      // تخطي الصفوف الفارغة
+      // طباعة كل صف للتشخيص
+      console.log(`🔍 الصف ${i + 1}:`, row);
+      
+      // تخطي الصفوف الفارغة أو غير المكتملة
       if (!row || row.length === 0 || !row[1]) {
         console.log(`⚠️ تخطي الصف ${i + 1} (فارغ أو غير مكتمل)`);
         continue;
       }
       
       const stockItem: StockItem = {
-        id: parseInt(row[0]) || i,
+        id: parseInt(String(row[0])) || i,
         rowIndex: i + 1,
-        productName: row[1] || '',
-        initialQuantity: parseInt(row[2]) || 0,
-        currentQuantity: parseInt(row[3]) || 0,
-        lastUpdate: row[4] || getCurrentEgyptianDate(),
-        synonyms: row[5] || '',
-        minThreshold: parseInt(row[6]) || 10,
+        productName: String(row[1] || '').trim(),
+        initialQuantity: parseInt(String(row[2])) || 0,
+        currentQuantity: parseInt(String(row[3])) || 0,
+        lastUpdate: String(row[4] || getCurrentEgyptianDate()),
+        synonyms: String(row[5] || '').trim(),
+        minThreshold: parseInt(String(row[6])) || 10,
       };
       
-      console.log(`✅ منتج ${i}: ${stockItem.productName} (الكمية: ${stockItem.currentQuantity})`);
-      stockItems.push(stockItem);
+      // التأكد من أن اسم المنتج غير فارغ
+      if (stockItem.productName) {
+        console.log(`✅ منتج ${i}: "${stockItem.productName}" (الكمية: ${stockItem.currentQuantity}, ID: ${stockItem.id})`);
+        stockItems.push(stockItem);
+      } else {
+        console.log(`⚠️ تخطي منتج في الصف ${i + 1} - اسم المنتج فارغ`);
+      }
     }
 
-    console.log(`✅ تم تحليل ${stockItems.length} منتج بنجاح`);
+    console.log(`✅ تم تحليل ${stockItems.length} منتج بنجاح من أصل ${values.length - 1} صف`);
+    console.log('📦 قائمة المنتجات:', stockItems.map(item => ({
+      id: item.id,
+      name: item.productName,
+      quantity: item.currentQuantity
+    })));
+    
     return stockItems;
   } catch (error) {
     console.error('❌ خطأ في جلب بيانات المخزون:', error);
@@ -566,7 +590,7 @@ export async function addOrUpdateStockItem(stockItem: Partial<StockItem>): Promi
     const auth = getAuth();
     const sheets = google.sheets({ version: 'v4', auth });
     
-    const stockItems = await fetchStock();
+    const stockItems = await fetchStock(true); // استخدام force refresh
     const existingItem = stockItems.find(item => 
       item.productName.toLowerCase() === stockItem.productName?.toLowerCase()
     );
@@ -643,7 +667,7 @@ export async function addOrUpdateStockItem(stockItem: Partial<StockItem>): Promi
 // دالة لخصم المخزون عند الشحن
 export async function deductStock(productName: string, quantity: number, orderId?: number): Promise<{ success: boolean; message: string; availableQuantity?: number }> {
   try {
-    const stockItems = await fetchStock();
+    const stockItems = await fetchStock(true); // استخدام force refresh
     const stockItem = findProductBySynonyms(productName, stockItems);
 
     if (!stockItem) {
@@ -776,7 +800,7 @@ export async function addStockMovement(movement: Partial<StockMovement>): Promis
 // دالة للحصول على تنبيهات نفاد المخزون
 export async function getStockAlerts(): Promise<StockItem[]> {
   try {
-    const stockItems = await fetchStock();
+    const stockItems = await fetchStock(true); // استخدام force refresh
     return stockItems.filter(item => 
       item.currentQuantity <= (item.minThreshold || 10)
     );
@@ -860,7 +884,7 @@ export async function addDailyReturn(returnItem: Partial<DailyReturn>): Promise<
     });
 
     // تحديث المخزون (إضافة الكمية المرتجعة)
-    const stockItems = await fetchStock();
+    const stockItems = await fetchStock(true); // استخدام force refresh
     const stockItem = findProductBySynonyms(returnItem.productName || '', stockItems);
     
     if (stockItem) {
@@ -889,7 +913,7 @@ export async function addDailyReturn(returnItem: Partial<DailyReturn>): Promise<
 // دالة للحصول على تقارير المخزون
 export async function getStockReports() {
   try {
-    const stockItems = await fetchStock();
+    const stockItems = await fetchStock(true); // استخدام force refresh
     const alerts = await getStockAlerts();
     
     // إحصائيات عامة
@@ -936,7 +960,7 @@ export async function testStockSheetConnection(): Promise<{ success: boolean; me
     console.log('✅ تم التأكد من وجود stock sheet');
     
     // 2. اختبار القراءة
-    const stockItems = await fetchStock();
+    const stockItems = await fetchStock(true); // استخدام force refresh
     console.log('✅ تم جلب بيانات المخزون:', stockItems.length, 'منتج');
     
     // 3. اختبار إضافة منتج تجريبي
@@ -952,7 +976,7 @@ export async function testStockSheetConnection(): Promise<{ success: boolean; me
     console.log('✅ تم إضافة منتج تجريبي بنجاح');
     
     // 4. التحقق من الإضافة
-    const updatedItems = await fetchStock();
+    const updatedItems = await fetchStock(true); // استخدام force refresh
     const addedProduct = updatedItems.find(item => item.productName === testProduct.productName);
     
     if (addedProduct) {
