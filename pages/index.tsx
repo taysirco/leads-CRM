@@ -5,6 +5,7 @@ import OrdersTable from '../components/OrdersTable';
 import BostaExport from '../components/BostaExport';
 import ArchiveTable from '../components/ArchiveTable';
 import RejectedTable from '../components/RejectedTable';
+import StockManagement from '../components/StockManagement';
 import NotificationSystem from '../components/NotificationSystem';
 import NotificationPermission from '../components/NotificationPermission';
 import LiveStats from '../components/LiveStats';
@@ -34,7 +35,7 @@ const fetcher = async (url: string) => {
 
 export default function Home() {
   const { user } = useCurrentUser();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'follow-up' | 'export' | 'archive' | 'rejected'>('orders');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'follow-up' | 'export' | 'archive' | 'rejected' | 'stock'>('orders');
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState<any>({
@@ -379,6 +380,7 @@ export default function Home() {
                 { id: 'export', name: 'تصدير بوسطة', icon: '📤' },
                 { id: 'archive', name: 'طلبات الشحن', icon: '🚚' },
                 { id: 'rejected', name: 'الطلبات المهملة', icon: '🗑️' },
+                ...(user?.role === 'admin' ? [{ id: 'stock', name: 'إدارة المخزون', icon: '📦' }] : []),
               ].map((tab: any) => (
                 <button
                   key={tab.id}
@@ -397,6 +399,7 @@ export default function Home() {
                     tab.id === 'follow-up' ? 'متابعة' :
                     tab.id === 'export' ? 'تصدير' :
                     tab.id === 'archive' ? 'شحن' :
+                    tab.id === 'stock' ? 'مخزون' :
                     'مهملة'
                   }</span>
                   {(tab.id === 'orders' && tabCounts.orders > 0) && (
@@ -455,6 +458,9 @@ export default function Home() {
                 orders={getFilteredOrders('rejected')} 
                 onUpdateOrder={handleUpdateOrder}
               />
+            )}
+            {activeTab === 'stock' && user?.role === 'admin' && (
+              <StockManagement />
             )}
           </div>
         </div>

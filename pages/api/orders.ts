@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { fetchLeads, updateLead, getOrderStatistics, LeadRow, updateLeadsBatch } from '../../lib/googleSheets';
+import { deductStock } from '../../lib/googleSheets';
 
 const EMPLOYEES = ['heba.', 'ahmed.', 'raed.'];
 let lastAutoAssignAt = 0; // ms timestamp
@@ -92,6 +93,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'Array of orders and a status are required for bulk update' });
       }
       try {
+        // للتحديث الجماعي، نحتاج للتحقق من خصم المخزون لكل طلب إذا كانت الحالة "تم الشحن"
+        if (status === 'تم الشحن') {
+          // جلب بيانات الطلبات للحصول على معلومات المنتجات
+          const leads = await fetchLeads();
+          const targetLeads = leads.filter(lead => orders.includes(lead.id));
+          
+          const stockWarnings: string[] = [];
+          
+          // محاولة خصم المخزون لكل طلب
+          for (const lead of targetLeads) {
+            try {
+              const quantity = parseInt(lead.quantity) || 1;
+              const result = await deductStock(lead.productName, quantity, lead.id);
+              
+              if (!result.success) {
+                stockWarnings.push(`طلب #${lead.id}: ${result.message}`);
+              }
+            } catch (error) {
+              console.error(`Error deducting stock for order ${lead.id}:`, error);
+              stockWarnings.push(`طلب #${lead.id}: خطأ في خصم المخزون`);
+            }
+          }
+          
+          // إذا كان هناك تحذيرات، أرسلها مع النتيجة
+          if (stockWarnings.length > 0) {
+            const updatePromises = orders.map((orderId: number) => updateLead(Number(orderId), { status }));
+            await Promise.all(updatePromises);
+            
+            return res.status(200).json({ 
+              message: 'Bulk update successful', 
+              stockWarnings,
+              warning: 'تم التحديث مع وجود تحذيرات في المخزون'
+            });
+          }
+        }
+        
         const updatePromises = orders.map((orderId: number) => updateLead(Number(orderId), { status }));
         await Promise.all(updatePromises);
         return res.status(200).json({ message: 'Bulk update successful' });
@@ -105,9 +142,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!rowNumber) {
       return res.status(400).json({ error: 'rowNumber is required' });
     }
+    
     try {
+      let stockResult = null;
+      
+      // إذا تم تغيير الحالة إلى "تم الشحن"، اخصم من المخزون
+      if (updates.status === 'تم الشحن') {
+        try {
+          // جلب بيانات الطلب للحصول على معلومات المنتج
+          const leads = await fetchLeads();
+          const targetLead = leads.find(lead => lead.id === Number(rowNumber));
+          
+          if (targetLead) {
+            const quantity = parseInt(targetLead.quantity) || 1;
+            stockResult = await deductStock(targetLead.productName, quantity, targetLead.id);
+            
+            console.log(`Stock deduction result for order ${rowNumber}:`, stockResult);
+          }
+        } catch (stockError) {
+          console.error(`Error deducting stock for order ${rowNumber}:`, stockError);
+          // لا نوقف العملية، لكن نسجل الخطأ
+          stockResult = {
+            success: false,
+            message: 'خطأ في خصم المخزون'
+          };
+        }
+      }
+      
+      // تحديث الطلب
       await updateLead(Number(rowNumber), updates);
-      return res.status(200).json({ message: 'Lead updated successfully' });
+      
+      // إرسال النتيجة مع معلومات المخزون إذا كانت متوفرة
+      const response: any = { message: 'Lead updated successfully' };
+      
+      if (stockResult) {
+        response.stockResult = stockResult;
+        if (!stockResult.success) {
+          response.warning = stockResult.message;
+        }
+      }
+      
+      return res.status(200).json(response);
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
     }
