@@ -835,15 +835,34 @@ export async function getStockMovements(): Promise<StockMovement[]> {
   }
 }
 
-// دالة للحصول على تنبيهات نفاد المخزون
+// دالة للحصول على تنبيهات نفاد المخزون مع تفاصيل محسنة
 export async function getStockAlerts(): Promise<StockItem[]> {
   try {
+    console.log('🚨 فحص تنبيهات المخزون...');
+    
     const stockItems = await fetchStock(true); // استخدام force refresh
-    return stockItems.stockItems.filter(item => 
+    const alerts = stockItems.stockItems.filter(item => 
       item.currentQuantity <= (item.minThreshold || 10)
     );
+    
+    // ترتيب التنبيهات حسب الأولوية (المنتهي أولاً، ثم الأقل كمية)
+    const sortedAlerts = alerts.sort((a, b) => {
+      // المنتجات المنتهية أولاً
+      if (a.currentQuantity === 0 && b.currentQuantity > 0) return -1;
+      if (b.currentQuantity === 0 && a.currentQuantity > 0) return 1;
+      
+      // ثم الأقل كمية
+      return a.currentQuantity - b.currentQuantity;
+    });
+    
+    console.log(`🚨 عدد التنبيهات: ${sortedAlerts.length}`);
+    sortedAlerts.forEach(item => {
+      console.log(`⚠️ تنبيه: ${item.productName} - الكمية: ${item.currentQuantity}/${item.minThreshold || 10}`);
+    });
+    
+    return sortedAlerts;
   } catch (error) {
-    console.error('Error getting stock alerts:', error);
+    console.error('❌ خطأ في جلب تنبيهات المخزون:', error);
     return [];
   }
 }
