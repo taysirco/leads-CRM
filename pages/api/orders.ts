@@ -99,216 +99,235 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ error: error.message });
     }
   } else if (req.method === 'PUT') {
-    // Handle bulk status update
-    try {
-      const { orders, status } = req.body;
-      
-      if (!Array.isArray(orders) || !status) {
-        return res.status(400).json({ error: 'Invalid bulk update request' });
-      }
-
-      console.log(`📦 تحديث جماعي: ${orders.length} طلب إلى حالة "${status}"`);
-      
-      let stockResults: any[] = [];
-      let failedOrders: number[] = [];
-      
-      // إذا كانت الحالة الجديدة "تم الشحن"، نحتاج لخصم المخزون لكل طلب
-      if (status === 'تم الشحن') {
-        const leads = await fetchLeads();
+    console.log('🔄 طلب PUT وصل إلى /api/orders');
+    console.log('📝 البيانات المستلمة:', JSON.stringify(req.body, null, 2));
+    
+    // التحقق من نوع التحديث (جماعي أم فردي)
+    const { orders, status, rowNumber } = req.body;
+    
+    console.log('🔍 تحليل نوع التحديث:');
+    console.log(`  - orders: ${Array.isArray(orders) ? `مصفوفة بـ ${orders.length} عنصر` : 'غير موجود'}`);
+    console.log(`  - status: ${status || 'غير موجود'}`);
+    console.log(`  - rowNumber: ${rowNumber || 'غير موجود'}`);
+    
+    // التحديث الجماعي
+    if (Array.isArray(orders) && status) {
+      console.log('📦 تحديث جماعي مكتشف');
+      try {
+        console.log(`📦 تحديث جماعي: ${orders.length} طلب إلى حالة "${status}"`);
         
-        for (const orderId of orders) {
-          try {
-            const targetLead = leads.find(lead => lead.id === Number(orderId));
-            
-            if (targetLead && targetLead.productName && targetLead.quantity) {
-              const quantity = parseInt(targetLead.quantity) || 1;
-              const productName = targetLead.productName || 'غير محدد';
+        let stockResults: any[] = [];
+        let failedOrders: number[] = [];
+        
+        // إذا كانت الحالة الجديدة "تم الشحن"، نحتاج لخصم المخزون لكل طلب
+        if (status === 'تم الشحن') {
+          const leads = await fetchLeads();
+          
+          for (const orderId of orders) {
+            try {
+              const targetLead = leads.find(lead => lead.id === Number(orderId));
               
-              console.log(`🚚 معالجة شحن الطلب ${orderId}: ${quantity} × ${productName}`);
-              
-              const stockResult = await deductStock(productName, quantity, targetLead.id);
-              stockResults.push({
-                orderId,
-                productName,
-                quantity,
-                ...stockResult
-              });
-              
-              if (!stockResult.success) {
-                console.error(`❌ فشل خصم مخزون الطلب ${orderId}: ${stockResult.message}`);
+              if (targetLead && targetLead.productName && targetLead.quantity) {
+                const quantity = parseInt(targetLead.quantity) || 1;
+                const productName = targetLead.productName || 'غير محدد';
+                
+                console.log(`🚚 معالجة شحن الطلب ${orderId}: ${quantity} × ${productName}`);
+                
+                const stockResult = await deductStock(productName, quantity, targetLead.id);
+                stockResults.push({
+                  orderId,
+                  productName,
+                  quantity,
+                  ...stockResult
+                });
+                
+                if (!stockResult.success) {
+                  console.error(`❌ فشل خصم مخزون الطلب ${orderId}: ${stockResult.message}`);
+                  failedOrders.push(orderId);
+                }
+              } else {
+                console.error(`❌ لم يتم العثور على الطلب ${orderId} أو بيانات ناقصة`);
                 failedOrders.push(orderId);
+                stockResults.push({
+                  orderId,
+                  success: false,
+                  message: 'لم يتم العثور على بيانات الطلب أو بيانات ناقصة'
+                });
               }
-            } else {
-              console.error(`❌ لم يتم العثور على الطلب ${orderId} أو بيانات ناقصة`);
+            } catch (error) {
+              console.error(`❌ خطأ في معالجة الطلب ${orderId}:`, error);
               failedOrders.push(orderId);
               stockResults.push({
                 orderId,
                 success: false,
-                message: 'لم يتم العثور على بيانات الطلب أو بيانات ناقصة'
+                message: `خطأ في النظام: ${error}`
               });
             }
-          } catch (error) {
-            console.error(`❌ خطأ في معالجة الطلب ${orderId}:`, error);
-            failedOrders.push(orderId);
-            stockResults.push({
-              orderId,
-              success: false,
-              message: `خطأ في النظام: ${error}`
+          }
+          
+          // إذا فشل أي طلب في خصم المخزون، أرجع خطأ مع التفاصيل
+          if (failedOrders.length > 0) {
+            const failedStockResults = stockResults.filter(r => !r.success);
+            const errorDetails = failedStockResults.map(r => 
+              `• الطلب ${r.orderId}: ${r.message}${r.availableQuantity !== undefined ? ` (متوفر: ${r.availableQuantity})` : ''}`
+            ).join('\n');
+            
+            return res.status(400).json({
+              error: 'فشل في شحن بعض الطلبات',
+              stockError: true,
+              message: `❌ لا يمكن شحن ${failedOrders.length} من ${orders.length} طلب بسبب نقص المخزون:\n\n${errorDetails}`,
+              failedOrders,
+              stockResults,
+              successfulOrders: orders.filter((id: number) => !failedOrders.includes(id))
             });
           }
         }
         
-        // إذا فشل أي طلب في خصم المخزون، أرجع خطأ مع التفاصيل
-        if (failedOrders.length > 0) {
-          const failedStockResults = stockResults.filter(r => !r.success);
-          const errorDetails = failedStockResults.map(r => 
-            `• الطلب ${r.orderId}: ${r.message}${r.availableQuantity !== undefined ? ` (متوفر: ${r.availableQuantity})` : ''}`
-          ).join('\n');
-          
-          return res.status(400).json({
-            error: 'فشل في شحن بعض الطلبات',
-            stockError: true,
-            message: `❌ لا يمكن شحن ${failedOrders.length} من ${orders.length} طلب بسبب نقص المخزون:\n\n${errorDetails}`,
-            failedOrders,
-            stockResults,
-            successfulOrders: orders.filter((id: number) => !failedOrders.includes(id))
-          });
+        // تحديث جميع الطلبات إذا نجحت عمليات المخزون
+        const updatePromises = orders.map((orderId: number) => updateLead(Number(orderId), { status }));
+        await Promise.all(updatePromises);
+        
+        const response: any = {
+          success: true,
+          message: `تم تحديث ${orders.length} طلب بنجاح إلى حالة "${status}"`
+        };
+        
+        if (stockResults.length > 0) {
+          const totalDeducted = stockResults.reduce((sum, r) => sum + (r.quantity || 0), 0);
+          response.message += `\n📦 تم خصم إجمالي ${totalDeducted} قطعة من المخزون`;
+          response.stockResults = stockResults;
         }
+        
+        return res.status(200).json(response);
+      } catch (error: any) {
+        console.error(`❌ خطأ في التحديث الجماعي:`, error.message);
+        return res.status(500).json({ 
+          error: 'خطأ في التحديث الجماعي',
+          message: error.message 
+        });
       }
-      
-      // تحديث جميع الطلبات إذا نجحت عمليات المخزون
-      const updatePromises = orders.map((orderId: number) => updateLead(Number(orderId), { status }));
-      await Promise.all(updatePromises);
-      
-      const response: any = {
-        success: true,
-        message: `تم تحديث ${orders.length} طلب بنجاح إلى حالة "${status}"`
-      };
-      
-      if (stockResults.length > 0) {
-        const totalDeducted = stockResults.reduce((sum, r) => sum + (r.quantity || 0), 0);
-        response.message += `\n📦 تم خصم إجمالي ${totalDeducted} قطعة من المخزون`;
-        response.stockResults = stockResults;
-      }
-      
-      return res.status(200).json(response);
-    } catch (error: any) {
-      console.error(`❌ خطأ في التحديث الجماعي:`, error.message);
-      return res.status(500).json({ 
-        error: 'خطأ في التحديث الجماعي',
-        message: error.message 
-      });
-    }
-
-    const { rowNumber, ...updates } = req.body;
-    if (!rowNumber) {
-      return res.status(400).json({ error: 'rowNumber is required' });
     }
     
-    try {
-      let stockResult = null;
+    // التحديث الفردي
+    else if (rowNumber) {
+      console.log('👤 تحديث فردي مكتشف');
+      console.log(`🎯 رقم الصف: ${rowNumber}`);
       
-      // إذا تم تغيير الحالة إلى "تم الشحن"، اخصم من المخزون
-      if (updates.status === 'تم الشحن') {
-        try {
-          // جلب بيانات الطلب للحصول على معلومات المنتج
-          const leads = await fetchLeads();
-          const targetLead = leads.find(lead => lead.id === Number(rowNumber));
-          
-          if (!targetLead) {
-            console.error(`❌ لم يتم العثور على الطلب ${rowNumber}`);
-            return res.status(400).json({
-              error: 'لا يمكن الشحن',
-              stockError: true,
-              message: 'لم يتم العثور على بيانات الطلب في النظام'
-            });
-          }
-          
-          // التحقق من وجود البيانات المطلوبة للشحن
-          const productName = targetLead!.productName?.trim();
-          const quantityStr = targetLead!.quantity?.toString().trim();
-          const orderId = targetLead!.id;
-          
-          if (!productName || !quantityStr) {
-            console.error(`❌ بيانات ناقصة للطلب ${rowNumber}: منتج=${productName}, كمية=${quantityStr}`);
-            return res.status(400).json({
-              error: 'لا يمكن الشحن',
-              stockError: true,
-              message: 'بيانات الطلب غير مكتملة (اسم المنتج أو الكمية مفقود)'
-            });
-          }
-          
-          const quantity = parseInt(quantityStr) || 1;
-          
-          console.log(`🚚 محاولة شحن الطلب ${rowNumber}: ${quantity} × ${productName}`);
-          
-          // خصم المخزون وتسجيل النتيجة
-          stockResult = await deductStock(productName, quantity, orderId);
-          
-          if (stockResult.success) {
-            console.log(`✅ تم خصم المخزون بنجاح: ${stockResult.message}`);
-          } else {
-            console.error(`❌ فشل خصم المخزون: ${stockResult.message}`);
+      const updates = { ...req.body };
+      delete updates.rowNumber;
+      
+      console.log('📋 التحديثات المطلوبة:', JSON.stringify(updates, null, 2));
+      
+      try {
+        console.log(`🚀 بدء تحديث الطلب ${rowNumber}...`);
+        let stockResult = null;
+        
+        // إذا تم تغيير الحالة إلى "تم الشحن"، اخصم من المخزون
+        if (updates.status === 'تم الشحن') {
+          try {
+            // جلب بيانات الطلب للحصول على معلومات المنتج
+            const leads = await fetchLeads();
+            const targetLead = leads.find(lead => lead.id === Number(rowNumber));
             
-            // في حالة عدم توفر المخزون، منع تحديث الحالة إلى "تم الشحن"
-            if (stockResult.message.includes('المخزون غير كافي')) {
+            if (!targetLead) {
+              console.error(`❌ لم يتم العثور على الطلب ${rowNumber}`);
               return res.status(400).json({
                 error: 'لا يمكن الشحن',
                 stockError: true,
-                message: `⚠️ ${stockResult.message}`,
-                availableQuantity: stockResult.availableQuantity,
-                requiredQuantity: quantity,
-                productName: productName
+                message: 'لم يتم العثور على بيانات الطلب في النظام'
               });
             }
             
-            // في حالة أخطاء أخرى في المخزون
+            // التحقق من وجود البيانات المطلوبة للشحن
+            const productName = targetLead!.productName?.trim();
+            const quantityStr = targetLead!.quantity?.toString().trim();
+            const orderId = targetLead!.id;
+            
+            if (!productName || !quantityStr) {
+              console.error(`❌ بيانات ناقصة للطلب ${rowNumber}: منتج=${productName}, كمية=${quantityStr}`);
+              return res.status(400).json({
+                error: 'لا يمكن الشحن',
+                stockError: true,
+                message: 'بيانات الطلب غير مكتملة (اسم المنتج أو الكمية مفقود)'
+              });
+            }
+            
+            const quantity = parseInt(quantityStr) || 1;
+            
+            console.log(`🚚 محاولة شحن الطلب ${rowNumber}: ${quantity} × ${productName}`);
+            
+            // خصم المخزون وتسجيل النتيجة
+            stockResult = await deductStock(productName, quantity, orderId);
+            
+            if (stockResult.success) {
+              console.log(`✅ تم خصم المخزون بنجاح: ${stockResult.message}`);
+            } else {
+              console.error(`❌ فشل خصم المخزون: ${stockResult.message}`);
+              
+              // في حالة عدم توفر المخزون، منع تحديث الحالة إلى "تم الشحن"
+              if (stockResult.message.includes('المخزون غير كافي')) {
+                return res.status(400).json({
+                  error: 'لا يمكن الشحن',
+                  stockError: true,
+                  message: `⚠️ ${stockResult.message}`,
+                  availableQuantity: stockResult.availableQuantity,
+                  requiredQuantity: quantity,
+                  productName: productName
+                });
+              }
+              
+              // في حالة أخطاء أخرى في المخزون
+              return res.status(500).json({
+                error: 'خطأ في نظام المخزون',
+                stockError: true,
+                message: `فشل في معالجة المخزون: ${stockResult.message}`
+              });
+            }
+          } catch (stockError) {
+            console.error(`❌ خطأ في خصم المخزون للطلب ${rowNumber}:`, stockError);
+            
+            // في حالة خطأ في النظام، منع الشحن أيضاً
             return res.status(500).json({
               error: 'خطأ في نظام المخزون',
               stockError: true,
-              message: `فشل في معالجة المخزون: ${stockResult.message}`
+              message: 'حدث خطأ أثناء التحقق من المخزون. يرجى المحاولة مرة أخرى أو التحقق من المخزون يدوياً.'
             });
           }
-        } catch (stockError) {
-          console.error(`❌ خطأ في خصم المخزون للطلب ${rowNumber}:`, stockError);
-          stockResult = {
-            success: false,
-            message: `خطأ في النظام: ${stockError}`
-          };
-          
-          // في حالة خطأ في النظام، منع الشحن أيضاً
-          return res.status(500).json({
-            error: 'خطأ في نظام المخزون',
-            stockError: true,
-            message: 'حدث خطأ أثناء التحقق من المخزون. يرجى المحاولة مرة أخرى أو التحقق من المخزون يدوياً.'
-          });
         }
-      }
-      
-      // تحديث الطلب فقط إذا لم تكن هناك مشاكل في المخزون
-      await updateLead(Number(rowNumber), updates);
-      
-      // إرسال النتيجة مع معلومات المخزون إذا كانت متوفرة
-      const response: any = { 
-        success: true,
-        message: 'تم تحديث الطلب بنجاح' 
-      };
-      
-      if (stockResult) {
-        response.stockResult = stockResult;
-        if (stockResult.success) {
-          response.message += ` وتم خصم المخزون: ${stockResult.message}`;
-        } else {
-          response.warning = `تحذير المخزون: ${stockResult.message}`;
+        
+        // تحديث الطلب فقط إذا لم تكن هناك مشاكل في المخزون
+        await updateLead(Number(rowNumber), updates);
+        
+        // إرسال النتيجة مع معلومات المخزون إذا كانت متوفرة
+        const response: any = { 
+          success: true,
+          message: 'تم تحديث الطلب بنجاح' 
+        };
+        
+        if (stockResult) {
+          response.stockResult = stockResult;
+          if (stockResult.success) {
+            response.message += ` وتم خصم المخزون: ${stockResult.message}`;
+          } else {
+            response.warning = `تحذير المخزون: ${stockResult.message}`;
+          }
         }
+        
+        return res.status(200).json(response);
+      } catch (error: any) {
+        console.error(`❌ خطأ في تحديث الطلب ${rowNumber}:`, error);
+        return res.status(500).json({ 
+          error: 'خطأ في النظام',
+          message: error.message 
+        });
       }
-      
-      return res.status(200).json(response);
-    } catch (error: any) {
-      console.error(`❌ خطأ في تحديث الطلب ${rowNumber}:`, error);
-      return res.status(500).json({ 
-        error: 'خطأ في النظام',
-        message: error.message 
+    }
+    
+    // طلب غير صالح
+    else {
+      return res.status(400).json({ 
+        error: 'طلب غير صالح', 
+        message: 'يجب تحديد إما orders و status للتحديث الجماعي، أو rowNumber للتحديث الفردي' 
       });
     }
   } else {

@@ -257,8 +257,8 @@ const getCurrentEgyptianDate = () => {
 // دالة للتأكد من وجود ورقة المخزون
 async function ensureStockSheetExists(): Promise<void> {
   try {
-    const auth = getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
     
     // محاولة الوصول للورقة
     try {
@@ -359,9 +359,9 @@ export async function fetchStock(forceFresh = false): Promise<{ stockItems: Stoc
     const sheets = google.sheets({ version: 'v4', auth });
 
     console.log('📊 جلب بيانات المخزون من Google Sheets...');
-    
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
+
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
       range: `${STOCK_SHEET_NAME}!A:G`,
     });
 
@@ -772,13 +772,13 @@ export async function getStockMovements(): Promise<StockMovement[]> {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range,
-    });
+  });
 
-    const rows = response.data.values;
+  const rows = response.data.values;
     if (!rows || rows.length <= 1) {
       console.log('📋 لا توجد حركات مخزون مسجلة');
-      return [];
-    }
+    return [];
+  }
 
     // تحويل البيانات إلى كائنات منطقية
     const movements: StockMovement[] = [];
@@ -835,34 +835,15 @@ export async function getStockMovements(): Promise<StockMovement[]> {
   }
 }
 
-// دالة للحصول على تنبيهات نفاد المخزون مع تفاصيل محسنة
+// دالة للحصول على تنبيهات نفاد المخزون
 export async function getStockAlerts(): Promise<StockItem[]> {
   try {
-    console.log('🚨 فحص تنبيهات المخزون...');
-    
     const stockItems = await fetchStock(true); // استخدام force refresh
-    const alerts = stockItems.stockItems.filter(item => 
+    return stockItems.stockItems.filter(item => 
       item.currentQuantity <= (item.minThreshold || 10)
     );
-    
-    // ترتيب التنبيهات حسب الأولوية (المنتهي أولاً، ثم الأقل كمية)
-    const sortedAlerts = alerts.sort((a, b) => {
-      // المنتجات المنتهية أولاً
-      if (a.currentQuantity === 0 && b.currentQuantity > 0) return -1;
-      if (b.currentQuantity === 0 && a.currentQuantity > 0) return 1;
-      
-      // ثم الأقل كمية
-      return a.currentQuantity - b.currentQuantity;
-    });
-    
-    console.log(`🚨 عدد التنبيهات: ${sortedAlerts.length}`);
-    sortedAlerts.forEach(item => {
-      console.log(`⚠️ تنبيه: ${item.productName} - الكمية: ${item.currentQuantity}/${item.minThreshold || 10}`);
-    });
-    
-    return sortedAlerts;
   } catch (error) {
-    console.error('❌ خطأ في جلب تنبيهات المخزون:', error);
+    console.error('Error getting stock alerts:', error);
     return [];
   }
 }
@@ -987,7 +968,7 @@ export async function getStockReports() {
       ).length,
       outOfStock: outOfStockCount
     };
-    
+
     return {
       summary: {
         totalProducts,
@@ -1071,9 +1052,9 @@ export async function diagnoseGoogleSheets(): Promise<{ success: boolean; messag
   try {
     console.log('🔍 بدء تشخيص شامل لـ Google Sheets...');
     
-    const auth = getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
-    
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+
     // 1. فحص معرف الشيت
     console.log(`📋 معرف الشيت: ${SHEET_ID}`);
     
@@ -1103,7 +1084,7 @@ export async function diagnoseGoogleSheets(): Promise<{ success: boolean; messag
     console.log(`🔍 فحص محتويات شيت ${STOCK_SHEET_NAME}...`);
     
     const stockData = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
+    spreadsheetId: SHEET_ID,
       range: `${STOCK_SHEET_NAME}!A:H`,
       valueRenderOption: 'UNFORMATTED_VALUE'
     });
