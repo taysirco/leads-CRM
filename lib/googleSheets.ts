@@ -1498,15 +1498,195 @@ export async function getOrderStatistics() {
   try {
     const leads = await fetchLeads();
     
-    const stats = {
+    // الإحصائيات العامة
+    const overall = {
       total: leads.length,
-      confirmed: leads.filter(lead => lead.status === 'تم التأكيد').length,
-      shipped: leads.filter(lead => lead.status === 'تم الشحن').length,
+      confirmed: leads.filter(lead => ['تم التأكيد', 'تم الشحن'].includes(lead.status)).length,
       pending: leads.filter(lead => ['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)).length,
-      rejected: leads.filter(lead => lead.status === 'رفض التأكيد').length
+      rejected: leads.filter(lead => lead.status === 'رفض التأكيد').length,
+      shipped: leads.filter(lead => lead.status === 'تم الشحن').length,
+      new: leads.filter(lead => lead.status === 'جديد').length,
+      noAnswer: leads.filter(lead => lead.status === 'لم يرد').length,
+      contacted: leads.filter(lead => lead.status === 'تم التواصل معه واتساب').length
     };
 
-    return stats;
+    // الإحصائيات حسب المنتج
+    const productStats: Record<string, any> = {};
+    leads.forEach(lead => {
+      const product = lead.productName || 'غير محدد';
+      if (!productStats[product]) {
+        productStats[product] = {
+          total: 0,
+          confirmed: 0,
+          pending: 0,
+          rejected: 0,
+          shipped: 0,
+          new: 0,
+          noAnswer: 0,
+          contacted: 0
+        };
+      }
+      
+      productStats[product].total++;
+      
+      if (['تم التأكيد', 'تم الشحن'].includes(lead.status)) {
+        productStats[product].confirmed++;
+      }
+      if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
+        productStats[product].pending++;
+      }
+      if (lead.status === 'رفض التأكيد') {
+        productStats[product].rejected++;
+      }
+      if (lead.status === 'تم الشحن') {
+        productStats[product].shipped++;
+      }
+      if (lead.status === 'جديد') {
+        productStats[product].new++;
+      }
+      if (lead.status === 'لم يرد') {
+        productStats[product].noAnswer++;
+      }
+      if (lead.status === 'تم التواصل معه واتساب') {
+        productStats[product].contacted++;
+      }
+    });
+
+    // الإحصائيات حسب المصدر
+    const sourceStats: Record<string, any> = {};
+    leads.forEach(lead => {
+      const source = lead.source || 'غير محدد';
+      if (!sourceStats[source]) {
+        sourceStats[source] = {
+          total: 0,
+          confirmed: 0,
+          pending: 0,
+          rejected: 0,
+          shipped: 0,
+          new: 0,
+          noAnswer: 0,
+          contacted: 0
+        };
+      }
+      
+      sourceStats[source].total++;
+      
+      if (['تم التأكيد', 'تم الشحن'].includes(lead.status)) {
+        sourceStats[source].confirmed++;
+      }
+      if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
+        sourceStats[source].pending++;
+      }
+      if (lead.status === 'رفض التأكيد') {
+        sourceStats[source].rejected++;
+      }
+      if (lead.status === 'تم الشحن') {
+        sourceStats[source].shipped++;
+      }
+      if (lead.status === 'جديد') {
+        sourceStats[source].new++;
+      }
+      if (lead.status === 'لم يرد') {
+        sourceStats[source].noAnswer++;
+      }
+      if (lead.status === 'تم التواصل معه واتساب') {
+        sourceStats[source].contacted++;
+      }
+    });
+
+    // الإحصائيات حسب الموظف
+    const assigneeStats: Record<string, any> = {};
+    leads.forEach(lead => {
+      const assignee = lead.assignee || 'غير معين';
+      if (!assigneeStats[assignee]) {
+        assigneeStats[assignee] = {
+          total: 0,
+          confirmed: 0,
+          pending: 0,
+          rejected: 0,
+          shipped: 0,
+          new: 0,
+          noAnswer: 0,
+          contacted: 0,
+          today: 0
+        };
+      }
+      
+      assigneeStats[assignee].total++;
+      
+      if (['تم التأكيد', 'تم الشحن'].includes(lead.status)) {
+        assigneeStats[assignee].confirmed++;
+      }
+      if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
+        assigneeStats[assignee].pending++;
+      }
+      if (lead.status === 'رفض التأكيد') {
+        assigneeStats[assignee].rejected++;
+      }
+      if (lead.status === 'تم الشحن') {
+        assigneeStats[assignee].shipped++;
+      }
+      if (lead.status === 'جديد') {
+        assigneeStats[assignee].new++;
+      }
+      if (lead.status === 'لم يرد') {
+        assigneeStats[assignee].noAnswer++;
+      }
+      if (lead.status === 'تم التواصل معه واتساب') {
+        assigneeStats[assignee].contacted++;
+      }
+      
+      // إحصائيات اليوم (تقريبية)
+      const today = new Date().toISOString().split('T')[0];
+      if (lead.orderDate && lead.orderDate.includes(today)) {
+        assigneeStats[assignee].today++;
+      }
+    });
+
+    // الإحصائيات حسب الموظف والمنتج
+    const assigneeByProductStats: Record<string, Record<string, any>> = {};
+    leads.forEach(lead => {
+      const assignee = lead.assignee || 'غير معين';
+      const product = lead.productName || 'غير محدد';
+      
+      if (!assigneeByProductStats[assignee]) {
+        assigneeByProductStats[assignee] = {};
+      }
+      
+      if (!assigneeByProductStats[assignee][product]) {
+        assigneeByProductStats[assignee][product] = {
+          total: 0,
+          confirmed: 0,
+          pending: 0,
+          rejected: 0,
+          shipped: 0
+        };
+      }
+      
+      assigneeByProductStats[assignee][product].total++;
+      
+      if (['تم التأكيد', 'تم الشحن'].includes(lead.status)) {
+        assigneeByProductStats[assignee][product].confirmed++;
+      }
+      if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
+        assigneeByProductStats[assignee][product].pending++;
+      }
+      if (lead.status === 'رفض التأكيد') {
+        assigneeByProductStats[assignee][product].rejected++;
+      }
+      if (lead.status === 'تم الشحن') {
+        assigneeByProductStats[assignee][product].shipped++;
+      }
+    });
+
+    return {
+      overall,
+      byProduct: productStats,
+      bySource: sourceStats,
+      byAssignee: assigneeStats,
+      byAssigneeByProduct: assigneeByProductStats
+    };
+
   } catch (error) {
     console.error('Error getting order statistics:', error);
     throw error;
