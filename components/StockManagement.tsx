@@ -431,314 +431,311 @@ export default function StockManagement() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* رسائل التنبيه */}
-      {message && (
-        <div className={`p-4 rounded-lg border ${
-          message.type === 'success' 
-            ? 'bg-green-50 border-green-200 text-green-800' 
-            : 'bg-red-50 border-red-200 text-red-800'
-        }`}>
-          <div className="flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              {message.type === 'success' ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              )}
-            </svg>
-            {message.text}
-          </div>
-        </div>
-      )}
-
-      {/* تنبيهات نفاد المخزون */}
-      {safeAlerts.length > 0 && (
-        <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.268 18.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-            <h3 className="font-bold text-red-800">تحذير: نفاد المخزون</h3>
-          </div>
-          <div className="space-y-2">
-            {safeAlerts.map(alert => (
-              <div key={alert.id} className="flex justify-between items-center text-sm">
-                <span className="font-medium text-red-700">{alert.productName}</span>
-                <span className="text-red-600">
-                  {alert.currentQuantity === 0 ? 'نفد المخزون' : `متبقي: ${alert.currentQuantity}`}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* عنوان الصفحة مع الأزرار */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-lg">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold mb-2">📦 إدارة المخزون</h1>
-            <p className="text-blue-100">إدارة شاملة للمخزون مع تتبع المبيعات والمرتجعات والتوالف</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={async () => {
-                try {
-                  setIsLoading(true);
-                  showMessage('success', 'جاري تشخيص Google Sheets...');
-                  
-                  console.log('🩺 بدء التشخيص الشامل...');
-                  
-                  const response = await fetch('/api/stock?action=diagnose');
-                  const result = await response.json();
-                  
-                  console.log('🩺 نتيجة التشخيص:', result);
-                  
-                  if (result.diagnoseResult?.success) {
-                    showMessage('success', `✅ ${result.diagnoseResult.message}`);
-                    await forceRefreshAll();
-                  } else {
-                    showMessage('error', `❌ ${result.diagnoseResult?.message || 'فشل التشخيص'}`);
-                  }
-                } catch (error) {
-                  showMessage('error', 'فشل التشخيص');
-                  console.error('❌ خطأ في التشخيص:', error);
-                } finally {
-                  setIsLoading(false);
-                }
-              }}
-              disabled={isLoading}
-              className="px-3 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-all font-medium flex items-center gap-2 disabled:opacity-50 text-sm"
-            >
-              🩺 تشخيص شامل
-            </button>
-
-            <button
-              onClick={async () => {
-                try {
-                  setIsLoading(true);
-                  showMessage('success', 'جاري اختبار التزامن...');
-                  
-                  const response = await fetch('/api/stock?action=test');
-                  const result = await response.json();
-                  
-                  if (result.testResult?.success) {
-                    showMessage('success', `✅ ${result.testResult.message}`);
-                    await forceRefreshAll();
-                  } else {
-                    showMessage('error', `❌ ${result.testResult?.message || 'فشل الاختبار'}`);
-                  }
-                } catch (error) {
-                  showMessage('error', 'فشل اختبار التزامن');
-                } finally {
-                  setIsLoading(false);
-                }
-              }}
-              disabled={isLoading}
-              className="px-3 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-all font-medium flex items-center gap-2 disabled:opacity-50 text-sm"
-            >
-              🧪 اختبار
-            </button>
-            
-            <button
-              onClick={async () => {
-                try {
-                  setIsLoading(true);
-                  console.log('👤 المستخدم طلب مزامنة شاملة مع Google Sheets');
-                  
-                  // تنفيذ المزامنة الشاملة
-                  const success = await forceRefreshAll();
-                  
-                  if (success) {
-                    console.log('🎉 المزامنة اكتملت بنجاح');
-                  } else {
-                    console.log('⚠️ المزامنة واجهت مشاكل');
-                  }
-                } catch (error) {
-                  console.error('❌ خطأ في تنفيذ المزامنة:', error);
-                  setMessage({ 
-                    type: 'error', 
-                    text: 'فشل في المزامنة - تحقق من الاتصال بالإنترنت' 
-                  });
-                } finally {
-                  setIsLoading(false);
-                }
-              }}
-              disabled={isLoading}
-              className="px-3 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-all font-medium flex items-center gap-2 disabled:opacity-50 text-sm"
-              title="مزامنة شاملة مع Google Sheets - يمسح الكاش ويجلب أحدث البيانات"
-            >
-              {isLoading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  مزامنة...
-                </>
-              ) : (
-                <>
-                  🔄 مزامنة شاملة
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* إحصائيات سريعة */}
-      {reports && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-8 px-2 sm:px-4 lg:px-8">
+      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-8">
+        {/* رسائل النجاح والخطأ */}
+        {message && (
+          <div className={`p-3 sm:p-4 rounded-lg border ${
+            message.type === 'error' 
+              ? 'bg-red-50 border-red-200 text-red-800' 
+              : 'bg-green-50 border-green-200 text-green-800'
+          }`}>
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">إجمالي المنتجات</p>
-                <p className="text-2xl font-bold text-gray-900">{reports.summary.totalProducts}</p>
-              </div>
-              <div className="p-3 bg-blue-100 rounded-full">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">إجمالي المخزون</p>
-                <p className="text-2xl font-bold text-gray-900">{reports.summary.totalStockValue}</p>
-              </div>
-              <div className="p-3 bg-green-100 rounded-full">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">مخزون منخفض</p>
-                <p className="text-2xl font-bold text-yellow-600">{reports.summary.lowStockCount}</p>
-              </div>
-              <div className="p-3 bg-yellow-100 rounded-full">
-                <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.268 18.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">نفد المخزون</p>
-                <p className="text-2xl font-bold text-red-600">{reports.summary.outOfStockCount}</p>
-              </div>
-              <div className="p-3 bg-red-100 rounded-full">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* التبويبات */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-6">
-            {[
-              { id: 'overview', label: '📋 نظرة عامة', icon: '📋' },
-              { id: 'add', label: '➕ إضافة منتج', icon: '➕' },
-              { id: 'returns', label: '↩️ المرتجعات والتوالف', icon: '↩️' },
-              { id: 'reports', label: '📊 التقارير', icon: '📊' }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
+              <span className="text-sm sm:text-base">{message.text}</span>
+              <button 
+                onClick={() => setMessage(null)}
+                className="text-gray-400 hover:text-gray-600 ml-2 text-lg sm:text-xl"
               >
-                {tab.label}
+                ×
               </button>
-            ))}
-          </nav>
+            </div>
+          </div>
+        )}
+
+        {/* عرض التنبيهات */}
+        {alerts && alerts.length > 0 && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
+            <div className="flex items-center mb-2">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.268 18.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <h3 className="font-medium text-yellow-800 text-sm sm:text-base">تنبيهات المخزون</h3>
+            </div>
+            <div className="space-y-1">
+              {alerts.map((alert: any, index: number) => (
+                <p key={index} className="text-yellow-700 text-xs sm:text-sm">• {alert.message}</p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* عنوان الصفحة مع الأزرار */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 sm:p-6 rounded-lg">
+          <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:justify-between sm:items-center">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold mb-2">📦 إدارة المخزون</h1>
+              <p className="text-blue-100 text-sm sm:text-base">إدارة شاملة للمخزون مع تتبع المبيعات والمرتجعات والتوالف</p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    setIsLoading(true);
+                    showMessage('success', 'جاري تشخيص Google Sheets...');
+                    
+                    console.log('🩺 بدء التشخيص الشامل...');
+                    
+                    const response = await fetch('/api/stock?action=diagnose');
+                    const result = await response.json();
+                    
+                    console.log('🩺 نتيجة التشخيص:', result);
+                    
+                    if (result.diagnoseResult?.success) {
+                      showMessage('success', `✅ ${result.diagnoseResult.message}`);
+                      await forceRefreshAll();
+                    } else {
+                      showMessage('error', `❌ ${result.diagnoseResult?.message || 'فشل التشخيص'}`);
+                    }
+                  } catch (error) {
+                    showMessage('error', 'فشل التشخيص');
+                    console.error('❌ خطأ في التشخيص:', error);
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={isLoading}
+                className="px-2 sm:px-3 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-all font-medium flex items-center justify-center gap-1 sm:gap-2 disabled:opacity-50 text-xs sm:text-sm"
+              >
+                🩺 <span className="hidden sm:inline">تشخيص شامل</span><span className="sm:hidden">تشخيص</span>
+              </button>
+
+              <button
+                onClick={async () => {
+                  try {
+                    setIsLoading(true);
+                    showMessage('success', 'جاري اختبار التزامن...');
+                    
+                    const response = await fetch('/api/stock?action=test');
+                    const result = await response.json();
+                    
+                    if (result.testResult?.success) {
+                      showMessage('success', `✅ ${result.testResult.message}`);
+                      await forceRefreshAll();
+                    } else {
+                      showMessage('error', `❌ ${result.testResult?.message || 'فشل الاختبار'}`);
+                    }
+                  } catch (error) {
+                    showMessage('error', 'فشل اختبار التزامن');
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={isLoading}
+                className="px-2 sm:px-3 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-all font-medium flex items-center justify-center gap-1 sm:gap-2 disabled:opacity-50 text-xs sm:text-sm"
+              >
+                🧪 <span className="hidden sm:inline">اختبار</span><span className="sm:hidden">اختبار</span>
+              </button>
+              
+              <button
+                onClick={async () => {
+                  try {
+                    setIsLoading(true);
+                    console.log('👤 المستخدم طلب مزامنة شاملة مع Google Sheets');
+                    
+                    // تنفيذ المزامنة الشاملة
+                    const success = await forceRefreshAll();
+                    
+                    if (success) {
+                      console.log('🎉 المزامنة اكتملت بنجاح');
+                    } else {
+                      console.log('⚠️ المزامنة واجهت مشاكل');
+                    }
+                  } catch (error) {
+                    console.error('❌ خطأ في تنفيذ المزامنة:', error);
+                    setMessage({ 
+                      type: 'error', 
+                      text: 'فشل في المزامنة - تحقق من الاتصال بالإنترنت' 
+                    });
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={isLoading}
+                className="px-2 sm:px-3 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-all font-medium flex items-center justify-center gap-1 sm:gap-2 disabled:opacity-50 text-xs sm:text-sm"
+                title="مزامنة شاملة مع Google Sheets - يمسح الكاش ويجلب أحدث البيانات"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white"></div>
+                    <span className="hidden sm:inline">مزامنة...</span><span className="sm:hidden">مزامنة</span>
+                  </>
+                ) : (
+                  <>
+                    🔄 <span className="hidden sm:inline">مزامنة شاملة</span><span className="sm:hidden">مزامنة</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="p-6">
-          {activeTab === 'overview' && (
-            <StockOverview 
-              stockItems={safeStockItems}
-              onEdit={setEditingItem}
-              onAdd={() => setShowAddModal(true)}
-              isLoading={stockError}
-            />
-          )}
-          
-          {activeTab === 'add' && (
-            <AddProductForm 
-              onSubmit={handleAddProduct}
-              isLoading={isLoading}
-            />
-          )}
-          
-          {activeTab === 'returns' && (
-            <ReturnsAndDamage 
-              stockItems={safeStockItems}
-              onAddReturn={() => setShowReturnModal(true)}
-              onAddDamage={() => setShowDamageModal(true)}
-            />
-          )}
-          
-          {activeTab === 'reports' && (
-            <StockReports 
-              reports={reports}
-              stockItems={safeStockItems}
-            />
-          )}
+        {/* إحصائيات سريعة */}
+        {reports && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm font-medium text-gray-600">إجمالي المنتجات</p>
+                  <p className="text-lg sm:text-2xl font-bold text-gray-900">{reports.summary.totalProducts}</p>
+                </div>
+                <div className="p-2 sm:p-3 bg-blue-100 rounded-full">
+                  <svg className="w-4 h-4 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm font-medium text-gray-600">إجمالي المخزون</p>
+                  <p className="text-lg sm:text-2xl font-bold text-gray-900">{reports.summary.totalStockValue}</p>
+                </div>
+                <div className="p-2 sm:p-3 bg-green-100 rounded-full">
+                  <svg className="w-4 h-4 sm:w-6 sm:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm font-medium text-gray-600">مخزون منخفض</p>
+                  <p className="text-lg sm:text-2xl font-bold text-yellow-600">{reports.summary.lowStockCount}</p>
+                </div>
+                <div className="p-2 sm:p-3 bg-yellow-100 rounded-full">
+                  <svg className="w-4 h-4 sm:w-6 sm:h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.268 18.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm font-medium text-gray-600">نفد المخزون</p>
+                  <p className="text-lg sm:text-2xl font-bold text-red-600">{reports.summary.outOfStockCount}</p>
+                </div>
+                <div className="p-2 sm:p-3 bg-red-100 rounded-full">
+                  <svg className="w-4 h-4 sm:w-6 sm:h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* التبويبات */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="border-b border-gray-200">
+            <nav className="flex overflow-x-auto px-2 sm:px-6">
+              {[
+                { id: 'overview', label: '📋 نظرة عامة', icon: '📋', shortLabel: 'عامة' },
+                { id: 'add', label: '➕ إضافة منتج', icon: '➕', shortLabel: 'إضافة' },
+                { id: 'returns', label: '↩️ المرتجعات والتوالف', icon: '↩️', shortLabel: 'مرتجعات' },
+                { id: 'reports', label: '📊 التقارير', icon: '📊', shortLabel: 'تقارير' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`py-3 sm:py-4 px-2 sm:px-4 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="sm:hidden">{tab.icon} {tab.shortLabel}</span>
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          <div className="p-6">
+            {activeTab === 'overview' && (
+              <StockOverview 
+                stockItems={safeStockItems}
+                onEdit={setEditingItem}
+                onAdd={() => setShowAddModal(true)}
+                isLoading={stockError}
+              />
+            )}
+            
+            {activeTab === 'add' && (
+              <AddProductForm 
+                onSubmit={handleAddProduct}
+                isLoading={isLoading}
+              />
+            )}
+            
+            {activeTab === 'returns' && (
+              <ReturnsAndDamage 
+                stockItems={safeStockItems}
+                onAddReturn={() => setShowReturnModal(true)}
+                onAddDamage={() => setShowDamageModal(true)}
+              />
+            )}
+            
+            {activeTab === 'reports' && (
+              <StockReports 
+                reports={reports}
+                stockItems={safeStockItems}
+              />
+            )}
+          </div>
         </div>
+
+        {/* النوافذ المنبثقة */}
+        {showAddModal && (
+          <AddProductModal 
+            onClose={() => setShowAddModal(false)}
+            onSubmit={handleAddProduct}
+            isLoading={isLoading}
+          />
+        )}
+
+        {showReturnModal && (
+          <ReturnModal 
+            stockItems={safeStockItems}
+            onClose={() => setShowReturnModal(false)}
+            onSubmit={handleAddReturn}
+            isLoading={isLoading}
+          />
+        )}
+
+        {showDamageModal && (
+          <DamageModal 
+            stockItems={safeStockItems}
+            onClose={() => setShowDamageModal(false)}
+            onSubmit={handleAddDamage}
+            isLoading={isLoading}
+          />
+        )}
+
+        {editingItem && (
+          <EditItemModal 
+            item={editingItem}
+            onClose={() => setEditingItem(null)}
+            onSubmit={handleUpdateItem}
+            isLoading={isLoading}
+          />
+        )}
       </div>
-
-      {/* النوافذ المنبثقة */}
-      {showAddModal && (
-        <AddProductModal 
-          onClose={() => setShowAddModal(false)}
-          onSubmit={handleAddProduct}
-          isLoading={isLoading}
-        />
-      )}
-
-      {showReturnModal && (
-        <ReturnModal 
-          stockItems={safeStockItems}
-          onClose={() => setShowReturnModal(false)}
-          onSubmit={handleAddReturn}
-          isLoading={isLoading}
-        />
-      )}
-
-      {showDamageModal && (
-        <DamageModal 
-          stockItems={safeStockItems}
-          onClose={() => setShowDamageModal(false)}
-          onSubmit={handleAddDamage}
-          isLoading={isLoading}
-        />
-      )}
-
-      {editingItem && (
-        <EditItemModal 
-          item={editingItem}
-          onClose={() => setEditingItem(null)}
-          onSubmit={handleUpdateItem}
-          isLoading={isLoading}
-        />
-      )}
     </div>
   );
 }
@@ -750,107 +747,114 @@ function StockOverview({ stockItems, onEdit, onAdd, isLoading }: any) {
   
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="flex items-center justify-center h-32 sm:h-64">
+        <div className="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold text-gray-900">قائمة المنتجات</h2>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">إجمالي: {safeItems.length} منتج</span>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-3 sm:space-y-0">
+        <h2 className="text-lg sm:text-xl font-bold text-gray-900">قائمة المنتجات</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+          <span className="text-xs sm:text-sm text-gray-500">إجمالي: {safeItems.length} منتج</span>
           <button
             onClick={onAdd}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium"
+            className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
             </svg>
-            إضافة منتج جديد
+            <span className="hidden sm:inline">إضافة منتج جديد</span>
+            <span className="sm:hidden">إضافة منتج</span>
           </button>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-3 py-3 text-right font-medium text-gray-700">المنتج</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-700">الكمية الأولية</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-700">المخزون الحالي</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-700">الحد الأدنى</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-700">آخر تحديث</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-700">الحالة</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-700">إجراءات</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {safeItems.map((item: StockItem) => (
-              <tr key={item.id} className="hover:bg-gray-50">
-                <td className="px-3 py-4">
-                  <div>
-                    <div className="font-medium text-gray-900">{item.productName}</div>
-                    {item.synonyms && (
-                      <div className="text-xs text-gray-500">متردفات: {item.synonyms}</div>
-                    )}
-                  </div>
-                </td>
-                <td className="px-3 py-4 text-gray-900">{item.initialQuantity}</td>
-                <td className="px-3 py-4">
-                  <span className={`font-bold ${
-                    item.currentQuantity <= 0 ? 'text-red-600' :
-                    item.currentQuantity <= (item.minThreshold || 10) ? 'text-yellow-600' :
-                    'text-green-600'
-                  }`}>
-                    {item.currentQuantity}
-                  </span>
-                </td>
-                <td className="px-3 py-4 text-gray-900">{item.minThreshold || 10}</td>
-                <td className="px-3 py-4 text-gray-500">{item.lastUpdate}</td>
-                <td className="px-3 py-4">
-                  {item.currentQuantity <= 0 ? (
-                    <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
-                      نفد المخزون
-                    </span>
-                  ) : item.currentQuantity <= (item.minThreshold || 10) ? (
-                    <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
-                      مخزون منخفض
-                    </span>
-                  ) : (
-                    <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                      متوفر
-                    </span>
-                  )}
-                </td>
-                <td className="px-3 py-4">
-                  <button
-                    onClick={() => onEdit(item)}
-                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                  >
-                    تعديل
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="overflow-x-auto -mx-2 sm:mx-0">
+        <div className="inline-block min-w-full align-middle">
+          <div className="overflow-hidden shadow-sm ring-1 ring-black ring-opacity-5 rounded-lg">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm min-w-[120px]">المنتج</th>
+                  <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">الكمية الأولية</th>
+                  <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">المخزون الحالي</th>
+                  <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">الحد الأدنى</th>
+                  <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm hidden sm:table-cell">آخر تحديث</th>
+                  <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">الحالة</th>
+                  <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {safeItems.map((item: StockItem) => (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-2 sm:px-3 py-3 sm:py-4">
+                      <div>
+                        <div className="font-medium text-gray-900 text-sm sm:text-base">{item.productName}</div>
+                        {item.synonyms && (
+                          <div className="text-xs text-gray-500 hidden sm:block">متردفات: {item.synonyms}</div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-2 sm:px-3 py-3 sm:py-4 text-gray-900 text-sm sm:text-base">{item.initialQuantity}</td>
+                    <td className="px-2 sm:px-3 py-3 sm:py-4">
+                      <span className={`font-bold text-sm sm:text-base ${
+                        item.currentQuantity <= 0 ? 'text-red-600' :
+                        item.currentQuantity <= (item.minThreshold || 10) ? 'text-yellow-600' :
+                        'text-green-600'
+                      }`}>
+                        {item.currentQuantity}
+                      </span>
+                    </td>
+                    <td className="px-2 sm:px-3 py-3 sm:py-4 text-gray-900 text-sm sm:text-base">{item.minThreshold || 10}</td>
+                    <td className="px-2 sm:px-3 py-3 sm:py-4 text-gray-500 text-xs sm:text-sm hidden sm:table-cell">{item.lastUpdate}</td>
+                    <td className="px-2 sm:px-3 py-3 sm:py-4">
+                      {item.currentQuantity <= 0 ? (
+                        <span className="px-1.5 sm:px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
+                          <span className="hidden sm:inline">نفد المخزون</span>
+                          <span className="sm:hidden">نفد</span>
+                        </span>
+                      ) : item.currentQuantity <= (item.minThreshold || 10) ? (
+                        <span className="px-1.5 sm:px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                          <span className="hidden sm:inline">مخزون منخفض</span>
+                          <span className="sm:hidden">منخفض</span>
+                        </span>
+                      ) : (
+                        <span className="px-1.5 sm:px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                          متوفر
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-2 sm:px-3 py-3 sm:py-4">
+                      <button
+                        onClick={() => onEdit(item)}
+                        className="text-blue-600 hover:text-blue-800 text-xs sm:text-sm font-medium"
+                      >
+                        تعديل
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       {safeItems.length === 0 && (
-        <div className="text-center py-12">
-          <div className="p-4 bg-gray-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="text-center py-8 sm:py-12">
+          <div className="p-3 sm:p-4 bg-gray-100 rounded-full w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 flex items-center justify-center">
+            <svg className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">لا توجد منتجات في المخزون</h3>
-          <p className="text-gray-500 mb-4">ابدأ بإضافة منتجات جديدة لإدارة المخزون</p>
+          <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">لا توجد منتجات في المخزون</h3>
+          <p className="text-gray-500 mb-4 text-sm sm:text-base">ابدأ بإضافة منتجات جديدة لإدارة المخزون</p>
           <button
             onClick={onAdd}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm sm:text-base"
           >
             إضافة أول منتج
           </button>
@@ -967,8 +971,8 @@ function AddProductForm({ onSubmit, isLoading }: any) {
   const canSubmit = errors.length === 0 && formData.productName.trim() && formData.initialQuantity;
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h2 className="text-xl font-bold text-gray-900 mb-6">إضافة منتج جديد</h2>
+    <div className="max-w-full sm:max-w-2xl mx-auto px-2 sm:px-0">
+      <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 sm:mb-6">إضافة منتج جديد</h2>
       
       {/* عرض الأخطاء */}
       {errors.length > 0 && (
@@ -990,7 +994,7 @@ function AddProductForm({ onSubmit, isLoading }: any) {
         </div>
       )}
       
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             اسم المنتج *
@@ -1000,13 +1004,13 @@ function AddProductForm({ onSubmit, isLoading }: any) {
             type="text"
             value={formData.productName}
             onChange={(e) => handleChange('productName', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm sm:text-base"
             placeholder="أدخل اسم المنتج"
             required
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               الكمية الأولية *
@@ -1016,7 +1020,7 @@ function AddProductForm({ onSubmit, isLoading }: any) {
               type="number"
               value={formData.initialQuantity}
               onChange={(e) => handleChange('initialQuantity', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 ${
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm sm:text-base ${
                 errors.some(e => e.includes('الكمية الأولية')) ? 'border-red-300 bg-red-50' : 'border-gray-300'
               }`}
               min="0"
@@ -1034,7 +1038,7 @@ function AddProductForm({ onSubmit, isLoading }: any) {
               type="number"
               value={formData.minThreshold}
               onChange={(e) => handleChange('minThreshold', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 ${
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm sm:text-base ${
                 errors.some(e => e.includes('الحد الأدنى')) ? 'border-red-300 bg-red-50' : 'border-gray-300'
               }`}
               min="0"
@@ -1052,7 +1056,7 @@ function AddProductForm({ onSubmit, isLoading }: any) {
             type="text"
             value={formData.synonyms}
             onChange={(e) => handleChange('synonyms', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm sm:text-base"
             placeholder="مثال: جوال، هاتف، موبايل"
           />
           <p className="text-xs text-gray-500 mt-1">
@@ -1062,9 +1066,9 @@ function AddProductForm({ onSubmit, isLoading }: any) {
 
         {/* معاينة المنتج */}
         {formData.productName && formData.initialQuantity && (
-          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <div className="bg-blue-50 p-3 sm:p-4 rounded-lg border border-blue-200">
             <h4 className="text-sm font-medium text-blue-800 mb-2">📦 معاينة المنتج الجديد:</h4>
-            <div className="space-y-2 text-sm">
+            <div className="space-y-1 sm:space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-blue-700">اسم المنتج:</span>
                 <span className="font-medium text-blue-900">{formData.productName}</span>
@@ -1091,7 +1095,7 @@ function AddProductForm({ onSubmit, isLoading }: any) {
           <button
             type="submit"
             disabled={isLoading || !canSubmit}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium"
+            className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium text-sm sm:text-base"
           >
             {isLoading && (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -1106,41 +1110,41 @@ function AddProductForm({ onSubmit, isLoading }: any) {
 
 function ReturnsAndDamage({ stockItems, onAddReturn, onAddDamage }: any) {
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">إدارة المرتجعات والتوالف</h2>
+    <div className="space-y-4 sm:space-y-6">
+      <h2 className="text-lg sm:text-xl font-bold text-gray-900">إدارة المرتجعات والتوالف</h2>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        <div className="bg-blue-50 p-4 sm:p-6 rounded-lg border border-blue-200">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-blue-100 rounded-full">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
               </svg>
             </div>
-            <h3 className="text-lg font-bold text-blue-900">المرتجعات</h3>
+            <h3 className="text-base sm:text-lg font-bold text-blue-900">المرتجعات</h3>
           </div>
-          <p className="text-blue-700 mb-4">تسجيل المنتجات المرتجعة من العملاء</p>
+          <p className="text-blue-700 mb-4 text-sm sm:text-base">تسجيل المنتجات المرتجعة من العملاء</p>
           <button
             onClick={onAddReturn}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="w-full px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm sm:text-base"
           >
             تسجيل مرتجع
           </button>
         </div>
 
-        <div className="bg-red-50 p-6 rounded-lg border border-red-200">
+        <div className="bg-red-50 p-4 sm:p-6 rounded-lg border border-red-200">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-red-100 rounded-full">
-              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
             </div>
-            <h3 className="text-lg font-bold text-red-900">التوالف والمفقودات</h3>
+            <h3 className="text-base sm:text-lg font-bold text-red-900">التوالف والمفقودات</h3>
           </div>
-          <p className="text-red-700 mb-4">تسجيل المنتجات التالفة أو المفقودة</p>
+          <p className="text-red-700 mb-4 text-sm sm:text-base">تسجيل المنتجات التالفة أو المفقودة</p>
           <button
             onClick={onAddDamage}
-            className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            className="w-full px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm sm:text-base"
           >
             تسجيل تالف/مفقود
           </button>
@@ -1156,49 +1160,49 @@ function StockReports({ reports, stockItems }: any) {
   
   if (!reports) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="flex items-center justify-center h-32 sm:h-64">
+        <div className="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">تقارير المخزون</h2>
+    <div className="space-y-4 sm:space-y-6">
+      <h2 className="text-lg sm:text-xl font-bold text-gray-900">تقارير المخزون</h2>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-green-50 p-6 rounded-lg border border-green-200">
-          <h3 className="font-bold text-green-900 mb-2">منتجات متوفرة</h3>
-          <p className="text-3xl font-bold text-green-700">{reports.byStatus?.inStock || 0}</p>
-          <p className="text-sm text-green-600">مخزون جيد</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+        <div className="bg-green-50 p-4 sm:p-6 rounded-lg border border-green-200">
+          <h3 className="font-bold text-green-900 mb-2 text-sm sm:text-base">منتجات متوفرة</h3>
+          <p className="text-2xl sm:text-3xl font-bold text-green-700">{reports.byStatus?.inStock || 0}</p>
+          <p className="text-xs sm:text-sm text-green-600">مخزون جيد</p>
         </div>
 
-        <div className="bg-yellow-50 p-6 rounded-lg border border-yellow-200">
-          <h3 className="font-bold text-yellow-900 mb-2">مخزون منخفض</h3>
-          <p className="text-3xl font-bold text-yellow-700">{reports.byStatus?.lowStock || 0}</p>
-          <p className="text-sm text-yellow-600">يحتاج إعادة تموين</p>
+        <div className="bg-yellow-50 p-4 sm:p-6 rounded-lg border border-yellow-200">
+          <h3 className="font-bold text-yellow-900 mb-2 text-sm sm:text-base">مخزون منخفض</h3>
+          <p className="text-2xl sm:text-3xl font-bold text-yellow-700">{reports.byStatus?.lowStock || 0}</p>
+          <p className="text-xs sm:text-sm text-yellow-600">يحتاج إعادة تموين</p>
         </div>
 
-        <div className="bg-red-50 p-6 rounded-lg border border-red-200">
-          <h3 className="font-bold text-red-900 mb-2">نفد المخزون</h3>
-          <p className="text-3xl font-bold text-red-700">{reports.byStatus?.outOfStock || 0}</p>
-          <p className="text-sm text-red-600">يحتاج تموين فوري</p>
+        <div className="bg-red-50 p-4 sm:p-6 rounded-lg border border-red-200">
+          <h3 className="font-bold text-red-900 mb-2 text-sm sm:text-base">نفد المخزون</h3>
+          <p className="text-2xl sm:text-3xl font-bold text-red-700">{reports.byStatus?.outOfStock || 0}</p>
+          <p className="text-xs sm:text-sm text-red-600">يحتاج تموين فوري</p>
         </div>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">تفاصيل المنتجات</h3>
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
+          <h3 className="text-base sm:text-lg font-medium text-gray-900">تفاصيل المنتجات</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-3 py-3 text-right font-medium text-gray-700">المنتج</th>
-                <th className="px-3 py-3 text-right font-medium text-gray-700">المخزون الحالي</th>
-                <th className="px-3 py-3 text-right font-medium text-gray-700">المباع</th>
-                <th className="px-3 py-3 text-right font-medium text-gray-700">المعدل</th>
-                <th className="px-3 py-3 text-right font-medium text-gray-700">الحالة</th>
+                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm min-w-[120px]">المنتج</th>
+                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">المخزون الحالي</th>
+                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">المباع</th>
+                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm hidden sm:table-cell">المعدل</th>
+                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">الحالة</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -1208,21 +1212,21 @@ function StockReports({ reports, stockItems }: any) {
                 
                 return (
                   <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-4 font-medium text-gray-900">{item.productName}</td>
-                    <td className="px-3 py-4">{item.currentQuantity}</td>
-                    <td className="px-3 py-4">{sold}</td>
-                    <td className="px-3 py-4">{turnoverRate}%</td>
-                    <td className="px-3 py-4">
+                    <td className="px-2 sm:px-3 py-3 sm:py-4 font-medium text-gray-900 text-sm">{item.productName}</td>
+                    <td className="px-2 sm:px-3 py-3 sm:py-4 text-sm">{item.currentQuantity}</td>
+                    <td className="px-2 sm:px-3 py-3 sm:py-4 text-sm">{sold}</td>
+                    <td className="px-2 sm:px-3 py-3 sm:py-4 text-sm hidden sm:table-cell">{turnoverRate}%</td>
+                    <td className="px-2 sm:px-3 py-3 sm:py-4">
                       {item.currentQuantity <= 0 ? (
-                        <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
+                        <span className="px-1.5 sm:px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
                           نفد
                         </span>
                       ) : item.currentQuantity <= (item.minThreshold || 10) ? (
-                        <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                        <span className="px-1.5 sm:px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
                           منخفض
                         </span>
                       ) : (
-                        <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                        <span className="px-1.5 sm:px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
                           جيد
                         </span>
                       )}
@@ -1235,7 +1239,7 @@ function StockReports({ reports, stockItems }: any) {
         </div>
       </div>
 
-      <p className="text-sm text-gray-500 text-center">
+      <p className="text-xs sm:text-sm text-gray-500 text-center">
         آخر تحديث: {reports.lastUpdate}
       </p>
     </div>
@@ -1388,11 +1392,11 @@ function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
-      <div className="relative p-8 bg-white w-full max-w-md mx-auto rounded-lg shadow-lg">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-gray-900">تسجيل مرتجع</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50 p-4">
+      <div className="relative p-4 sm:p-8 bg-white w-full max-w-md mx-auto rounded-lg shadow-lg">
+        <div className="flex justify-between items-center mb-4 sm:mb-6">
+          <h3 className="text-lg sm:text-xl font-bold text-gray-900">تسجيل مرتجع</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl font-bold">×</button>
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1401,7 +1405,7 @@ function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <select
               value={formData.productName}
               onChange={(e) => handleProductChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 text-sm"
               required
             >
               <option value="">اختر المنتج</option>
@@ -1419,7 +1423,7 @@ function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
               type="number"
               value={formData.quantity}
               onChange={(e) => handleQuantityChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
               min="1"
               placeholder="أدخل الكمية المرتجعة"
               required
@@ -1453,7 +1457,7 @@ function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <select
               value={formData.reason}
               onChange={(e) => setFormData({...formData, reason: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 text-sm"
             >
               <option value="damaged_shipping" className="text-gray-900 bg-white">تلف أثناء الشحن</option>
               <option value="customer_damage" className="text-gray-900 bg-white">تلف من العميل</option>
@@ -1466,20 +1470,20 @@ function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <textarea
               value={formData.notes}
               onChange={(e) => setFormData({...formData, notes: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
               rows={3}
               placeholder="تفاصيل إضافية عن سبب المرتجع..."
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium">
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm order-2 sm:order-1">
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isLoading || !selectedProduct || !formData.quantity}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium text-sm order-1 sm:order-2"
             >
               {isLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
               تسجيل المرتجع
@@ -1564,11 +1568,11 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
-      <div className="relative p-8 bg-white w-full max-w-md mx-auto rounded-lg shadow-lg">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-gray-900">تسجيل تالف/مفقود</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50 p-4">
+      <div className="relative p-4 sm:p-8 bg-white w-full max-w-md mx-auto rounded-lg shadow-lg">
+        <div className="flex justify-between items-center mb-4 sm:mb-6">
+          <h3 className="text-lg sm:text-xl font-bold text-gray-900">تسجيل تالف/مفقود</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl font-bold">×</button>
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1577,7 +1581,7 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <select
               value={formData.productName}
               onChange={(e) => handleProductChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900 text-sm"
               required
             >
               <option value="">اختر المنتج</option>
@@ -1595,7 +1599,7 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
               type="number"
               value={formData.quantity}
               onChange={(e) => handleQuantityChange(e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 ${
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm ${
                 error ? 'border-red-300 bg-red-50' : 'border-gray-300'
               }`}
               min="1"
@@ -1640,7 +1644,7 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <select
               value={formData.reason}
               onChange={(e) => setFormData({...formData, reason: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900 text-sm"
             >
               <option value="تلف أثناء الشحن" className="text-gray-900 bg-white">تلف أثناء الشحن</option>
               <option value="فقدان" className="text-gray-900 bg-white">فقدان</option>
@@ -1656,20 +1660,20 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <textarea
               value={formData.notes}
               onChange={(e) => setFormData({...formData, notes: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
               rows={3}
               placeholder="تفاصيل إضافية عن سبب التلف أو الفقدان..."
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium">
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm order-2 sm:order-1">
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isLoading || !selectedProduct || !formData.quantity || !!error}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2 font-medium"
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium text-sm order-1 sm:order-2"
             >
               {isLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
               تسجيل التالف
@@ -1752,11 +1756,11 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
-      <div className="relative p-8 bg-white w-full max-w-lg mx-auto rounded-lg shadow-lg">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-gray-900">تعديل المنتج</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50 p-4">
+      <div className="relative p-4 sm:p-8 bg-white w-full max-w-lg mx-auto rounded-lg shadow-lg">
+        <div className="flex justify-between items-center mb-4 sm:mb-6">
+          <h3 className="text-lg sm:text-xl font-bold text-gray-900">تعديل المنتج</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl font-bold">×</button>
         </div>
         
         {/* عرض التحذيرات */}
@@ -1776,12 +1780,12 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
               type="text"
               value={formData.productName}
               onChange={(e) => handleChange('productName', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
               required
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 الكمية الأولية
@@ -1791,7 +1795,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
                 type="number"
                 value={formData.initialQuantity}
                 onChange={(e) => handleChange('initialQuantity', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
                 min="0"
                 required
               />
@@ -1806,7 +1810,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
                 type="number"
                 value={formData.currentQuantity}
                 onChange={(e) => handleChange('currentQuantity', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
                 min="0"
                 required
               />
@@ -1822,7 +1826,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
               type="number"
               value={formData.minThreshold}
               onChange={(e) => handleChange('minThreshold', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
               min="0"
             />
           </div>
@@ -1836,7 +1840,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
               type="text"
               value={formData.synonyms}
               onChange={(e) => handleChange('synonyms', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
               placeholder="مثال: جوال، هاتف، موبايل"
             />
           </div>
@@ -1861,14 +1865,14 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium">
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm order-2 sm:order-1">
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 font-medium"
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium text-sm order-1 sm:order-2"
             >
               {isLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
               حفظ التعديل
