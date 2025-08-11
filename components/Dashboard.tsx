@@ -20,31 +20,93 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, icon, bgColor = 'bg-w
   </div>
 );
 
-const ReportCard: React.FC<{ title: string; stats: any }> = ({ title, stats }) => (
-  <div className="bg-white border rounded-lg p-4 sm:p-6 shadow-sm">
-    <h3 className="font-semibold text-base sm:text-lg mb-4 text-gray-800">{title}</h3>
-    <div className="space-y-2 sm:space-y-3">
-      <div className="flex justify-between">
-        <span className="text-sm text-gray-600">إجمالي:</span>
-        <span className="font-semibold text-sm">{stats.total}</span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-sm text-gray-600">مؤكدة:</span>
-        <span className="font-semibold text-sm text-green-600">{stats.confirmed}</span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-sm text-gray-600">مرفوضة:</span>
-        <span className="font-semibold text-sm text-red-600">{stats.rejected}</span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-sm text-gray-600">معدل التحويل:</span>
-        <span className="font-semibold text-sm text-blue-600">
-          {stats.total > 0 ? ((stats.confirmed / stats.total) * 100).toFixed(1) : 0}%
-        </span>
+const ReportCard: React.FC<{ title: string; stats: any }> = ({ title, stats }) => {
+  // حساب الإحصائيات الصحيحة
+  const totalConfirmed = (stats.confirmed || 0) + (stats.shipped || 0); // المؤكد الإجمالي = تأكيد + شحن
+  const totalPending = (stats.new || 0) + (stats.noAnswer || 0) + (stats.pending || 0) + (stats.contacted || 0); // في الانتظار
+  const totalRejected = stats.rejected || 0; // المرفوض
+  const total = stats.total || 0;
+  
+  // معدل التحويل الصحيح = (المؤكد الإجمالي / إجمالي الطلبات) * 100
+  const conversionRate = total > 0 ? ((totalConfirmed / total) * 100).toFixed(1) : '0.0';
+  
+  // معدل الحسم = ((المؤكد + المرفوض) / إجمالي الطلبات) * 100
+  const decisionRate = total > 0 ? (((totalConfirmed + totalRejected) / total) * 100).toFixed(1) : '0.0';
+  
+  return (
+    <div className="bg-white border rounded-lg p-4 sm:p-6 shadow-sm">
+      <h3 className="font-semibold text-base sm:text-lg mb-4 text-gray-800">{title}</h3>
+      <div className="space-y-2 sm:space-y-3">
+        <div className="flex justify-between">
+          <span className="text-sm text-gray-600">إجمالي:</span>
+          <span className="font-semibold text-sm">{total}</span>
+        </div>
+        
+        <div className="flex justify-between">
+          <span className="text-sm text-gray-600">مؤكد (إجمالي):</span>
+          <span className="font-semibold text-sm text-green-600">{totalConfirmed}</span>
+        </div>
+        
+        <div className="flex justify-between text-xs text-gray-500 pl-4">
+          <span>• تم التأكيد:</span>
+          <span>{stats.confirmed || 0}</span>
+        </div>
+        
+        <div className="flex justify-between text-xs text-gray-500 pl-4">
+          <span>• تم الشحن:</span>
+          <span>{stats.shipped || 0}</span>
+        </div>
+        
+        <div className="flex justify-between">
+          <span className="text-sm text-gray-600">في الانتظار:</span>
+          <span className="font-semibold text-sm text-yellow-600">{totalPending}</span>
+        </div>
+        
+        <div className="flex justify-between text-xs text-gray-500 pl-4">
+          <span>• جديد:</span>
+          <span>{stats.new || 0}</span>
+        </div>
+        
+        <div className="flex justify-between text-xs text-gray-500 pl-4">
+          <span>• لم يرد:</span>
+          <span>{stats.noAnswer || 0}</span>
+        </div>
+        
+        <div className="flex justify-between text-xs text-gray-500 pl-4">
+          <span>• تواصل واتساب:</span>
+          <span>{stats.contacted || 0}</span>
+        </div>
+        
+        <div className="flex justify-between">
+          <span className="text-sm text-gray-600">مرفوض:</span>
+          <span className="font-semibold text-sm text-red-600">{totalRejected}</span>
+        </div>
+        
+        <hr className="my-3" />
+        
+        <div className="flex justify-between">
+          <span className="text-sm text-gray-600">معدل التحويل:</span>
+          <span className="font-semibold text-sm text-blue-600">{conversionRate}%</span>
+        </div>
+        
+        <div className="flex justify-between">
+          <span className="text-sm text-gray-600">معدل الحسم:</span>
+          <span className="font-semibold text-sm text-purple-600">{decisionRate}%</span>
+        </div>
+        
+        {/* التحقق من صحة البيانات */}
+        <div className="mt-3 pt-2 border-t border-gray-100">
+          <div className="flex justify-between text-xs text-gray-400">
+            <span>التحقق:</span>
+            <span className={totalConfirmed + totalPending + totalRejected === total ? 'text-green-500' : 'text-red-500'}>
+              {totalConfirmed + totalPending + totalRejected === total ? '✓ صحيح' : '⚠ خطأ'}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Employee Stats Types
 type EmployeeStats = {
