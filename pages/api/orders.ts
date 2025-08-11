@@ -217,36 +217,57 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           if (!targetLead) {
             console.error(`❌ لم يتم العثور على الطلب ${rowNumber}`);
-            stockResult = {
-              success: false,
-              message: 'لم يتم العثور على بيانات الطلب'
-            };
+            return res.status(400).json({
+              error: 'لا يمكن الشحن',
+              stockError: true,
+              message: 'لم يتم العثور على بيانات الطلب في النظام'
+            });
+          }
+          
+          // التحقق من وجود البيانات المطلوبة للشحن
+          const productName = targetLead!.productName?.trim();
+          const quantityStr = targetLead!.quantity?.toString().trim();
+          const orderId = targetLead!.id;
+          
+          if (!productName || !quantityStr) {
+            console.error(`❌ بيانات ناقصة للطلب ${rowNumber}: منتج=${productName}, كمية=${quantityStr}`);
+            return res.status(400).json({
+              error: 'لا يمكن الشحن',
+              stockError: true,
+              message: 'بيانات الطلب غير مكتملة (اسم المنتج أو الكمية مفقود)'
+            });
+          }
+          
+          const quantity = parseInt(quantityStr) || 1;
+          
+          console.log(`🚚 محاولة شحن الطلب ${rowNumber}: ${quantity} × ${productName}`);
+          
+          // خصم المخزون وتسجيل النتيجة
+          stockResult = await deductStock(productName, quantity, orderId);
+          
+          if (stockResult.success) {
+            console.log(`✅ تم خصم المخزون بنجاح: ${stockResult.message}`);
           } else {
-            const quantity = parseInt(targetLead.quantity) || 1;
-            const productName = targetLead.productName || 'غير محدد';
+            console.error(`❌ فشل خصم المخزون: ${stockResult.message}`);
             
-            console.log(`🚚 محاولة شحن الطلب ${rowNumber}: ${quantity} × ${productName}`);
-            
-            // خصم المخزون وتسجيل النتيجة
-            stockResult = await deductStock(productName, quantity, targetLead.id);
-            
-            if (stockResult.success) {
-              console.log(`✅ تم خصم المخزون بنجاح: ${stockResult.message}`);
-            } else {
-              console.error(`❌ فشل خصم المخزون: ${stockResult.message}`);
-              
-              // في حالة عدم توفر المخزون، منع تحديث الحالة إلى "تم الشحن"
-              if (stockResult.message.includes('المخزون غير كافي')) {
-                return res.status(400).json({
-                  error: 'لا يمكن الشحن',
-                  stockError: true,
-                  message: `⚠️ ${stockResult.message}`,
-                  availableQuantity: stockResult.availableQuantity,
-                  requiredQuantity: quantity,
-                  productName: productName
-                });
-              }
+            // في حالة عدم توفر المخزون، منع تحديث الحالة إلى "تم الشحن"
+            if (stockResult.message.includes('المخزون غير كافي')) {
+              return res.status(400).json({
+                error: 'لا يمكن الشحن',
+                stockError: true,
+                message: `⚠️ ${stockResult.message}`,
+                availableQuantity: stockResult.availableQuantity,
+                requiredQuantity: quantity,
+                productName: productName
+              });
             }
+            
+            // في حالة أخطاء أخرى في المخزون
+            return res.status(500).json({
+              error: 'خطأ في نظام المخزون',
+              stockError: true,
+              message: `فشل في معالجة المخزون: ${stockResult.message}`
+            });
           }
         } catch (stockError) {
           console.error(`❌ خطأ في خصم المخزون للطلب ${rowNumber}:`, stockError);

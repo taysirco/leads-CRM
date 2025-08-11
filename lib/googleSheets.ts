@@ -1158,9 +1158,18 @@ export async function diagnoseGoogleSheets(): Promise<{ success: boolean; messag
   }
 } 
 
-// دالة شاملة ومحسنة لإضافة حركة المخزون
+// دالة شاملة ومحسنة لإضافة حركة المخزون بطريقة احترافية
 export async function addStockMovement(movement: Partial<StockMovement>) {
   try {
+    const movementId = Date.now(); // ID فريد مبني على الوقت
+    
+    console.log(`📊 [${movementId}] إضافة حركة مخزون:`, {
+      product: movement.productName,
+      type: movement.type,
+      quantity: movement.quantity,
+      reason: movement.reason
+    });
+    
     const auth = getAuth();
     const sheets = google.sheets({ version: 'v4', auth });
     const spreadsheetId = process.env.GOOGLE_SHEET_ID;
@@ -1169,51 +1178,94 @@ export async function addStockMovement(movement: Partial<StockMovement>) {
       throw new Error('معرف Google Sheet غير موجود');
     }
 
-    // محاولة الوصول للورقة
-    try {
-      await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: 'stock_movements!A1:A1',
-      });
-      console.log('✅ ورقة stock_movements موجودة');
-    } catch (error: any) {
-      if (error.message?.includes('Unable to parse range') || 
-          error.message?.includes('Sheet not found')) {
-        console.log('📋 إنشاء ورقة stock_movements...');
-        await createStockMovementsSheetEnhanced();
-      } else {
-        throw error;
-      }
-    }
+    // التأكد من وجود ورقة stock_movements
+    await ensureStockMovementsSheetExists();
 
-    // إضافة البيانات إلى ورقة stock_movements
-    const newRow = [
-      movement.id,
-      movement.date,
-      movement.timestamp,
-      movement.productName,
-      movement.type,
-      movement.quantity,
-      movement.reason,
-      movement.supplier,
-      movement.cost,
-      movement.notes,
-      movement.orderId
+    // جلب آخر ID من الورقة لضمان الترقيم المتسلسل
+    const lastIdResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'stock_movements!A:A',
+    });
+    
+    const existingRows = lastIdResponse.data.values || [['ID']];
+    const lastRowIndex = existingRows.length;
+    const newSequentialId = lastRowIndex; // ID متسلسل
+    
+    // الحصول على التوقيت المصري الدقيق
+    const egyptianDate = getEgyptDate();
+    const egyptianTime = getEgyptTime();
+    const fullEgyptianDateTime = getEgyptDateTime();
+    
+    // إعداد البيانات مع التحقق من صحتها
+    const productName = (movement.productName || '').trim();
+    const movementType = movement.type || 'adjustment';
+    const quantity = movement.quantity || 0;
+    const reason = (movement.reason || 'غير محدد').trim();
+    const supplier = (movement.supplier || '').trim();
+    const cost = parseFloat(String(movement.cost || 0));
+    const notes = (movement.notes || '').trim();
+    const orderId = movement.orderId || '';
+    
+    // تسجيل تفصيلي للعملية
+    const operationDetails = {
+      sequentialId: newSequentialId,
+      date: egyptianDate,
+      time: egyptianTime,
+      fullDateTime: fullEgyptianDateTime,
+      product: productName,
+      operation: movementType,
+      quantity: quantity,
+      reason: reason,
+      impact: quantity > 0 ? 'إضافة' : quantity < 0 ? 'خصم' : 'تعديل',
+      supplier: supplier || 'غير محدد',
+      cost: cost,
+      notes: notes || 'لا توجد ملاحظات',
+      orderId: orderId || 'غير مرتبط'
+    };
+    
+    console.log(`📋 [${movementId}] تفاصيل العملية:`, operationDetails);
+    
+    // إعداد صف البيانات للإدراج
+    const rowData = [
+      newSequentialId,                    // A: ID متسلسل
+      egyptianDate,                       // B: التاريخ (YYYY-MM-DD)
+      egyptianTime,                       // C: الوقت (HH:MM:SS)
+      fullEgyptianDateTime,               // D: التاريخ والوقت كاملاً
+      productName,                        // E: اسم المنتج
+      movementType,                       // F: نوع العملية
+      quantity,                           // G: الكمية (موجب أو سالب)
+      reason,                             // H: السبب
+      supplier,                           // I: المورد
+      cost,                               // J: التكلفة
+      notes,                              // K: ملاحظات
+      orderId                             // L: رقم الطلب
     ];
 
+    // إدراج البيانات في الورقة
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: 'stock_movements!A:L',
       valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
       requestBody: {
-        values: [newRow]
+        values: [rowData]
       }
     });
 
-    console.log(`✅ تم إضافة حركة جديدة: ${movement.productName}`);
+    console.log(`✅ [${movementId}] تم تسجيل حركة المخزون رقم ${newSequentialId} بنجاح`);
+    console.log(`🕐 التوقيت المسجل: ${fullEgyptianDateTime} (توقيت القاهرة)`);
+    console.log(`📊 التأثير: ${operationDetails.impact} ${Math.abs(quantity)} من ${productName}`);
+    
+    return {
+      success: true,
+      movementId: newSequentialId,
+      timestamp: fullEgyptianDateTime,
+      details: operationDetails
+    };
+    
   } catch (error) {
     console.error('❌ خطأ في إضافة حركة المخزون:', error);
-    throw error;
+    throw new Error(`فشل في تسجيل حركة المخزون: ${error}`);
   }
 } 
 
