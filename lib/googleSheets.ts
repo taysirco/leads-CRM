@@ -1638,7 +1638,7 @@ export async function getOrderStatistics() {
       
       // إحصائيات اليوم (تقريبية)
       const today = new Date().toISOString().split('T')[0];
-      if (lead.orderDate && lead.orderDate.includes(today)) {
+      if (lead.orderDate && typeof lead.orderDate === 'string' && lead.orderDate.includes(today)) {
         assigneeStats[assignee].today++;
       }
     });
