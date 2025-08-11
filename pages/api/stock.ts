@@ -1,12 +1,13 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { 
-  fetchStock, 
-  addOrUpdateStockItem, 
-  deductStock, 
-  addDailyReturn, 
-  getStockAlerts, 
-  getStockReports,
+import {
+  fetchStock,
+  addOrUpdateStockItem,
+  addDailyReturn,
+  deductStock,
   addStockMovement,
+  getStockAlerts,
+  getStockReports,
+  getStockMovements,
   findProductBySynonyms,
   testStockSheetConnection,
   diagnoseGoogleSheets
@@ -64,9 +65,19 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
       if (forceRefresh) {
         console.log('🔄 فرض تحديث التقارير من Google Sheets...');
       }
-      const reports = await getStockReports();
+      const reports = await getStockReports(); // No forceRefresh argument here, handled internally by getStockReports
       console.log('📈 تم إنشاء التقارير');
       return res.status(200).json({ reports });
+
+    case 'movements':
+      console.log('📋 جلب حركات المخزون...');
+      try {
+        const movements = await getStockMovements();
+        return res.status(200).json({ movements });
+      } catch (error) {
+        console.error('خطأ في جلب حركات المخزون:', error);
+        return res.status(500).json({ error: 'فشل في جلب حركات المخزون' });
+      }
 
     case 'test':
       console.log('🧪 اختبار اتصال المخزون...');
@@ -83,167 +94,222 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
   }
 }
 
-  // POST: إضافة منتج جديد أو عمليات أخرى
-  async function handlePost(req: NextApiRequest, res: NextApiResponse) {
-    const { action, ...data } = req.body;
+// دوال مساعدة لمعالجة العمليات
+async function addStockItem(data: any) {
+  const { productName, initialQuantity, synonyms, minThreshold } = data;
+  
+  if (!productName || !productName.trim()) {
+    throw new Error('اسم المنتج مطلوب');
+  }
+  
+  if (initialQuantity === undefined || initialQuantity < 0) {
+    throw new Error('الكمية الأولية يجب أن تكون صفر أو أكثر');
+  }
 
+  const parsedInitialQuantity = parseInt(initialQuantity);
+  const parsedMinThreshold = parseInt(minThreshold) || 10;
+  
+  if (parsedMinThreshold < 0) {
+    throw new Error('الحد الأدنى لا يمكن أن يكون سالباً');
+  }
+  
+  if (parsedMinThreshold > parsedInitialQuantity) {
+    throw new Error('الحد الأدنى لا يمكن أن يكون أكبر من الكمية الأولية');
+  }
+
+  console.log(`📦 إضافة منتج جديد: ${productName.trim()}, كمية: ${parsedInitialQuantity}`);
+
+  await addOrUpdateStockItem({
+    productName: productName.trim(),
+    initialQuantity: parsedInitialQuantity,
+    currentQuantity: parsedInitialQuantity, // الكمية الحالية = الأولية عند الإضافة
+    synonyms: synonyms?.trim() || '',
+    minThreshold: parsedMinThreshold
+  });
+
+  return { 
+    success: true, 
+    message: `تم إضافة ${productName.trim()} بكمية ${parsedInitialQuantity} بنجاح` 
+  };
+}
+
+async function addStock(stockData: any) {
+  const { productName, quantity, reason, supplier, cost, notes, date } = stockData;
+  
+  if (!productName || !productName.trim()) {
+    throw new Error('اسم المنتج مطلوب');
+  }
+  
+  const addQuantity = parseInt(quantity);
+  if (isNaN(addQuantity) || addQuantity <= 0) {
+    throw new Error('الكمية يجب أن تكون أكبر من صفر');
+  }
+
+  console.log(`📈 إضافة مخزون: ${addQuantity} إلى ${productName}`);
+
+  // التحقق من وجود المنتج
+  const stockDataResult = await fetchStock(true);
+  const product = findProductBySynonyms(productName, stockDataResult.stockItems);
+  
+  if (!product) {
+    throw new Error('المنتج غير موجود في المخزون');
+  }
+
+  console.log(`📊 المخزون قبل الإضافة: ${product.currentQuantity}`);
+  
+  const newQuantity = product.currentQuantity + addQuantity;
+  
+  // تحديث المخزون
+  await addOrUpdateStockItem({
+    ...product,
+    currentQuantity: newQuantity
+  });
+
+  // تسجيل حركة الإضافة
+  await addStockMovement({
+    productName: product.productName,
+    type: 'add_stock',
+    quantity: addQuantity,
+    reason: reason || 'إضافة مخزون جديد',
+    supplier: supplier || '',
+    cost: parseFloat(cost) || 0,
+    notes: notes || '',
+    date: date || new Date().toISOString().split('T')[0]
+  });
+
+  console.log(`📊 المخزون بعد الإضافة: ${newQuantity}`);
+  
+  return { 
+    success: true, 
+    message: `تم إضافة ${addQuantity} إلى مخزون ${product.productName}` 
+  };
+}
+
+async function addReturn(returnData: any) {
+  if (!returnData.productName || !returnData.productName.trim()) {
+    throw new Error('اسم المنتج مطلوب للمرتجع');
+  }
+  
+  const returnQuantity = parseInt(returnData.quantity);
+  if (isNaN(returnQuantity) || returnQuantity <= 0) {
+    throw new Error('كمية المرتجع يجب أن تكون أكبر من صفر');
+  }
+
+  console.log(`📦 تسجيل مرتجع: ${returnQuantity} من ${returnData.productName}`);
+
+  // التحقق من وجود المنتج
+  const stockDataForReturn = await fetchStock(true);
+  const productForReturn = findProductBySynonyms(returnData.productName, stockDataForReturn.stockItems);
+  
+  if (!productForReturn) {
+    throw new Error('المنتج غير موجود في المخزون');
+  }
+
+  console.log(`📊 المخزون قبل المرتجع: ${productForReturn.currentQuantity}`);
+  
+  await addDailyReturn({
+    productName: returnData.productName,
+    quantity: returnQuantity,
+    reason: returnData.reason || 'other',
+    notes: returnData.notes || '',
+    date: returnData.date || new Date().toISOString().split('T')[0]
+  });
+  
+  const newQuantityAfterReturn = productForReturn.currentQuantity + returnQuantity;
+  console.log(`📊 المخزون بعد المرتجع: ${newQuantityAfterReturn}`);
+  
+  return { 
+    success: true, 
+    message: `تم تسجيل مرتجع ${returnQuantity} من ${returnData.productName}` 
+  };
+}
+
+async function addDamage(damageData: any) {
+  if (!damageData.productName || !damageData.productName.trim()) {
+    throw new Error('اسم المنتج مطلوب للتالف');
+  }
+  
+  const damageQuantity = parseInt(damageData.quantity);
+  if (isNaN(damageQuantity) || damageQuantity <= 0) {
+    throw new Error('كمية التالف يجب أن تكون أكبر من صفر');
+  }
+
+  console.log(`💥 تسجيل تالف: ${damageQuantity} من ${damageData.productName}`);
+
+  // التحقق من وجود المنتج وكفاية المخزون
+  const stockDataForDamage = await fetchStock(true);
+  const productForDamage = findProductBySynonyms(damageData.productName, stockDataForDamage.stockItems);
+  
+  if (!productForDamage) {
+    throw new Error('المنتج غير موجود في المخزون');
+  }
+
+  if (productForDamage.currentQuantity < damageQuantity) {
+    throw new Error(`المخزون غير كافي. المتوفر: ${productForDamage.currentQuantity}, المطلوب: ${damageQuantity}`);
+  }
+
+  console.log(`📊 المخزون قبل التالف: ${productForDamage.currentQuantity}`);
+
+  const newQuantityAfterDamage = Math.max(0, productForDamage.currentQuantity - damageQuantity);
+  
+  await addOrUpdateStockItem({
+    ...productForDamage,
+    currentQuantity: newQuantityAfterDamage
+  });
+
+  // تسجيل حركة التالف
+  await addStockMovement({
+    productName: productForDamage.productName,
+    type: damageData.type || 'damage',
+    quantity: -damageQuantity, // سالب لأنه خصم
+    reason: damageData.reason || 'تالف',
+    notes: damageData.notes || ''
+  });
+
+  console.log(`📊 المخزون بعد التالف: ${newQuantityAfterDamage}`);
+
+  return { 
+    success: true, 
+    message: `تم تسجيل تالف ${damageQuantity} من ${productForDamage.productName}` 
+  };
+}
+
+// POST: إضافة منتج أو مرتجع أو تالف
+async function handlePost(req: NextApiRequest, res: NextApiResponse) {
+  const { action } = req.body;
+  
+  console.log(`📡 Stock API POST: action=${action}`);
+
+  try {
     switch (action) {
       case 'add_item':
-        const { productName, initialQuantity, synonyms, minThreshold } = data;
-        
-        if (!productName || !productName.trim()) {
-          return res.status(400).json({ error: 'اسم المنتج مطلوب' });
-        }
-        
-        if (initialQuantity === undefined || initialQuantity < 0) {
-          return res.status(400).json({ error: 'الكمية الأولية يجب أن تكون صفر أو أكثر' });
-        }
+        console.log('📦 إضافة منتج جديد...');
+        const addResult = await addStockItem(req.body);
+        return res.status(200).json(addResult);
 
-        const parsedInitialQuantity = parseInt(initialQuantity);
-        const parsedMinThreshold = parseInt(minThreshold) || 10;
-        
-        if (parsedMinThreshold < 0) {
-          return res.status(400).json({ error: 'الحد الأدنى لا يمكن أن يكون سالباً' });
-        }
-        
-        if (parsedMinThreshold > parsedInitialQuantity) {
-          return res.status(400).json({ error: 'الحد الأدنى لا يمكن أن يكون أكبر من الكمية الأولية' });
-        }
-
-        console.log(`📦 إضافة منتج جديد: ${productName.trim()}, كمية: ${parsedInitialQuantity}`);
-
-        await addOrUpdateStockItem({
-          productName: productName.trim(),
-          initialQuantity: parsedInitialQuantity,
-          currentQuantity: parsedInitialQuantity, // الكمية الحالية = الأولية عند الإضافة
-          synonyms: synonyms?.trim() || '',
-          minThreshold: parsedMinThreshold
-        });
-
-        return res.json({ 
-          success: true, 
-          message: `تم إضافة ${productName.trim()} بكمية ${parsedInitialQuantity} بنجاح` 
-        });
+      case 'add_stock':
+        console.log('📈 إضافة مخزون لمنتج موجود...');
+        const addStockResult = await addStock(req.body.stockData);
+        return res.status(200).json(addStockResult);
 
       case 'add_return':
-        const { returnData } = data;
-        
-        if (!returnData.productName || !returnData.productName.trim()) {
-          return res.status(400).json({ error: 'اسم المنتج مطلوب للمرتجع' });
-        }
-        
-        const returnQuantity = parseInt(returnData.quantity);
-        if (isNaN(returnQuantity) || returnQuantity <= 0) {
-          return res.status(400).json({ error: 'كمية المرتجع يجب أن تكون أكبر من صفر' });
-        }
-
-        console.log(`📦 تسجيل مرتجع: ${returnQuantity} من ${returnData.productName}`);
-
-        // التحقق من وجود المنتج
-        const stockDataForReturn = await fetchStock(true);
-        const productForReturn = findProductBySynonyms(returnData.productName, stockDataForReturn.stockItems);
-        
-        if (!productForReturn) {
-          return res.status(404).json({ error: 'المنتج غير موجود في المخزون' });
-        }
-
-        console.log(`📊 المخزون قبل المرتجع: ${productForReturn.currentQuantity}`);
-        
-        await addDailyReturn({
-          productName: returnData.productName,
-          quantity: returnQuantity,
-          reason: returnData.reason || 'other',
-          notes: returnData.notes || '',
-          date: returnData.date || new Date().toISOString().split('T')[0]
-        });
-        
-        const newQuantityAfterReturn = productForReturn.currentQuantity + returnQuantity;
-        console.log(`📊 المخزون بعد المرتجع: ${newQuantityAfterReturn}`);
-        
-        return res.json({ 
-          success: true, 
-          message: `تم تسجيل مرتجع ${returnQuantity} من ${returnData.productName}` 
-        });
+        console.log('↩️ تسجيل مرتجع...');
+        const returnResult = await addReturn(req.body.returnData);
+        return res.status(200).json(returnResult);
 
       case 'add_damage':
-        const { damageData } = data;
-        
-        if (!damageData.productName || !damageData.productName.trim()) {
-          return res.status(400).json({ error: 'اسم المنتج مطلوب للتالف' });
-        }
-        
-        const damageQuantity = parseInt(damageData.quantity);
-        if (isNaN(damageQuantity) || damageQuantity <= 0) {
-          return res.status(400).json({ error: 'كمية التالف يجب أن تكون أكبر من صفر' });
-        }
-
-        console.log(`💥 تسجيل تالف: ${damageQuantity} من ${damageData.productName}`);
-
-        // التحقق من وجود المنتج وكفاية المخزون
-        const stockDataForDamage = await fetchStock(true);
-        const productForDamage = findProductBySynonyms(damageData.productName, stockDataForDamage.stockItems);
-        
-        if (!productForDamage) {
-          return res.status(404).json({ error: 'المنتج غير موجود في المخزون' });
-        }
-
-        if (productForDamage.currentQuantity < damageQuantity) {
-          return res.status(400).json({ 
-            error: `المخزون غير كافي. المتوفر: ${productForDamage.currentQuantity}, المطلوب: ${damageQuantity}` 
-          });
-        }
-
-        console.log(`📊 المخزون قبل التالف: ${productForDamage.currentQuantity}`);
-
-        const newQuantityAfterDamage = Math.max(0, productForDamage.currentQuantity - damageQuantity);
-        
-        await addOrUpdateStockItem({
-          ...productForDamage,
-          currentQuantity: newQuantityAfterDamage
-        });
-
-        // تسجيل حركة التالف
-        await addStockMovement({
-          productName: productForDamage.productName,
-          type: damageData.type || 'damage',
-          quantity: -damageQuantity, // سالب لأنه خصم
-          reason: damageData.reason || 'تالف',
-          notes: damageData.notes || ''
-        });
-
-        console.log(`📊 المخزون بعد التالف: ${newQuantityAfterDamage}`);
-
-        return res.json({ 
-          success: true, 
-          message: `تم تسجيل تالف ${damageQuantity} من ${productForDamage.productName}` 
-        });
-
-      case 'deduct_stock':
-        const { productName: deductProduct, quantity, orderId } = data;
-        
-        if (!deductProduct || !deductProduct.trim()) {
-          return res.status(400).json({ error: 'اسم المنتج مطلوب' });
-        }
-        
-        const deductQuantity = parseInt(quantity);
-        if (isNaN(deductQuantity) || deductQuantity <= 0) {
-          return res.status(400).json({ error: 'الكمية يجب أن تكون أكبر من صفر' });
-        }
-
-        console.log(`📦 خصم مخزون: ${deductQuantity} من ${deductProduct} (طلب: ${orderId || 'غير محدد'})`);
-        
-        const result = await deductStock(deductProduct.trim(), deductQuantity, orderId);
-        
-        if (result.success) {
-          return res.json(result);
-        } else {
-          return res.status(400).json(result);
-        }
+        console.log('💥 تسجيل تلف/مفقود...');
+        const damageResult = await addDamage(req.body.damageData);
+        return res.status(200).json(damageResult);
 
       default:
-        return res.status(400).json({ error: 'إجراء غير صحيح' });
+        return res.status(400).json({ error: 'Invalid POST action' });
     }
+  } catch (error: any) {
+    console.error(`❌ خطأ في ${action}:`, error);
+    return res.status(400).json({ error: error.message || 'حدث خطأ غير متوقع' });
   }
+}
 
   // PUT: تحديث منتج موجود
   async function handlePut(req: NextApiRequest, res: NextApiResponse) {

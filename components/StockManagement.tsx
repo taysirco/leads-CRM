@@ -32,7 +32,7 @@ interface StockReports {
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function StockManagement() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'returns' | 'reports'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'returns' | 'reports' | 'movements'>('overview');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   
@@ -40,6 +40,7 @@ export default function StockManagement() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [showDamageModal, setShowDamageModal] = useState(false);
+  const [showAddStockModal, setShowAddStockModal] = useState(false);
   const [editingItem, setEditingItem] = useState<StockItem | null>(null);
 
   // جلب بيانات المخزون مع إعدادات محسنة - تقليل التحديث المفرط
@@ -407,6 +408,68 @@ export default function StockManagement() {
     }
   };
 
+  // إضافة مخزون لمنتج موجود
+  const handleAddStock = async (stockData: any) => {
+    setIsLoading(true);
+    try {
+      // التحقق من صحة البيانات
+      const quantity = parseInt(stockData.quantity);
+      
+      if (quantity <= 0) {
+        showMessage('error', 'كمية المخزون الإضافية يجب أن تكون أكبر من صفر');
+        return;
+      }
+      
+      if (!stockData.productName || stockData.productName.trim() === '') {
+        showMessage('error', 'يجب اختيار المنتج');
+        return;
+      }
+      
+      // العثور على المنتج للتحقق من وجوده
+      const selectedProduct = safeStockItems.find(item => item.productName === stockData.productName);
+      if (!selectedProduct) {
+        showMessage('error', 'المنتج المحدد غير موجود في المخزون');
+        return;
+      }
+      
+      console.log(`📦 إضافة مخزون: ${quantity} إلى ${stockData.productName}`);
+      console.log(`📊 المخزون الحالي قبل الإضافة: ${selectedProduct.currentQuantity}`);
+      
+      const response = await fetch('/api/stock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add_stock',
+          stockData: {
+            productName: stockData.productName,
+            quantity: quantity,
+            reason: stockData.reason || 'إضافة مخزون جديد',
+            supplier: stockData.supplier || '',
+            cost: parseFloat(stockData.cost) || 0,
+            notes: stockData.notes || '',
+            date: new Date().toISOString().split('T')[0]
+          }
+        })
+      });
+
+      const result = await response.json();
+      
+      if (response.ok) {
+        const newQuantity = selectedProduct.currentQuantity + quantity;
+        showMessage('success', `${result.message}. المخزون الجديد: ${newQuantity}`);
+        setShowAddStockModal(false);
+        await forceRefreshAll();
+      } else {
+        showMessage('error', result.error);
+      }
+    } catch (error) {
+      console.error('❌ خطأ في إضافة المخزون:', error);
+      showMessage('error', 'حدث خطأ أثناء إضافة المخزون');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // معالجة حالات الخطأ
   if (stockError) {
     return (
@@ -648,7 +711,8 @@ export default function StockManagement() {
                 { id: 'overview', label: '📋 نظرة عامة', icon: '📋', shortLabel: 'عامة' },
                 { id: 'add', label: '➕ إضافة منتج', icon: '➕', shortLabel: 'إضافة' },
                 { id: 'returns', label: '↩️ المرتجعات والتوالف', icon: '↩️', shortLabel: 'مرتجعات' },
-                { id: 'reports', label: '📊 التقارير', icon: '📊', shortLabel: 'تقارير' }
+                { id: 'reports', label: '📊 التقارير', icon: '📊', shortLabel: 'تقارير' },
+                { id: 'movements', label: '📦 حركة المخزون', icon: '📦', shortLabel: 'حركة' }
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -697,6 +761,14 @@ export default function StockManagement() {
                 stockItems={safeStockItems}
               />
             )}
+            
+            {activeTab === 'movements' && (
+              <StockMovements 
+                stockItems={safeStockItems}
+                onAddStock={() => setShowAddStockModal(true)}
+                isLoading={isLoading}
+              />
+            )}
           </div>
         </div>
 
@@ -723,6 +795,15 @@ export default function StockManagement() {
             stockItems={safeStockItems}
             onClose={() => setShowDamageModal(false)}
             onSubmit={handleAddDamage}
+            isLoading={isLoading}
+          />
+        )}
+
+        {showAddStockModal && (
+          <AddStockModal 
+            stockItems={safeStockItems}
+            onClose={() => setShowAddStockModal(false)}
+            onSubmit={handleAddStock}
             isLoading={isLoading}
           />
         )}
@@ -1876,6 +1957,395 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
             >
               {isLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
               حفظ التعديل
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// مكون حركة المخزون
+function StockMovements({ stockItems, onAddStock, isLoading }: any) {
+  const [movements, setMovements] = useState([]);
+  const [filteredMovements, setFilteredMovements] = useState([]);
+  const [filters, setFilters] = useState({
+    productName: '',
+    dateFrom: '',
+    dateTo: '',
+    type: 'all'
+  });
+
+  // جلب بيانات حركة المخزون
+  const { data: movementsData, mutate: refreshMovements } = useSWR('/api/stock?action=movements', fetcher, {
+    refreshInterval: 0,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    errorRetryCount: 1
+  });
+
+  useEffect(() => {
+    if (movementsData?.movements) {
+      setMovements(movementsData.movements);
+      setFilteredMovements(movementsData.movements);
+    }
+  }, [movementsData]);
+
+  // تطبيق الفلاتر
+  useEffect(() => {
+    let filtered = movements;
+
+    if (filters.productName) {
+      filtered = filtered.filter((movement: any) => 
+        movement.productName.toLowerCase().includes(filters.productName.toLowerCase())
+      );
+    }
+
+    if (filters.dateFrom) {
+      filtered = filtered.filter((movement: any) => movement.date >= filters.dateFrom);
+    }
+
+    if (filters.dateTo) {
+      filtered = filtered.filter((movement: any) => movement.date <= filters.dateTo);
+    }
+
+    if (filters.type !== 'all') {
+      filtered = filtered.filter((movement: any) => movement.type === filters.type);
+    }
+
+    setFilteredMovements(filtered);
+  }, [movements, filters]);
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-3 sm:space-y-0">
+        <h2 className="text-lg sm:text-xl font-bold text-gray-900">حركة المخزون</h2>
+        <button
+          onClick={onAddStock}
+          className="px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+          <span className="hidden sm:inline">إضافة مخزون</span>
+          <span className="sm:hidden">إضافة</span>
+        </button>
+      </div>
+
+      {/* فلاتر البحث */}
+      <div className="bg-white p-4 rounded-lg border border-gray-200">
+        <h3 className="text-sm font-medium text-gray-700 mb-3">فلاتر البحث</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">المنتج</label>
+            <select
+              value={filters.productName}
+              onChange={(e) => setFilters({...filters, productName: e.target.value})}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+            >
+              <option value="">جميع المنتجات</option>
+              {stockItems.map((item: any) => (
+                <option key={item.id} value={item.productName}>{item.productName}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">من تاريخ</label>
+            <input
+              type="date"
+              value={filters.dateFrom}
+              onChange={(e) => setFilters({...filters, dateFrom: e.target.value})}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">إلى تاريخ</label>
+            <input
+              type="date"
+              value={filters.dateTo}
+              onChange={(e) => setFilters({...filters, dateTo: e.target.value})}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">نوع العملية</label>
+            <select
+              value={filters.type}
+              onChange={(e) => setFilters({...filters, type: e.target.value})}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+            >
+              <option value="all">جميع العمليات</option>
+              <option value="add_stock">إضافة مخزون</option>
+              <option value="return">مرتجعات</option>
+              <option value="damage">تلف/مفقود</option>
+              <option value="sale">مبيعات</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* جدول حركة المخزون */}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
+          <h3 className="text-base sm:text-lg font-medium text-gray-900">
+            سجل الحركات ({filteredMovements.length})
+          </h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">التاريخ</th>
+                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">المنتج</th>
+                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">العملية</th>
+                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">الكمية</th>
+                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm hidden sm:table-cell">السبب</th>
+                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm hidden lg:table-cell">التكلفة</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {filteredMovements.map((movement: any, index: number) => (
+                <tr key={index} className="hover:bg-gray-50">
+                  <td className="px-2 sm:px-3 py-3 sm:py-4 text-xs sm:text-sm text-gray-900">
+                    {new Date(movement.date).toLocaleDateString('ar-EG')}
+                  </td>
+                  <td className="px-2 sm:px-3 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">
+                    {movement.productName}
+                  </td>
+                  <td className="px-2 sm:px-3 py-3 sm:py-4">
+                    <span className={`px-1.5 sm:px-2 py-1 text-xs font-medium rounded-full ${
+                      movement.type === 'add_stock' ? 'bg-green-100 text-green-800' :
+                      movement.type === 'return' ? 'bg-blue-100 text-blue-800' :
+                      movement.type === 'damage' ? 'bg-red-100 text-red-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {movement.type === 'add_stock' ? 'إضافة مخزون' :
+                       movement.type === 'return' ? 'مرتجع' :
+                       movement.type === 'damage' ? 'تلف/مفقود' :
+                       movement.typeLabel || movement.type}
+                    </span>
+                  </td>
+                  <td className="px-2 sm:px-3 py-3 sm:py-4">
+                    <span className={`font-bold text-xs sm:text-sm ${
+                      movement.quantity > 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {movement.quantity > 0 ? '+' : ''}{movement.quantity}
+                    </span>
+                  </td>
+                  <td className="px-2 sm:px-3 py-3 sm:py-4 text-xs sm:text-sm text-gray-600 hidden sm:table-cell">
+                    {movement.reason || '-'}
+                  </td>
+                  <td className="px-2 sm:px-3 py-3 sm:py-4 text-xs sm:text-sm text-gray-600 hidden lg:table-cell">
+                    {movement.cost ? `${movement.cost} ج.م` : '-'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {filteredMovements.length === 0 && (
+          <div className="text-center py-8 sm:py-12">
+            <div className="p-3 sm:p-4 bg-gray-100 rounded-full w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 flex items-center justify-center">
+              <svg className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">لا توجد حركات</h3>
+            <p className="text-gray-500 mb-4 text-sm sm:text-base">لم يتم العثور على حركات مخزون بالفلاتر المحددة</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// مودال إضافة مخزون
+function AddStockModal({ stockItems, onClose, onSubmit, isLoading }: any) {
+  const [formData, setFormData] = useState({
+    productName: '',
+    quantity: '',
+    reason: 'إضافة مخزون جديد',
+    supplier: '',
+    cost: '',
+    notes: ''
+  });
+
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [previewQuantity, setPreviewQuantity] = useState(0);
+
+  const handleProductChange = (productName: string) => {
+    const product = stockItems.find((item: any) => item.productName === productName);
+    setSelectedProduct(product);
+    setFormData({...formData, productName});
+    updatePreview(formData.quantity, product);
+  };
+
+  const handleQuantityChange = (quantity: string) => {
+    setFormData({...formData, quantity});
+    updatePreview(quantity, selectedProduct);
+  };
+
+  const updatePreview = (quantity: string, product: any) => {
+    if (product && quantity) {
+      const qty = parseInt(quantity) || 0;
+      setPreviewQuantity(product.currentQuantity + qty);
+    } else {
+      setPreviewQuantity(0);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const quantity = parseInt(formData.quantity) || 0;
+    
+    if (quantity <= 0) {
+      alert('كمية المخزون يجب أن تكون أكبر من صفر');
+      return;
+    }
+    
+    if (!selectedProduct) {
+      alert('يجب اختيار المنتج');
+      return;
+    }
+    
+    // تأكيد العملية
+    const confirmMessage = `هل تريد إضافة ${quantity} قطعة إلى مخزون ${selectedProduct.productName}؟\n\nالمخزون الحالي: ${selectedProduct.currentQuantity}\nبعد الإضافة: ${previewQuantity}`;
+    
+    if (window.confirm(confirmMessage)) {
+      onSubmit(formData);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50 p-4">
+      <div className="relative p-4 sm:p-8 bg-white w-full max-w-lg mx-auto rounded-lg shadow-lg">
+        <div className="flex justify-between items-center mb-4 sm:mb-6">
+          <h3 className="text-lg sm:text-xl font-bold text-gray-900">إضافة مخزون</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl font-bold">×</button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">اختر المنتج</label>
+            <select
+              value={formData.productName}
+              onChange={(e) => handleProductChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900 text-sm"
+              required
+            >
+              <option value="">اختر المنتج</option>
+              {stockItems.map((item: any) => (
+                <option key={item.id} value={item.productName} className="text-gray-900 bg-white">
+                  {item.productName} (الحالي: {item.currentQuantity})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">الكمية المضافة</label>
+              <input
+                type="number"
+                value={formData.quantity}
+                onChange={(e) => handleQuantityChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
+                min="1"
+                placeholder="أدخل الكمية"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">التكلفة (اختياري)</label>
+              <input
+                type="number"
+                value={formData.cost}
+                onChange={(e) => setFormData({...formData, cost: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+
+          {/* معاينة تأثير العملية */}
+          {selectedProduct && formData.quantity && (
+            <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+              <h4 className="text-sm font-medium text-green-800 mb-2">📈 معاينة إضافة المخزون:</h4>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-green-700">المخزون الحالي:</span>
+                  <span className="font-medium text-green-900">{selectedProduct.currentQuantity}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-green-700">الكمية المضافة:</span>
+                  <span className="font-medium text-green-600">+{formData.quantity}</span>
+                </div>
+                <hr className="border-green-200" />
+                <div className="flex justify-between font-bold">
+                  <span className="text-green-800">المخزون الجديد:</span>
+                  <span className="text-green-800">{previewQuantity}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">سبب الإضافة</label>
+            <select
+              value={formData.reason}
+              onChange={(e) => setFormData({...formData, reason: e.target.value})}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900 text-sm"
+            >
+              <option value="إضافة مخزون جديد" className="text-gray-900 bg-white">إضافة مخزون جديد</option>
+              <option value="تجديد المخزون" className="text-gray-900 bg-white">تجديد المخزون</option>
+              <option value="شراء من مورد" className="text-gray-900 bg-white">شراء من مورد</option>
+              <option value="استلام شحنة" className="text-gray-900 bg-white">استلام شحنة</option>
+              <option value="تصحيح المخزون" className="text-gray-900 bg-white">تصحيح المخزون</option>
+              <option value="أخرى" className="text-gray-900 bg-white">أخرى</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">المورد (اختياري)</label>
+            <input
+              type="text"
+              value={formData.supplier}
+              onChange={(e) => setFormData({...formData, supplier: e.target.value})}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
+              placeholder="اسم المورد أو المصدر"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
+              rows={3}
+              placeholder="تفاصيل إضافية عن عملية الإضافة..."
+            />
+          </div>
+
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm order-2 sm:order-1">
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading || !selectedProduct || !formData.quantity}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium text-sm order-1 sm:order-2"
+            >
+              {isLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
+              إضافة المخزون
             </button>
           </div>
         </form>
