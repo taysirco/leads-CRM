@@ -541,23 +541,6 @@ export default function StockManagement() {
           </div>
         )}
 
-        {/* عرض التنبيهات */}
-        {alerts && alerts.length > 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
-            <div className="flex items-center mb-2">
-              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.268 18.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-              <h3 className="font-medium text-yellow-800 text-sm sm:text-base">تنبيهات المخزون</h3>
-            </div>
-            <div className="space-y-1">
-              {alerts.map((alert: any, index: number) => (
-                <p key={index} className="text-yellow-700 text-xs sm:text-sm">• {alert.message}</p>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* عنوان الصفحة مع الأزرار */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 sm:p-6 rounded-lg">
           <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:justify-between sm:items-center">
