@@ -165,12 +165,12 @@ class SheetManager {
     try {
       await APIRateLimit.waitIfNeeded();
       
-      const auth = getAuth();
-      const sheets = google.sheets({ version: 'v4', auth });
-      
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+
       console.log('📊 جلب معلومات الشيت من Google...');
       const response = await sheets.spreadsheets.get({
-        spreadsheetId: SHEET_ID,
+    spreadsheetId: SHEET_ID,
       });
       
       const sheetInfo = response.data;
@@ -253,6 +253,86 @@ function getEgyptTime(): string {
 const getCurrentEgyptianDate = () => {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Africa/Cairo' }).split(' ')[0];
 };
+
+// دالة للتأكد من وجود ورقة المخزون
+async function ensureStockSheetExists(): Promise<void> {
+  try {
+    const auth = getAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
+    
+    // محاولة الوصول للورقة
+    try {
+      await sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID,
+        range: `${STOCK_SHEET_NAME}!A1:A1`,
+      });
+      console.log('✅ ورقة المخزون موجودة');
+    } catch (error: any) {
+      if (error.message?.includes('Unable to parse range') || 
+          error.message?.includes('Sheet not found')) {
+        console.log('📦 إنشاء ورقة المخزون...');
+        await createStockSheet();
+      } else {
+        throw error;
+      }
+    }
+  } catch (error) {
+    console.error('❌ خطأ في التحقق من ورقة المخزون:', error);
+    throw error;
+  }
+}
+
+// دالة لإنشاء ورقة المخزون
+async function createStockSheet(): Promise<void> {
+  try {
+    const auth = getAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
+    
+    // إنشاء الورقة
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      requestBody: {
+        requests: [{
+          addSheet: {
+            properties: {
+              title: STOCK_SHEET_NAME,
+              gridProperties: {
+                columnCount: 8,
+                rowCount: 1000
+              }
+            }
+          }
+        }]
+      }
+    });
+
+    // إضافة العناوين
+    const headers = [
+      'رقم',
+      'اسم المنتج', 
+      'الكمية الأولية',
+      'الكمية الحالية',
+      'آخر تحديث',
+      'المتردفات',
+      'الحد الأدنى',
+      'تاريخ الإنشاء'
+    ];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `${STOCK_SHEET_NAME}!A1:H1`,
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [headers]
+      }
+    });
+
+    console.log('✅ تم إنشاء ورقة المخزون بنجاح');
+  } catch (error) {
+    console.error('❌ خطأ في إنشاء ورقة المخزون:', error);
+    throw error;
+  }
+}
 
 // دالة لجلب بيانات المخزون مع تحسينات التزامن
 export async function fetchStock(forceFresh = false): Promise<{ stockItems: StockItem[] }> {
@@ -656,9 +736,9 @@ async function createStockMovementsSheetEnhanced() {
 // دالة مساعدة للحصول على ID الورقة
 async function getSheetId(spreadsheetId: string, sheetName: string): Promise<number> {
   try {
-    const auth = getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
-    
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+
     const response = await sheets.spreadsheets.get({
       spreadsheetId
     });
@@ -888,7 +968,7 @@ export async function getStockReports() {
       ).length,
       outOfStock: outOfStockCount
     };
-
+    
     return {
       summary: {
         totalProducts,
@@ -1078,33 +1158,9 @@ export async function diagnoseGoogleSheets(): Promise<{ success: boolean; messag
   }
 } 
 
-// دالة للحصول على التوقيت المصري
-function getEgyptDateTime(): string {
-  const now = new Date();
-  const egyptTime = new Date(now.toLocaleString("en-US", {timeZone: "Africa/Cairo"}));
-  return egyptTime.toLocaleString('ar-EG', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  });
-}
-
 // دالة شاملة ومحسنة لإضافة حركة المخزون
 export async function addStockMovement(movement: Partial<StockMovement>) {
   try {
-    const movementId = Date.now(); // ID فريد مبني على الوقت
-    
-    console.log(`📊 [${movementId}] إضافة حركة مخزون:`, {
-      product: movement.productName,
-      type: movement.type,
-      quantity: movement.quantity,
-      reason: movement.reason
-    });
-    
     const auth = getAuth();
     const sheets = google.sheets({ version: 'v4', auth });
     const spreadsheetId = process.env.GOOGLE_SHEET_ID;
@@ -1113,96 +1169,53 @@ export async function addStockMovement(movement: Partial<StockMovement>) {
       throw new Error('معرف Google Sheet غير موجود');
     }
 
-    // التأكد من وجود ورقة stock_movements
-    await ensureStockMovementsSheetExists();
+    // محاولة الوصول للورقة
+    try {
+      await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'stock_movements!A1:A1',
+      });
+      console.log('✅ ورقة stock_movements موجودة');
+    } catch (error: any) {
+      if (error.message?.includes('Unable to parse range') || 
+          error.message?.includes('Sheet not found')) {
+        console.log('📋 إنشاء ورقة stock_movements...');
+        await createStockMovementsSheetEnhanced();
+      } else {
+        throw error;
+      }
+    }
 
-    // جلب آخر ID من الورقة لضمان الترقيم المتسلسل
-    const lastIdResponse = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: 'stock_movements!A:A',
-    });
-    
-    const existingRows = lastIdResponse.data.values || [['ID']];
-    const lastRowIndex = existingRows.length;
-    const newSequentialId = lastRowIndex; // ID متسلسل
-    
-    // الحصول على التوقيت المصري الدقيق
-    const egyptianDate = getEgyptDate();
-    const egyptianTime = getEgyptTime();
-    const fullEgyptianDateTime = getEgyptDateTime();
-    
-    // إعداد البيانات مع التحقق من صحتها
-    const productName = (movement.productName || '').trim();
-    const movementType = movement.type || 'adjustment';
-    const quantity = movement.quantity || 0;
-    const reason = (movement.reason || 'غير محدد').trim();
-    const supplier = (movement.supplier || '').trim();
-    const cost = parseFloat(String(movement.cost || 0));
-    const notes = (movement.notes || '').trim();
-    const orderId = movement.orderId || '';
-    
-    // تسجيل تفصيلي للعملية
-    const operationDetails = {
-      sequentialId: newSequentialId,
-      date: egyptianDate,
-      time: egyptianTime,
-      fullDateTime: fullEgyptianDateTime,
-      product: productName,
-      operation: movementType,
-      quantity: quantity,
-      reason: reason,
-      impact: quantity > 0 ? 'إضافة' : quantity < 0 ? 'خصم' : 'تعديل',
-      supplier: supplier || 'غير محدد',
-      cost: cost,
-      notes: notes || 'لا توجد ملاحظات',
-      orderId: orderId || 'غير مرتبط'
-    };
-    
-    console.log(`📋 [${movementId}] تفاصيل العملية:`, operationDetails);
-    
-    // إعداد صف البيانات للإدراج
-    const rowData = [
-      newSequentialId,                    // A: ID متسلسل
-      egyptianDate,                       // B: التاريخ (YYYY-MM-DD)
-      egyptianTime,                       // C: الوقت (HH:MM:SS)
-      fullEgyptianDateTime,               // D: التاريخ والوقت كاملاً
-      productName,                        // E: اسم المنتج
-      movementType,                       // F: نوع العملية
-      quantity,                           // G: الكمية (موجب أو سالب)
-      reason,                             // H: السبب
-      supplier,                           // I: المورد
-      cost,                               // J: التكلفة
-      notes,                              // K: ملاحظات
-      orderId                             // L: رقم الطلب
+    // إضافة البيانات إلى ورقة stock_movements
+    const newRow = [
+      movement.id,
+      movement.date,
+      movement.timestamp,
+      movement.productName,
+      movement.type,
+      movement.quantity,
+      movement.reason,
+      movement.supplier,
+      movement.cost,
+      movement.notes,
+      movement.orderId
     ];
 
-    // إدراج البيانات في الورقة
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: 'stock_movements!A:L',
       valueInputOption: 'RAW',
-      insertDataOption: 'INSERT_ROWS',
       requestBody: {
-        values: [rowData]
+        values: [newRow]
       }
     });
 
-    console.log(`✅ [${movementId}] تم تسجيل حركة المخزون رقم ${newSequentialId} بنجاح`);
-    console.log(`🕐 التوقيت المسجل: ${fullEgyptianDateTime} (توقيت القاهرة)`);
-    console.log(`📊 التأثير: ${operationDetails.impact} ${Math.abs(quantity)} من ${productName}`);
-    
-    return {
-      success: true,
-      movementId: newSequentialId,
-      timestamp: fullEgyptianDateTime,
-      details: operationDetails
-    };
-    
+    console.log(`✅ تم إضافة حركة جديدة: ${movement.productName}`);
   } catch (error) {
     console.error('❌ خطأ في إضافة حركة المخزون:', error);
-    throw new Error(`فشل في تسجيل حركة المخزون: ${error}`);
+    throw error;
   }
-}
+} 
 
 // دالة لإنشاء ورقة حركات المخزون
 async function createStockMovementsSheet() {
@@ -1263,6 +1276,140 @@ async function createStockMovementsSheet() {
     
   } catch (error) {
     console.error('❌ خطأ في إنشاء ورقة stock_movements:', error);
+    throw error;
+  }
+}
+
+// دالة لجلب الطلبات (leads)
+export async function fetchLeads() {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range: 'leads',
+    valueRenderOption: 'FORMULA',
+  });
+
+  const rows = response.data.values;
+  if (!rows || rows.length === 0) {
+    return [];
+  }
+
+  const headers = rows[0].map((h: string) => (h || '').trim());
+  const headerMap: { [key: string]: number } = headers.reduce((map: { [key: string]: number }, header, index) => {
+    map[header.toLowerCase()] = index;
+    return map;
+  }, {});
+
+  return rows.slice(1).map((row, index) => {
+    const rowIndex = index + 2;
+    
+    return {
+      id: rowIndex,
+      rowIndex,
+      orderDate: row[headerMap['تاريخ الطلب']] || '',
+      name: row[headerMap['الاسم']] || '',
+      phone: row[headerMap['رقم الهاتف']] || '',
+      whatsapp: row[headerMap['رقم الواتساب']] || '',
+      governorate: row[headerMap['المحافظة']] || '',
+      area: row[headerMap['المنطقة']] || '',
+      address: row[headerMap['العنوان']] || '',
+      orderDetails: row[headerMap['تفاصيل الطلب']] || '',
+      quantity: row[headerMap['الكمية']] || '',
+      totalPrice: row[headerMap['إجمالي السعر']] || '',
+      productName: row[headerMap['اسم المنتج']] || '',
+      status: row[headerMap['الحالة']] || '',
+      notes: row[headerMap['ملاحظات']] || '',
+      source: row[headerMap['المصدر']] || '',
+      whatsappSent: row[headerMap['ارسال واتس اب']] || '',
+      assignee: row[headerMap['المسؤول']] || ''
+    };
+  });
+}
+
+// دالة لتحديث طلب واحد
+export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  const headers = ['تاريخ الطلب', 'الاسم', 'رقم الهاتف', 'رقم الواتساب', 'المحافظة', 'المنطقة', 'العنوان', 'تفاصيل الطلب', 'الكمية', 'إجمالي السعر', 'اسم المنتج', 'الحالة', 'ملاحظات', 'المصدر', 'ارسال واتس اب', 'المسؤول'];
+  
+  const currentData = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range: `leads!A${rowNumber}:${String.fromCharCode(64 + headers.length)}${rowNumber}`,
+  });
+
+  const currentRow = currentData.data.values?.[0] || [];
+  const updatedRow = [...currentRow];
+
+  // تحديث القيم المطلوبة
+  if (updates.status !== undefined) {
+    updatedRow[11] = updates.status; // عمود الحالة
+  }
+  if (updates.notes !== undefined) {
+    updatedRow[12] = updates.notes; // عمود الملاحظات
+  }
+  if (updates.assignee !== undefined) {
+    updatedRow[15] = updates.assignee; // عمود المسؤول
+  }
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SHEET_ID,
+    range: `leads!A${rowNumber}:${String.fromCharCode(64 + headers.length)}${rowNumber}`,
+    valueInputOption: 'RAW',
+    requestBody: {
+      values: [updatedRow]
+    }
+  });
+}
+
+// دالة لتحديث عدة طلبات
+export async function updateLeadsBatch(updates: Array<{ rowNumber: number; updates: Partial<LeadRow> }>) {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  const requests = updates.map(({ rowNumber, updates: leadUpdates }) => {
+    const values = [];
+    
+    // إعداد القيم للتحديث
+    if (leadUpdates.assignee !== undefined) {
+      values.push({
+        range: `leads!Q${rowNumber}`, // عمود المسؤول
+        values: [[leadUpdates.assignee]]
+      });
+    }
+    
+    return values;
+  }).flat();
+
+  if (requests.length > 0) {
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      requestBody: {
+        valueInputOption: 'RAW',
+        data: requests
+      }
+    });
+  }
+}
+
+// دالة للحصول على إحصائيات الطلبات
+export async function getOrderStatistics() {
+  try {
+    const leads = await fetchLeads();
+    
+    const stats = {
+      total: leads.length,
+      confirmed: leads.filter(lead => lead.status === 'تم التأكيد').length,
+      shipped: leads.filter(lead => lead.status === 'تم الشحن').length,
+      pending: leads.filter(lead => ['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)).length,
+      rejected: leads.filter(lead => lead.status === 'رفض التأكيد').length
+    };
+
+    return stats;
+  } catch (error) {
+    console.error('Error getting order statistics:', error);
     throw error;
   }
 } 

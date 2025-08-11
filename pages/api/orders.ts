@@ -64,7 +64,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               const assigneeIndex = index % EMPLOYEES.length;
               const assignee = sortedEmployees[assigneeIndex];
               currentAssignments[assignee] = (currentAssignments[assignee] || 0) + 1;
-              return { rowNumber: lead.rowIndex, assignee };
+              return { 
+                rowNumber: lead.rowIndex, 
+                updates: { assignee } 
+              };
             });
 
             await updateLeadsBatch(batch);

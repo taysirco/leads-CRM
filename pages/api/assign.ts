@@ -58,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let distributed = 0;
     const totalToDistribute = Math.min(unassigned.length, maxBatchSize);
     
-    const updates: Array<{ rowNumber: number; assignee: string }> = [];
+    const updates: Array<{ rowNumber: number; updates: { assignee: string } }> = [];
     
     for (let i = 0; i < totalToDistribute; i++) {
       const employeeIndex = i % EMPLOYEES.length;
@@ -67,7 +67,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       updates.push({
         rowNumber: unassigned[i].rowIndex,
-        assignee
+        updates: { assignee }
       });
       distributed++;
     }
