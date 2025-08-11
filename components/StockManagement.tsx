@@ -352,11 +352,19 @@ export default function StockManagement() {
   const handleUpdateItem = async (item: StockItem) => {
     setIsLoading(true);
     try {
-      // التحقق من صحة البيانات
+      // العثور على البيانات الأصلية للمقارنة
+      const originalItem = safeStockItems.find(i => i.id === item.id);
+      
+      if (!originalItem) {
+        showMessage('error', 'لم يتم العثور على البيانات الأصلية للمنتج');
+        return;
+      }
+
       const initialQuantity = item.initialQuantity;
       const currentQuantity = item.currentQuantity;
       const minThreshold = item.minThreshold || 10;
       
+      // التحقق من صحة البيانات
       if (initialQuantity < 0 || currentQuantity < 0) {
         showMessage('error', 'الكميات لا يمكن أن تكون سالبة');
         return;
@@ -366,16 +374,19 @@ export default function StockManagement() {
         showMessage('error', 'الحد الأدنى لا يمكن أن يكون سالباً');
         return;
       }
+
+      // حساب التعزيز إن وُجد
+      const initialBoost = initialQuantity - originalItem.initialQuantity;
+      const currentBoost = currentQuantity - originalItem.currentQuantity;
       
-      // السماح بأن تكون الكمية الحالية أكبر من الأولية (في حالة المرتجعات)
-      // لكن تحذير إذا كانت الكمية الحالية أقل من المباعة بشكل منطقي
-      if (currentQuantity > initialQuantity) {
-        // هذا طبيعي في حالة وجود مرتجعات
-        console.log(`📊 الكمية الحالية (${currentQuantity}) أكبر من الأولية (${initialQuantity}) - مرتجعات`);
+      // التحقق من منطقية التعزيز
+      if (initialBoost > 0 && currentBoost > 0 && initialBoost === currentBoost) {
+        console.log(`🚀 تعزيز المخزون بـ ${initialBoost} قطعة للمنتج: ${item.productName}`);
       }
       
       console.log(`✏️ تحديث منتج: ${item.productName}`);
-      console.log(`📊 الكمية الأولية: ${initialQuantity}, الحالية: ${currentQuantity}`);
+      console.log(`📊 الأصلي - أولي: ${originalItem.initialQuantity}, حالي: ${originalItem.currentQuantity}`);
+      console.log(`📊 الجديد - أولي: ${initialQuantity}, حالي: ${currentQuantity}`);
       
       const response = await fetch('/api/stock', {
         method: 'PUT',
@@ -387,14 +398,26 @@ export default function StockManagement() {
           initialQuantity: initialQuantity,
           currentQuantity: currentQuantity,
           synonyms: item.synonyms?.trim() || '',
-          minThreshold: minThreshold
+          minThreshold: minThreshold,
+          // معلومات التعزيز للتسجيل
+          boost: initialBoost > 0 && currentBoost > 0 && initialBoost === currentBoost ? {
+            amount: initialBoost,
+            reason: 'تعزيز مخزون من التعديل',
+            date: new Date().toISOString().split('T')[0]
+          } : null
         })
       });
 
       const result = await response.json();
       
       if (response.ok) {
-        showMessage('success', result.message);
+        // رسالة نجاح مفصلة
+        let successMessage = result.message;
+        if (initialBoost > 0 && currentBoost > 0 && initialBoost === currentBoost) {
+          successMessage += `\n🚀 تم تسجيل تعزيز المخزون بـ ${initialBoost} قطعة`;
+        }
+        
+        showMessage('success', successMessage);
         setEditingItem(null);
         await forceRefreshAll();
       } else {
@@ -1777,6 +1800,83 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
   });
 
   const [warnings, setWarnings] = useState<string[]>([]);
+  
+  // حالات تعزيز المخزون
+  const [showStockBoost, setShowStockBoost] = useState(false);
+  const [boostData, setBoostData] = useState({
+    quantity: '',
+    reason: 'تعزيز مخزون جديد',
+    supplier: '',
+    cost: '',
+    notes: ''
+  });
+  const [boostPreview, setBoostPreview] = useState({
+    newCurrentQuantity: 0,
+    newInitialQuantity: 0,
+    boostAmount: 0
+  });
+
+  // تحديث معاينة التعزيز
+  const updateBoostPreview = (boostQuantity: string) => {
+    const boost = parseInt(boostQuantity) || 0;
+    const currentQty = parseInt(formData.currentQuantity) || 0;
+    const initialQty = parseInt(formData.initialQuantity) || 0;
+    
+    if (boost > 0) {
+      setBoostPreview({
+        boostAmount: boost,
+        newCurrentQuantity: currentQty + boost,
+        newInitialQuantity: initialQty + boost
+      });
+    } else {
+      setBoostPreview({
+        boostAmount: 0,
+        newCurrentQuantity: currentQty,
+        newInitialQuantity: initialQty
+      });
+    }
+  };
+
+  // معالجة تطبيق التعزيز
+  const handleApplyBoost = () => {
+    const boost = parseInt(boostData.quantity) || 0;
+    
+    if (boost <= 0) {
+      alert('كمية التعزيز يجب أن تكون أكبر من صفر');
+      return;
+    }
+
+    // تطبيق التعزيز على البيانات
+    const newCurrentQuantity = (parseInt(formData.currentQuantity) || 0) + boost;
+    const newInitialQuantity = (parseInt(formData.initialQuantity) || 0) + boost;
+    
+    const newFormData = {
+      ...formData,
+      currentQuantity: newCurrentQuantity.toString(),
+      initialQuantity: newInitialQuantity.toString()
+    };
+    
+    setFormData(newFormData);
+    updateWarnings(newFormData);
+    
+    // إعادة تعيين بيانات التعزيز
+    setBoostData({
+      quantity: '',
+      reason: 'تعزيز مخزون جديد',
+      supplier: '',
+      cost: '',
+      notes: ''
+    });
+    setBoostPreview({
+      newCurrentQuantity: 0,
+      newInitialQuantity: 0,
+      boostAmount: 0
+    });
+    setShowStockBoost(false);
+    
+    // إشارة للمستخدم
+    alert(`✅ تم تطبيق تعزيز المخزون بنجاح!\n\n📦 تمت إضافة ${boost} قطعة\n💾 يرجى الضغط على "حفظ التعديل" لحفظ التغييرات`);
+  };
 
   // تحديث التحذيرات عند تغيير البيانات
   const updateWarnings = (newFormData: any) => {
@@ -1786,7 +1886,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
     const threshold = parseInt(newFormData.minThreshold) || 10;
     
     if (current > initial) {
-      newWarnings.push('⚠️ الكمية الحالية أكبر من الأولية (ربما بسبب المرتجعات)');
+      newWarnings.push('⚠️ الكمية الحالية أكبر من الأولية (ربما بسبب المرتجعات أو التعزيز)');
     }
     
     if (current <= threshold && current > 0) {
@@ -1801,9 +1901,15 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
       newWarnings.push('⚠️ الحد الأدنى أكبر من الكمية الأولية');
     }
     
-    const sold = initial - current;
+    const sold = Math.max(0, initial - current);
     if (sold > 0) {
       newWarnings.push(`📊 تم بيع ${sold} قطعة من هذا المنتج`);
+    }
+    
+    // تحذيرات التعزيز
+    if (current === initial && initial > (item?.initialQuantity || 0)) {
+      const boosted = initial - (item?.initialQuantity || 0);
+      newWarnings.push(`📈 تم تعزيز المخزون بـ ${boosted} قطعة`);
     }
     
     setWarnings(newWarnings);
@@ -1813,6 +1919,15 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
     const newFormData = { ...formData, [field]: value };
     setFormData(newFormData);
     updateWarnings(newFormData);
+  };
+
+  const handleBoostChange = (field: string, value: string) => {
+    const newBoostData = { ...boostData, [field]: value };
+    setBoostData(newBoostData);
+    
+    if (field === 'quantity') {
+      updateBoostPreview(value);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1828,26 +1943,54 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
       return;
     }
     
-    onSubmit({
+    // التحقق من منطقية البيانات
+    if (current > initial && current !== initial) {
+      const excess = current - initial;
+      const confirmed = confirm(
+        `⚠️ تنبيه: الكمية الحالية (${current}) أكبر من الأولية (${initial}) بـ ${excess} قطعة.\n\n` +
+        `هذا قد يكون بسبب:\n` +
+        `• مرتجعات من العملاء\n` +
+        `• تعزيز المخزون\n` +
+        `• تعديل يدوي\n\n` +
+        `هل تريد المتابعة؟`
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+    }
+    
+    // إذا تم تعزيز المخزون، نحتاج لتسجيل الحركة
+    const originalInitial = item?.initialQuantity || 0;
+    const originalCurrent = item?.currentQuantity || 0;
+    const boostAmount = initial - originalInitial;
+    
+    const updatedItem = {
       ...formData,
       initialQuantity: initial,
       currentQuantity: current,
       minThreshold: threshold
-    });
+    };
+    
+    
+    onSubmit(updatedItem);
   };
 
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50 p-4">
-      <div className="relative p-4 sm:p-8 bg-white w-full max-w-lg mx-auto rounded-lg shadow-lg">
+      <div className="relative p-4 sm:p-8 bg-white w-full max-w-2xl mx-auto rounded-xl shadow-2xl max-h-[95vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4 sm:mb-6">
-          <h3 className="text-lg sm:text-xl font-bold text-gray-900">تعديل المنتج</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl font-bold">×</button>
+          <h3 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
+            <span>📝 تعديل المنتج</span>
+            <span className="text-sm font-normal text-gray-500">#{item?.id}</span>
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl font-bold hover:bg-gray-100 rounded-full p-2 transition-all">×</button>
         </div>
         
         {/* عرض التحذيرات */}
         {warnings.length > 0 && (
           <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <h4 className="text-sm font-medium text-yellow-800 mb-2">تنبيهات:</h4>
+            <h4 className="text-sm font-medium text-yellow-800 mb-2">📊 تنبيهات وإحصائيات:</h4>
             {warnings.map((warning, index) => (
               <p key={index} className="text-xs text-yellow-700 mb-1">{warning}</p>
             ))}
@@ -1856,7 +1999,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">اسم المنتج</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">📦 اسم المنتج</label>
             <input
               type="text"
               value={formData.productName}
@@ -1869,8 +2012,8 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                الكمية الأولية
-                <span className="text-xs text-gray-500 block">عند إضافة المنتج أول مرة</span>
+                📈 الكمية الأولية
+                <span className="text-xs text-gray-500 block">إجمالي ما دخل للمخزون</span>
               </label>
               <input
                 type="number"
@@ -1884,8 +2027,8 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                المخزون الحالي
-                <span className="text-xs text-gray-500 block">بعد البيع والمرتجعات</span>
+                📊 المخزون الحالي
+                <span className="text-xs text-gray-500 block">المتبقي فعلياً</span>
               </label>
               <input
                 type="number"
@@ -1898,9 +2041,134 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
             </div>
           </div>
 
+          {/* قسم تعزيز المخزون */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-medium text-blue-800 flex items-center gap-2">
+                <span>🚀 تعزيز المخزون</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowStockBoost(!showStockBoost)}
+                className="text-xs px-3 py-1 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all"
+              >
+                {showStockBoost ? 'إخفاء' : 'إضافة مخزون'}
+              </button>
+            </div>
+            
+            {showStockBoost && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-blue-700 mb-1">🔢 كمية التعزيز</label>
+                    <input
+                      type="number"
+                      value={boostData.quantity}
+                      onChange={(e) => handleBoostChange('quantity', e.target.value)}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 text-sm"
+                      min="1"
+                      placeholder="عدد القطع المضافة"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-medium text-blue-700 mb-1">💰 التكلفة (اختياري)</label>
+                    <input
+                      type="number"
+                      value={boostData.cost}
+                      onChange={(e) => handleBoostChange('cost', e.target.value)}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 text-sm"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-blue-700 mb-1">📝 السبب</label>
+                    <select
+                      value={boostData.reason}
+                      onChange={(e) => handleBoostChange('reason', e.target.value)}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 text-sm"
+                    >
+                      <option value="تعزيز مخزون جديد">تعزيز مخزون جديد</option>
+                      <option value="شحنة جديدة">شحنة جديدة</option>
+                      <option value="تصحيح المخزون">تصحيح المخزون</option>
+                      <option value="إنتاج إضافي">إنتاج إضافي</option>
+                      <option value="نقل من فرع آخر">نقل من فرع آخر</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-medium text-blue-700 mb-1">🏢 المورد (اختياري)</label>
+                    <input
+                      type="text"
+                      value={boostData.supplier}
+                      onChange={(e) => handleBoostChange('supplier', e.target.value)}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 text-sm"
+                      placeholder="اسم المورد"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-medium text-blue-700 mb-1">📋 ملاحظات (اختياري)</label>
+                  <textarea
+                    value={boostData.notes}
+                    onChange={(e) => handleBoostChange('notes', e.target.value)}
+                    className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 text-sm"
+                    rows={2}
+                    placeholder="ملاحظات إضافية..."
+                  />
+                </div>
+                
+                {/* معاينة التعزيز */}
+                {boostPreview.boostAmount > 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <h5 className="text-xs font-medium text-green-800 mb-2">🔍 معاينة التعزيز:</h5>
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div className="text-center">
+                        <div className="text-green-600 font-medium">الحالي</div>
+                        <div className="text-lg font-bold text-green-800">{parseInt(formData.currentQuantity) || 0}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-blue-600 font-medium">+ التعزيز</div>
+                        <div className="text-lg font-bold text-blue-800">+{boostPreview.boostAmount}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-purple-600 font-medium">=</div>
+                        <div className="text-lg font-bold text-purple-800">{boostPreview.newCurrentQuantity}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleApplyBoost}
+                    disabled={!boostData.quantity || parseInt(boostData.quantity) <= 0}
+                    className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                  >
+                    ✅ تطبيق التعزيز
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowStockBoost(false)}
+                    className="px-3 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 text-sm"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              الحد الأدنى للتنبيه
+              ⚠️ الحد الأدنى للتنبيه
               <span className="text-xs text-gray-500 block">تنبيه عند الوصول لهذا الرقم</span>
             </label>
             <input
@@ -1914,7 +2182,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              المتردفات
+              🏷️ المتردفات
               <span className="text-xs text-gray-500 block">أسماء أخرى للمنتج (مفصولة بفاصلة)</span>
             </label>
             <input
@@ -1926,37 +2194,54 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
             />
           </div>
 
-          {/* إحصائيات سريعة */}
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <h4 className="text-sm font-medium text-gray-700 mb-2">إحصائيات سريعة:</h4>
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div>
-                <span className="text-gray-600">المباع: </span>
-                <span className="font-medium text-gray-900">{Math.max(0, parseInt(formData.initialQuantity || '0') - parseInt(formData.currentQuantity || '0'))}</span>
+          {/* إحصائيات محسنة */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">📊 إحصائيات تفصيلية:</h4>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+              <div className="text-center">
+                <div className="text-gray-600">المباع</div>
+                <div className="text-lg font-bold text-red-600">{Math.max(0, parseInt(formData.initialQuantity || '0') - parseInt(formData.currentQuantity || '0'))}</div>
               </div>
-              <div>
-                <span className="text-gray-600">معدل البيع: </span>
-                <span className="font-medium text-gray-900">
+              <div className="text-center">
+                <div className="text-gray-600">المتبقي</div>
+                <div className="text-lg font-bold text-green-600">{parseInt(formData.currentQuantity || '0')}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-gray-600">نسبة البيع</div>
+                <div className="text-lg font-bold text-blue-600">
                   {parseInt(formData.initialQuantity || '0') > 0 
                     ? `${(((parseInt(formData.initialQuantity || '0') - parseInt(formData.currentQuantity || '0')) / parseInt(formData.initialQuantity || '1')) * 100).toFixed(1)}%`
                     : '0%'
                   }
-                </span>
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-gray-600">حالة المخزون</div>
+                <div className={`text-lg font-bold ${
+                  parseInt(formData.currentQuantity || '0') === 0 ? 'text-red-600' :
+                  parseInt(formData.currentQuantity || '0') <= parseInt(formData.minThreshold || '10') ? 'text-yellow-600' :
+                  'text-green-600'
+                }`}>
+                  {parseInt(formData.currentQuantity || '0') === 0 ? 'نفد' :
+                   parseInt(formData.currentQuantity || '0') <= parseInt(formData.minThreshold || '10') ? 'منخفض' :
+                   'جيد'
+                  }
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm order-2 sm:order-1">
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-gray-200">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm order-2 sm:order-1 transition-all">
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium text-sm order-1 sm:order-2"
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium text-sm order-1 sm:order-2 transition-all"
             >
               {isLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
-              حفظ التعديل
+              💾 حفظ التعديل
             </button>
           </div>
         </form>

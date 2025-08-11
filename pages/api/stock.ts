@@ -317,7 +317,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
 
     switch (action) {
       case 'update_item':
-        const { id, productName, initialQuantity, currentQuantity, synonyms, minThreshold } = data;
+        const { id, productName, initialQuantity, currentQuantity, synonyms, minThreshold, boost } = data;
         
         if (!productName || !productName.trim()) {
           return res.status(400).json({ error: 'اسم المنتج مطلوب' });
@@ -340,8 +340,9 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
         }
 
         console.log(`✏️ تحديث منتج: ${productName.trim()}`);
-        console.log(`�� الكمية الأولية: ${parsedInitialQuantity}, الحالية: ${parsedCurrentQuantity}, الحد الأدنى: ${parsedMinThreshold}`);
+        console.log(`📊 الكمية الأولية: ${parsedInitialQuantity}, الحالية: ${parsedCurrentQuantity}, الحد الأدنى: ${parsedMinThreshold}`);
 
+        // تحديث بيانات المنتج
         await addOrUpdateStockItem({
           id,
           productName: productName.trim(),
@@ -351,20 +352,42 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
           minThreshold: parsedMinThreshold
         });
 
+        // إذا كان هناك تعزيز للمخزون، نسجل الحركة
+        if (boost && boost.amount > 0) {
+          console.log(`🚀 تسجيل تعزيز المخزون: ${boost.amount} قطعة للمنتج ${productName.trim()}`);
+          
+          await addStockMovement({
+            productName: productName.trim(),
+            type: 'add_stock',
+            quantity: boost.amount,
+            reason: boost.reason || 'تعزيز مخزون من التعديل',
+            supplier: '',
+            cost: 0,
+            notes: `تعزيز تلقائي من خلال تعديل المنتج في ${boost.date}`,
+            date: boost.date
+          });
+        }
+
         // تسجيل ملاحظات حول التحديث
         let updateNotes = [];
         const sold = parsedInitialQuantity - parsedCurrentQuantity;
         
-        if (parsedCurrentQuantity > parsedInitialQuantity) {
+        if (boost && boost.amount > 0) {
+          updateNotes.push(`تم تعزيز المخزون بـ ${boost.amount} قطعة`);
+        }
+        
+        if (parsedCurrentQuantity > parsedInitialQuantity && (!boost || boost.amount === 0)) {
           updateNotes.push('الكمية الحالية أكبر من الأولية (ربما بسبب المرتجعات)');
         }
         
-        if (sold > 0) {
+        if (sold > 0 && (!boost || boost.amount === 0)) {
           updateNotes.push(`تم بيع ${sold} قطعة`);
         }
         
-        if (parsedCurrentQuantity <= parsedMinThreshold) {
-          updateNotes.push('المخزون وصل للحد الأدنى أو أقل');
+        if (parsedCurrentQuantity <= parsedMinThreshold && parsedCurrentQuantity > 0) {
+          updateNotes.push('المخزون وصل للحد الأدنى');
+        } else if (parsedCurrentQuantity === 0) {
+          updateNotes.push('المخزون نفد تماماً');
         }
 
         const responseMessage = updateNotes.length > 0 
@@ -374,7 +397,8 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
         return res.json({ 
           success: true, 
           message: responseMessage,
-          notes: updateNotes
+          notes: updateNotes,
+          boost: boost || null
         });
 
       case 'adjust_quantity':
