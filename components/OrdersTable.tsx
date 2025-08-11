@@ -50,6 +50,9 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [originalOrder, setOriginalOrder] = useState<Order | null>(null); // لتتبع البيانات الأصلية
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false); // لتتبع التغييرات غير المحفوظة
+  const [autoSaveTimer, setAutoSaveTimer] = useState<NodeJS.Timeout | null>(null); // للحفظ التلقائي
   const [loadingOrders, setLoadingOrders] = useState<Set<number>>(new Set());
   const [optimisticUpdates, setOptimisticUpdates] = useState<Map<number, Partial<Order>>>(new Map());
   const [showSuccessMessage, setShowSuccessMessage] = useState<number | null>(null);
@@ -69,6 +72,15 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   React.useEffect(() => {
     setSelectedOrders(new Set());
   }, [searchTerm, statusFilter, sourceFilter, productFilter]);
+
+  // تنظيف timers عند إغلاق المكون
+  React.useEffect(() => {
+    return () => {
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+      }
+    };
+  }, [autoSaveTimer]);
 
   const getOrderWithUpdates = (order: Order) => {
     const updates = optimisticUpdates.get(order.id);
@@ -393,17 +405,73 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   };
 
   const openEditModal = (order: Order) => {
-    setEditingOrder({ ...order });
+    console.log('🔓 فتح نافذة التعديل للطلب:', order.id);
+    const orderCopy = { ...order };
+    setEditingOrder(orderCopy);
+    setOriginalOrder({ ...order }); // حفظ نسخة من البيانات الأصلية
+    setHasUnsavedChanges(false); // إعادة تعيين حالة التغييرات
     setEditModalOpen(true);
-  };
-
-  const handleUpdateField = (field: keyof Order, value: string) => {
-    if (editingOrder) {
-      setEditingOrder({ ...editingOrder, [field]: value });
+    
+    // إلغاء أي timer سابق
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer);
+      setAutoSaveTimer(null);
     }
   };
 
-  const saveOrder = async () => {
+  // دالة للحفظ التلقائي الذكي
+  const autoSaveChanges = async () => {
+    if (!editingOrder || !hasUnsavedChanges) {
+      console.log('⏭️ تخطي الحفظ التلقائي - لا توجد تغييرات');
+      return;
+    }
+    
+    console.log('🔄 بدء الحفظ التلقائي للطلب:', editingOrder.id);
+    
+    try {
+      await saveOrderInternal(false); // حفظ بدون إغلاق النافذة
+      console.log('✅ تم الحفظ التلقائي بنجاح');
+    } catch (error) {
+      console.error('❌ فشل في الحفظ التلقائي:', error);
+      // لا نعرض رسالة خطأ للمستخدم في الحفظ التلقائي
+    }
+  };
+
+  const handleUpdateField = (field: keyof Order, value: string) => {
+    if (!editingOrder || !originalOrder) return;
+    
+    console.log(`🔄 تعديل الحقل ${field}:`, value);
+    
+    const updatedOrder = { ...editingOrder, [field]: value };
+    setEditingOrder(updatedOrder);
+    
+    // فحص إذا كان هناك تغييرات عن البيانات الأصلية
+    const hasChanges = Object.keys(updatedOrder).some(key => {
+      const orderKey = key as keyof Order;
+      return updatedOrder[orderKey] !== originalOrder[orderKey];
+    });
+    
+    console.log(`📊 هل توجد تغييرات؟`, hasChanges);
+    setHasUnsavedChanges(hasChanges);
+    
+    // إلغاء أي timer سابق
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer);
+    }
+    
+    // إعداد حفظ تلقائي بعد 3 ثواني من آخر تعديل
+    if (hasChanges) {
+      const newTimer = setTimeout(() => {
+        console.log('💾 بدء الحفظ التلقائي...');
+        autoSaveChanges();
+      }, 3000);
+      
+      setAutoSaveTimer(newTimer);
+    }
+  };
+
+  // دالة الحفظ الداخلية المرنة
+  const saveOrderInternal = async (closeModal = true) => {
     if (!editingOrder) return;
     
     console.log('💾 حفظ تعديلات الطلب:', editingOrder);
@@ -434,14 +502,33 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
       console.log('📤 البيانات المرسلة للتحديث:', updatesToSend);
       
       await onUpdateOrder(editingOrder.id, updatesToSend);
-      setEditModalOpen(false);
-      setEditingOrder(null);
+      
+      // تحديث البيانات الأصلية بعد الحفظ الناجح
+      setOriginalOrder({ ...editingOrder });
+      setHasUnsavedChanges(false);
+      
+      // إلغاء أي timer للحفظ التلقائي
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+        setAutoSaveTimer(null);
+      }
+      
+      if (closeModal) {
+        setEditModalOpen(false);
+        setEditingOrder(null);
+        setOriginalOrder(null);
+      }
       
       setShowSuccessMessage(editingOrder.id);
       setTimeout(() => setShowSuccessMessage(null), 2000);
+      
+      return true;
     } catch (error) {
       console.error('❌ خطأ في حفظ التغييرات:', error);
-      alert('فشل في حفظ التغييرات. حاول مرة أخرى.');
+      if (closeModal) {
+        alert('فشل في حفظ التغييرات. حاول مرة أخرى.');
+      }
+      throw error;
     } finally {
       setLoadingOrders(prev => {
         const newSet = new Set(prev);
@@ -449,6 +536,11 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
         return newSet;
       });
     }
+  };
+
+  // دالة الحفظ العامة (للاستخدام من الواجهة)
+  const saveOrder = async () => {
+    await saveOrderInternal(true);
   };
 
   const handleCopy = (text: string) => {
@@ -905,6 +997,26 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                   </svg>
                   <span className="hidden sm:inline">تعديل تفاصيل الطلب #{editingOrder.id}</span>
                   <span className="sm:hidden">تعديل #{editingOrder.id}</span>
+                  
+                  {/* مؤشر التغييرات غير المحفوظة */}
+                  {hasUnsavedChanges && (
+                    <div className="flex items-center gap-1 sm:gap-2">
+                      <div className="w-2 h-2 sm:w-3 sm:h-3 bg-yellow-400 rounded-full animate-pulse"></div>
+                      <span className="text-xs sm:text-sm text-yellow-200 font-medium">
+                        تغييرات غير محفوظة
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* مؤشر الحفظ التلقائي */}
+                  {autoSaveTimer && (
+                    <div className="flex items-center gap-1 sm:gap-2">
+                      <div className="w-2 h-2 sm:w-3 sm:h-3 bg-green-400 rounded-full animate-pulse"></div>
+                      <span className="text-xs sm:text-sm text-green-200 font-medium">
+                        سيحفظ تلقائياً...
+                      </span>
+                    </div>
+                  )}
                 </h3>
                 <button
                   onClick={() => setEditModalOpen(false)}
@@ -1053,27 +1165,68 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 </div>
               </div>
               
-              <div className="flex flex-col sm:flex-row justify-end gap-3 sm:gap-4 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-200">
-                <button
-                  onClick={() => setEditModalOpen(false)}
-                  disabled={loadingOrders.has(editingOrder.id)}
-                  className="px-4 sm:px-6 py-2 sm:py-3 text-gray-600 border border-gray-300 rounded-lg sm:rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-all duration-200 font-medium text-sm sm:text-base order-2 sm:order-1"
-                >
-                  إلغاء
-                </button>
-                <button
-                  onClick={saveOrder}
-                  disabled={loadingOrders.has(editingOrder.id)}
-                  className="px-6 sm:px-8 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg sm:rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 sm:gap-3 transition-all duration-200 font-bold shadow-lg text-sm sm:text-base order-1 sm:order-2"
-                >
-                  {loadingOrders.has(editingOrder.id) && (
-                    <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-200">
+                {/* مؤشر حالة التغييرات */}
+                <div className="flex items-center gap-2 text-sm">
+                  {hasUnsavedChanges ? (
+                    <div className="flex items-center gap-2 text-yellow-600">
+                      <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                      <span className="font-medium">يوجد تغييرات غير محفوظة</span>
+                      {autoSaveTimer && (
+                        <span className="text-xs text-gray-500">
+                          (سيحفظ تلقائياً خلال 3 ثواني)
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-green-600">
+                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                      <span className="font-medium">جميع التغييرات محفوظة</span>
+                    </div>
                   )}
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  حفظ التغييرات
-                </button>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                  <button
+                    onClick={() => {
+                      if (hasUnsavedChanges) {
+                        const confirmClose = confirm('يوجد تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟');
+                        if (!confirmClose) return;
+                      }
+                      // إلغاء أي timer للحفظ التلقائي
+                      if (autoSaveTimer) {
+                        clearTimeout(autoSaveTimer);
+                        setAutoSaveTimer(null);
+                      }
+                      setEditModalOpen(false);
+                      setEditingOrder(null);
+                      setOriginalOrder(null);
+                      setHasUnsavedChanges(false);
+                    }}
+                    disabled={loadingOrders.has(editingOrder.id)}
+                    className="px-4 sm:px-6 py-2 sm:py-3 text-gray-600 border border-gray-300 rounded-lg sm:rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-all duration-200 font-medium text-sm sm:text-base order-2 sm:order-1"
+                  >
+                    {hasUnsavedChanges ? 'إلغاء (بدون حفظ)' : 'إغلاق'}
+                  </button>
+                  
+                  <button
+                    onClick={saveOrder}
+                    disabled={loadingOrders.has(editingOrder.id)}
+                    className={`px-6 sm:px-8 py-2 sm:py-3 rounded-lg sm:rounded-xl flex items-center justify-center gap-2 sm:gap-3 transition-all duration-200 font-bold shadow-lg text-sm sm:text-base order-1 sm:order-2 ${
+                      hasUnsavedChanges 
+                        ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:from-yellow-600 hover:to-orange-600' 
+                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700'
+                    } disabled:opacity-50`}
+                  >
+                    {loadingOrders.has(editingOrder.id) && (
+                      <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
+                    )}
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    {hasUnsavedChanges ? 'حفظ التغييرات الآن' : 'حفظ'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
