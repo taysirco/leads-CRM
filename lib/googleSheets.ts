@@ -1517,10 +1517,10 @@ export async function getOrderStatistics() {
       if (!productStats[product]) {
         productStats[product] = {
           total: 0,
-          confirmed: 0,
+          confirmed: 0, // فقط "تم التأكيد"
           pending: 0,
           rejected: 0,
-          shipped: 0,
+          shipped: 0, // فقط "تم الشحن"
           new: 0,
           noAnswer: 0,
           contacted: 0
@@ -1529,25 +1529,23 @@ export async function getOrderStatistics() {
       
       productStats[product].total++;
       
-      if (['تم التأكيد', 'تم الشحن'].includes(lead.status)) {
+      // حساب دقيق بدون تداخل
+      if (lead.status === 'تم التأكيد') {
         productStats[product].confirmed++;
-      }
-      if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
+      } else if (lead.status === 'تم الشحن') {
+        productStats[product].shipped++;
+      } else if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
         productStats[product].pending++;
-      }
-      if (lead.status === 'رفض التأكيد') {
+      } else if (lead.status === 'رفض التأكيد') {
         productStats[product].rejected++;
       }
-      if (lead.status === 'تم الشحن') {
-        productStats[product].shipped++;
-      }
+      
+      // تفصيل حالات الانتظار
       if (lead.status === 'جديد') {
         productStats[product].new++;
-      }
-      if (lead.status === 'لم يرد') {
+      } else if (lead.status === 'لم يرد') {
         productStats[product].noAnswer++;
-      }
-      if (lead.status === 'تم التواصل معه واتساب') {
+      } else if (lead.status === 'تم التواصل معه واتساب') {
         productStats[product].contacted++;
       }
     });
@@ -1559,10 +1557,10 @@ export async function getOrderStatistics() {
       if (!sourceStats[source]) {
         sourceStats[source] = {
           total: 0,
-          confirmed: 0,
+          confirmed: 0, // فقط "تم التأكيد"
           pending: 0,
           rejected: 0,
-          shipped: 0,
+          shipped: 0, // فقط "تم الشحن"
           new: 0,
           noAnswer: 0,
           contacted: 0
@@ -1571,25 +1569,23 @@ export async function getOrderStatistics() {
       
       sourceStats[source].total++;
       
-      if (['تم التأكيد', 'تم الشحن'].includes(lead.status)) {
+      // حساب دقيق بدون تداخل
+      if (lead.status === 'تم التأكيد') {
         sourceStats[source].confirmed++;
-      }
-      if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
+      } else if (lead.status === 'تم الشحن') {
+        sourceStats[source].shipped++;
+      } else if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
         sourceStats[source].pending++;
-      }
-      if (lead.status === 'رفض التأكيد') {
+      } else if (lead.status === 'رفض التأكيد') {
         sourceStats[source].rejected++;
       }
-      if (lead.status === 'تم الشحن') {
-        sourceStats[source].shipped++;
-      }
+      
+      // تفصيل حالات الانتظار
       if (lead.status === 'جديد') {
         sourceStats[source].new++;
-      }
-      if (lead.status === 'لم يرد') {
+      } else if (lead.status === 'لم يرد') {
         sourceStats[source].noAnswer++;
-      }
-      if (lead.status === 'تم التواصل معه واتساب') {
+      } else if (lead.status === 'تم التواصل معه واتساب') {
         sourceStats[source].contacted++;
       }
     });
@@ -1601,10 +1597,10 @@ export async function getOrderStatistics() {
       if (!assigneeStats[assignee]) {
         assigneeStats[assignee] = {
           total: 0,
-          confirmed: 0,
+          confirmed: 0, // فقط "تم التأكيد" (بدون الشحن)
           pending: 0,
           rejected: 0,
-          shipped: 0,
+          shipped: 0, // فقط "تم الشحن"
           new: 0,
           noAnswer: 0,
           contacted: 0,
@@ -1614,25 +1610,23 @@ export async function getOrderStatistics() {
       
       assigneeStats[assignee].total++;
       
-      if (['تم التأكيد', 'تم الشحن'].includes(lead.status)) {
-        assigneeStats[assignee].confirmed++;
-      }
-      if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
+      // حساب دقيق بدون تداخل
+      if (lead.status === 'تم التأكيد') {
+        assigneeStats[assignee].confirmed++; // فقط التأكيد
+      } else if (lead.status === 'تم الشحن') {
+        assigneeStats[assignee].shipped++; // فقط الشحن
+      } else if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
         assigneeStats[assignee].pending++;
-      }
-      if (lead.status === 'رفض التأكيد') {
+      } else if (lead.status === 'رفض التأكيد') {
         assigneeStats[assignee].rejected++;
       }
-      if (lead.status === 'تم الشحن') {
-        assigneeStats[assignee].shipped++;
-      }
+      
+      // تفصيل حالات الانتظار
       if (lead.status === 'جديد') {
         assigneeStats[assignee].new++;
-      }
-      if (lead.status === 'لم يرد') {
+      } else if (lead.status === 'لم يرد') {
         assigneeStats[assignee].noAnswer++;
-      }
-      if (lead.status === 'تم التواصل معه واتساب') {
+      } else if (lead.status === 'تم التواصل معه واتساب') {
         assigneeStats[assignee].contacted++;
       }
       
@@ -1656,26 +1650,24 @@ export async function getOrderStatistics() {
       if (!assigneeByProductStats[assignee][product]) {
         assigneeByProductStats[assignee][product] = {
           total: 0,
-          confirmed: 0,
+          confirmed: 0, // فقط "تم التأكيد"
           pending: 0,
           rejected: 0,
-          shipped: 0
+          shipped: 0 // فقط "تم الشحن"
         };
       }
       
       assigneeByProductStats[assignee][product].total++;
       
-      if (['تم التأكيد', 'تم الشحن'].includes(lead.status)) {
+      // حساب دقيق بدون تداخل
+      if (lead.status === 'تم التأكيد') {
         assigneeByProductStats[assignee][product].confirmed++;
-      }
-      if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
-        assigneeByProductStats[assignee][product].pending++;
-      }
-      if (lead.status === 'رفض التأكيد') {
-        assigneeByProductStats[assignee][product].rejected++;
-      }
-      if (lead.status === 'تم الشحن') {
+      } else if (lead.status === 'تم الشحن') {
         assigneeByProductStats[assignee][product].shipped++;
+      } else if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
+        assigneeByProductStats[assignee][product].pending++;
+      } else if (lead.status === 'رفض التأكيد') {
+        assigneeByProductStats[assignee][product].rejected++;
       }
     });
 
