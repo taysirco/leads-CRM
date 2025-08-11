@@ -343,15 +343,24 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
         newMap.delete(orderId);
         return newMap;
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Failed to update order ${orderId}:`, error);
+      
       // Revert optimistic update on error
       setOptimisticUpdates(prev => {
         const newMap = new Map(prev);
         newMap.delete(orderId);
         return newMap;
       });
-      alert(`فشل في تحديث حالة الطلب رقم ${orderId}. حاول مرة أخرى.`);
+      
+      // معالجة خاصة لأخطاء المخزون
+      if (error.message && (error.message.includes('المخزون غير كافي') || error.message.includes('نفاد المخزون'))) {
+        // رسالة خطأ مفصلة للمخزون
+        alert(`❌ لا يمكن شحن الطلب رقم ${orderId}\n\n${error.message}\n\n💡 يرجى:\n• التحقق من المخزون في تبويب إدارة المخزون\n• إضافة مخزون جديد إذا لزم الأمر\n• المحاولة مرة أخرى`);
+      } else {
+        // رسالة خطأ عامة
+        alert(`❌ فشل في تحديث حالة الطلب رقم ${orderId}\n\n${error.message || 'خطأ غير معروف'}\n\nيرجى المحاولة مرة أخرى`);
+      }
     } finally {
       setLoadingOrders(prev => {
         const newSet = new Set(prev);

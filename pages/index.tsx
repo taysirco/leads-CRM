@@ -80,20 +80,82 @@ export default function Home() {
 
   const handleUpdateOrder = async (orderId: number, updates: any): Promise<void> => {
     try {
-      await fetch('/api/orders', {
+      const response = await fetch('/api/orders', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rowNumber: orderId, ...updates }),
       });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        // معالجة خاصة لأخطاء المخزون
+        if (result.stockError) {
+          const errorMessage = updates.status === 'تم الشحن' 
+            ? `❌ لا يمكن شحن الطلب رقم ${orderId}\n\n${result.message}`
+            : result.message;
+            
+          if (result.availableQuantity !== undefined) {
+            const details = `\n\n📦 التفاصيل:\n• المنتج: ${result.productName}\n• المطلوب: ${result.requiredQuantity}\n• المتوفر: ${result.availableQuantity}\n• النقص: ${result.requiredQuantity - result.availableQuantity}`;
+            
+            addNotification({
+              type: 'error',
+              title: 'نفاد المخزون',
+              message: errorMessage + details,
+              duration: 8000
+            });
+          } else {
+            addNotification({
+              type: 'error',
+              title: 'خطأ في المخزون',
+              message: errorMessage,
+              duration: 6000
+            });
+          }
+        } else {
+          // خطأ عادي
+          addNotification({
+            type: 'error',
+            title: 'خطأ في التحديث',
+            message: result.message || 'فشل في تحديث الطلب. حاول مرة أخرى.',
+            duration: 5000
+          });
+        }
+        throw new Error(result.message || 'فشل في التحديث');
+      }
+      
+      // نجح التحديث
       await mutate();
+      
+      // عرض رسالة نجاح مع معلومات المخزون إن وُجدت
+      if (result.stockResult && result.stockResult.success) {
+        addNotification({
+          type: 'success',
+          title: 'تم الشحن بنجاح',
+          message: `✅ تم شحن الطلب رقم ${orderId}\n📦 ${result.stockResult.message}`,
+          duration: 4000
+        });
+      } else if (updates.status === 'تم الشحن') {
+        addNotification({
+          type: 'success',
+          title: 'تم التحديث',
+          message: `تم تحديث الطلب رقم ${orderId} بنجاح`,
+          duration: 3000
+        });
+      }
+      
+      // عرض تحذيرات المخزون إن وُجدت
+      if (result.warning) {
+        addNotification({
+          type: 'warning',
+          title: 'تحذير',
+          message: result.warning,
+          duration: 5000
+        });
+      }
+      
     } catch (error) {
       console.error('Error updating order:', error);
-      addNotification({
-        type: 'error',
-        title: 'خطأ في التحديث',
-        message: 'فشل في تحديث الطلب. حاول مرة أخرى.',
-        duration: 5000
-      });
       throw error;
     }
   };
