@@ -22,6 +22,7 @@ interface Order {
   status: string;
   notes: string;
   whatsappSent: string;
+  assignee?: string; // إضافة حقل المسؤول
 }
 
 interface OrdersTableProps {
@@ -405,16 +406,41 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   const saveOrder = async () => {
     if (!editingOrder) return;
     
+    console.log('💾 حفظ تعديلات الطلب:', editingOrder);
+    
     setLoadingOrders(prev => new Set(prev.add(editingOrder.id)));
     
     try {
-      await onUpdateOrder(editingOrder.id, editingOrder);
+      // إرسال فقط الحقول القابلة للتحديث (بدون id و rowIndex)
+      const updatesToSend = {
+        orderDate: editingOrder.orderDate,
+        name: editingOrder.name,
+        phone: editingOrder.phone,
+        whatsapp: editingOrder.whatsapp,
+        governorate: editingOrder.governorate,
+        area: editingOrder.area,
+        address: editingOrder.address,
+        orderDetails: editingOrder.orderDetails,
+        quantity: editingOrder.quantity,
+        totalPrice: editingOrder.totalPrice,
+        productName: editingOrder.productName,
+        source: editingOrder.source,
+        status: editingOrder.status,
+        notes: editingOrder.notes,
+        whatsappSent: editingOrder.whatsappSent,
+        assignee: editingOrder.assignee
+      };
+      
+      console.log('📤 البيانات المرسلة للتحديث:', updatesToSend);
+      
+      await onUpdateOrder(editingOrder.id, updatesToSend);
       setEditModalOpen(false);
       setEditingOrder(null);
       
       setShowSuccessMessage(editingOrder.id);
       setTimeout(() => setShowSuccessMessage(null), 2000);
     } catch (error) {
+      console.error('❌ خطأ في حفظ التغييرات:', error);
       alert('فشل في حفظ التغييرات. حاول مرة أخرى.');
     } finally {
       setLoadingOrders(prev => {

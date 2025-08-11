@@ -1382,6 +1382,8 @@ export async function fetchLeads() {
 
 // دالة لتحديث طلب واحد
 export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
+  console.log(`🔄 تحديث الليد ${rowNumber} بالبيانات:`, JSON.stringify(updates, null, 2));
+  
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
 
@@ -1395,16 +1397,59 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   const currentRow = currentData.data.values?.[0] || [];
   const updatedRow = [...currentRow];
 
-  // تحديث القيم المطلوبة
+  console.log(`📋 البيانات الحالية للصف ${rowNumber}:`, currentRow);
+
+  // تحديث جميع الحقول المطلوبة
+  if (updates.orderDate !== undefined) {
+    updatedRow[0] = updates.orderDate; // تاريخ الطلب
+  }
+  if (updates.name !== undefined) {
+    updatedRow[1] = updates.name; // الاسم
+  }
+  if (updates.phone !== undefined) {
+    updatedRow[2] = updates.phone; // رقم الهاتف
+  }
+  if (updates.whatsapp !== undefined) {
+    updatedRow[3] = updates.whatsapp; // رقم الواتساب
+  }
+  if (updates.governorate !== undefined) {
+    updatedRow[4] = updates.governorate; // المحافظة
+  }
+  if (updates.area !== undefined) {
+    updatedRow[5] = updates.area; // المنطقة
+  }
+  if (updates.address !== undefined) {
+    updatedRow[6] = updates.address; // العنوان
+  }
+  if (updates.orderDetails !== undefined) {
+    updatedRow[7] = updates.orderDetails; // تفاصيل الطلب
+  }
+  if (updates.quantity !== undefined) {
+    updatedRow[8] = updates.quantity; // الكمية
+  }
+  if (updates.totalPrice !== undefined) {
+    updatedRow[9] = updates.totalPrice; // إجمالي السعر
+  }
+  if (updates.productName !== undefined) {
+    updatedRow[10] = updates.productName; // اسم المنتج
+  }
   if (updates.status !== undefined) {
-    updatedRow[11] = updates.status; // عمود الحالة
+    updatedRow[11] = updates.status; // الحالة
   }
   if (updates.notes !== undefined) {
-    updatedRow[12] = updates.notes; // عمود الملاحظات
+    updatedRow[12] = updates.notes; // الملاحظات
+  }
+  if (updates.source !== undefined) {
+    updatedRow[13] = updates.source; // المصدر
+  }
+  if (updates.whatsappSent !== undefined) {
+    updatedRow[14] = updates.whatsappSent; // ارسال واتس اب
   }
   if (updates.assignee !== undefined) {
-    updatedRow[15] = updates.assignee; // عمود المسؤول
+    updatedRow[15] = updates.assignee; // المسؤول
   }
+
+  console.log(`✏️ البيانات الجديدة للصف ${rowNumber}:`, updatedRow);
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
@@ -1414,6 +1459,8 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
       values: [updatedRow]
     }
   });
+
+  console.log(`✅ تم تحديث الليد ${rowNumber} بنجاح`);
 }
 
 // دالة لتحديث عدة طلبات
