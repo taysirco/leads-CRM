@@ -47,13 +47,21 @@ export interface StockMovement {
   productName: string;
   type: 'sale' | 'return' | 'damage' | 'loss' | 'initial' | 'adjustment' | 'add_stock';
   quantity: number; // موجب للإضافة، سالب للخصم
+  quantityBefore?: number; // الكمية قبل العملية
+  quantityAfter?: number; // الكمية بعد العملية
   reason?: string;
   supplier?: string;
-  cost?: number;
+  cost?: number; // تكلفة الوحدة
+  totalCost?: number; // إجمالي التكلفة
   notes?: string;
   date?: string; // ISO date string
   timestamp?: string; // بالتوقيت المصري
   orderId?: number;
+  responsible?: string; // المسؤول عن العملية
+  status?: string; // حالة العملية (مكتملة، معلقة، ملغاة)
+  entryDate?: string; // تاريخ الإدخال
+  ipAddress?: string; // عنوان IP
+  sessionId?: string; // معرف الجلسة
 }
 
 export type DailyReturn = {
@@ -902,7 +910,7 @@ async function getSheetId(spreadsheetId: string, sheetName: string): Promise<num
   }
 }
 
-// دالة محسنة لجلب حركات المخزون مع ترتيب ذكي
+// دالة محسنة لجلب حركات المخزون مع ترتيب ذكي - محدثة للأعمدة الجديدة
 export async function getStockMovements(): Promise<StockMovement[]> {
   try {
     console.log('📋 جلب حركات المخزون من Google Sheets...');
@@ -918,37 +926,45 @@ export async function getStockMovements(): Promise<StockMovement[]> {
     // التأكد من وجود الورقة
     await ensureStockMovementsSheetExists();
 
-    // جلب البيانات من ورقة stock_movements المحسنة
-    const range = 'stock_movements!A:L'; // A-L للأعمدة الجديدة
+    // جلب البيانات من ورقة stock_movements المحسنة (A-T)
+    const range = 'stock_movements!A3:T'; // تخطي صف العناوين والتفسير
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range,
-  });
+    });
 
-  const rows = response.data.values;
-    if (!rows || rows.length <= 1) {
+    const rows = response.data.values;
+    if (!rows || rows.length === 0) {
       console.log('📋 لا توجد حركات مخزون مسجلة');
-    return [];
-  }
+      return [];
+    }
 
-    // تحويل البيانات إلى كائنات منطقية
+    // تحويل البيانات إلى كائنات منطقية مع الأعمدة الجديدة
     const movements: StockMovement[] = [];
-    for (let i = 1; i < rows.length; i++) {
+    for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       if (!row[0] || !row[1] || !row[4]) continue; // تخطي الصفوف غير الكاملة
 
       const movement: StockMovement = {
-        id: parseInt(row[0]) || i,
-        date: row[1] || '', // التاريخ
-        timestamp: row[3] || row[2] || '', // التوقيت الكامل أو الوقت فقط
-        productName: row[4] || '',
-        type: (row[5] as any) || 'adjustment',
-        quantity: parseInt(row[6]) || 0,
-        reason: row[7] || 'غير محدد',
-        supplier: row[8] || '',
-        cost: parseFloat(row[9]) || 0,
-        notes: row[10] || '',
-        orderId: parseInt(row[11]) || undefined
+        id: parseInt(row[0]) || i + 1,              // A: رقم تسلسلي
+        date: row[1] || '',                         // B: تاريخ العملية
+        timestamp: row[3] || row[2] || '',          // D: التوقيت الكامل أو C: الوقت فقط
+        productName: row[4] || '',                  // E: اسم المنتج
+        type: mapArabicOperationToEnglish(row[5]) as any, // F: نوع العملية (تحويل من العربية)
+        quantity: parseInt(row[6]) || 0,            // G: الكمية المتأثرة
+        quantityBefore: parseInt(row[7]) || 0,      // H: الكمية قبل العملية
+        quantityAfter: parseInt(row[8]) || 0,       // I: الكمية بعد العملية
+        reason: row[9] || 'غير محدد',               // J: سبب العملية
+        supplier: row[10] || '',                    // K: المورد/المصدر
+        cost: parseFloat(row[11]) || 0,             // L: تكلفة الوحدة
+        totalCost: parseFloat(row[12]) || 0,        // M: إجمالي التكلفة
+        orderId: parseInt(row[13]) || undefined,    // N: رقم الطلب المرتبط
+        responsible: row[14] || 'غير محدد',         // O: المسؤول عن العملية
+        notes: row[15] || '',                       // P: ملاحظات إضافية
+        status: row[16] || 'مكتملة',               // Q: حالة العملية
+        entryDate: row[17] || '',                   // R: تاريخ الإدخال
+        ipAddress: row[18] || '',                   // S: IP العملية
+        sessionId: row[19] || ''                    // T: معرف الجلسة
       };
 
       movements.push(movement);
@@ -984,6 +1000,20 @@ export async function getStockMovements(): Promise<StockMovement[]> {
     
     throw error;
   }
+}
+
+// دالة مساعدة لتحويل نوع العملية من العربية إلى الإنجليزية
+function mapArabicOperationToEnglish(arabicType: string): string {
+  const operationMap: { [key: string]: string } = {
+    'إضافة أولية': 'initial',
+    'إضافة مخزون': 'add_stock',
+    'مبيعات (شحن)': 'sale',
+    'مرتجعات': 'return',
+    'تالف': 'damage',
+    'مفقود': 'loss',
+    'تعديل يدوي': 'adjustment'
+  };
+  return operationMap[arabicType] || 'adjustment';
 }
 
 // دالة للحصول على تنبيهات نفاد المخزون
@@ -1309,7 +1339,7 @@ export async function diagnoseGoogleSheets(): Promise<{ success: boolean; messag
   }
 } 
 
-// دالة شاملة ومحسنة لإضافة حركة المخزون بطريقة احترافية
+// دالة شاملة ومحسنة لإضافة حركة المخزون بطريقة احترافية - محدثة للأعمدة الجديدة
 export async function addStockMovement(movement: Partial<StockMovement>) {
   try {
     const movementId = Date.now(); // ID فريد مبني على الوقت
@@ -1338,9 +1368,9 @@ export async function addStockMovement(movement: Partial<StockMovement>) {
       range: 'stock_movements!A:A',
     });
     
-    const existingRows = lastIdResponse.data.values || [['ID']];
+    const existingRows = lastIdResponse.data.values || [['رقم تسلسلي']];
     const lastRowIndex = existingRows.length;
-    const newSequentialId = lastRowIndex; // ID متسلسل
+    const newSequentialId = lastRowIndex - 1; // -1 لأن الصف الأول عناوين والثاني تفسير
     
     // الحصول على التوقيت المصري الدقيق
     const egyptianDate = getEgyptDate();
@@ -1353,9 +1383,25 @@ export async function addStockMovement(movement: Partial<StockMovement>) {
     const quantity = movement.quantity || 0;
     const reason = (movement.reason || 'غير محدد').trim();
     const supplier = (movement.supplier || '').trim();
-    const cost = parseFloat(String(movement.cost || 0));
+    const unitCost = parseFloat(String(movement.cost || 0));
+    const totalCost = Math.abs(quantity) * unitCost; // إجمالي التكلفة
     const notes = (movement.notes || '').trim();
     const orderId = movement.orderId || '';
+    
+    // الحصول على الكمية قبل وبعد العملية
+    let quantityBefore = 0;
+    let quantityAfter = 0;
+    
+    try {
+      const stockData = await fetchStock(true);
+      const stockItem = findProductBySynonyms(productName, stockData.stockItems);
+      if (stockItem) {
+        quantityBefore = stockItem.currentQuantity;
+        quantityAfter = quantityBefore + quantity; // الكمية بعد العملية
+      }
+    } catch (error) {
+      console.warn('تعذر الحصول على كمية المخزون:', error);
+    }
     
     // تسجيل تفصيلي للعملية
     const operationDetails = {
@@ -1366,36 +1412,51 @@ export async function addStockMovement(movement: Partial<StockMovement>) {
       product: productName,
       operation: movementType,
       quantity: quantity,
+      quantityBefore: quantityBefore,
+      quantityAfter: quantityAfter,
       reason: reason,
-      impact: quantity > 0 ? 'إضافة' : quantity < 0 ? 'خصم' : 'تعديل',
       supplier: supplier || 'غير محدد',
-      cost: cost,
+      unitCost: unitCost,
+      totalCost: totalCost,
+      orderId: orderId || 'غير مرتبط',
+      responsible: 'النظام الآلي', // يمكن تحديثه لاحقاً
       notes: notes || 'لا توجد ملاحظات',
-      orderId: orderId || 'غير مرتبط'
+      status: 'مكتملة',
+      entryDate: fullEgyptianDateTime,
+      ipAddress: 'خادم التطبيق',
+      sessionId: `session_${movementId}`
     };
     
     console.log(`📋 [${movementId}] تفاصيل العملية:`, operationDetails);
     
-    // إعداد صف البيانات للإدراج
+    // إعداد صف البيانات للإدراج - 20 عمود (A-T)
     const rowData = [
-      newSequentialId,                    // A: ID متسلسل
-      egyptianDate,                       // B: التاريخ (YYYY-MM-DD)
-      egyptianTime,                       // C: الوقت (HH:MM:SS)
-      fullEgyptianDateTime,               // D: التاريخ والوقت كاملاً
+      newSequentialId,                    // A: رقم تسلسلي
+      egyptianDate,                       // B: تاريخ العملية
+      egyptianTime,                       // C: وقت العملية
+      fullEgyptianDateTime,               // D: التوقيت الكامل (مصري)
       productName,                        // E: اسم المنتج
-      movementType,                       // F: نوع العملية
-      quantity,                           // G: الكمية (موجب أو سالب)
-      reason,                             // H: السبب
-      supplier,                           // I: المورد
-      cost,                               // J: التكلفة
-      notes,                              // K: ملاحظات
-      orderId                             // L: رقم الطلب
+      getOperationTypeArabic(movementType), // F: نوع العملية
+      quantity,                           // G: الكمية المتأثرة
+      quantityBefore,                     // H: الكمية قبل العملية
+      quantityAfter,                      // I: الكمية بعد العملية
+      reason,                             // J: سبب العملية
+      supplier,                           // K: المورد/المصدر
+      unitCost,                           // L: تكلفة الوحدة
+      totalCost,                          // M: إجمالي التكلفة
+      orderId,                            // N: رقم الطلب المرتبط
+      operationDetails.responsible,       // O: المسؤول عن العملية
+      notes,                              // P: ملاحظات إضافية
+      operationDetails.status,            // Q: حالة العملية
+      operationDetails.entryDate,         // R: تاريخ الإدخال
+      operationDetails.ipAddress,         // S: IP العملية
+      operationDetails.sessionId          // T: معرف الجلسة
     ];
 
-    // إدراج البيانات في الورقة
+    // إدراج البيانات في الورقة (تخطي الصفين الأول والثاني)
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'stock_movements!A:L',
+      range: 'stock_movements!A3:T',
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: {
@@ -1405,7 +1466,8 @@ export async function addStockMovement(movement: Partial<StockMovement>) {
 
     console.log(`✅ [${movementId}] تم تسجيل حركة المخزون رقم ${newSequentialId} بنجاح`);
     console.log(`🕐 التوقيت المسجل: ${fullEgyptianDateTime} (توقيت القاهرة)`);
-    console.log(`📊 التأثير: ${operationDetails.impact} ${Math.abs(quantity)} من ${productName}`);
+    console.log(`📊 التأثير: ${quantity > 0 ? 'إضافة' : 'خصم'} ${Math.abs(quantity)} من ${productName}`);
+    console.log(`💰 التكلفة: ${totalCost} ج.م (${unitCost} ج.م للوحدة)`);
     
     return {
       success: true,
@@ -1418,7 +1480,21 @@ export async function addStockMovement(movement: Partial<StockMovement>) {
     console.error('❌ خطأ في إضافة حركة المخزون:', error);
     throw new Error(`فشل في تسجيل حركة المخزون: ${error}`);
   }
-} 
+}
+
+// دالة مساعدة لتحويل نوع العملية إلى العربية
+function getOperationTypeArabic(type: string): string {
+  const operationTypes: { [key: string]: string } = {
+    'initial': 'إضافة أولية',
+    'add_stock': 'إضافة مخزون',
+    'sale': 'مبيعات (شحن)',
+    'return': 'مرتجعات',
+    'damage': 'تالف',
+    'loss': 'مفقود',
+    'adjustment': 'تعديل يدوي'
+  };
+  return operationTypes[type] || type;
+}
 
 // دالة لإنشاء ورقة حركات المخزون
 async function createStockMovementsSheet() {
@@ -2089,4 +2165,272 @@ export function findProductBySynonymsEnhanced(productName: string, stockItems: S
   }
 
   return null;
+}
+
+// دالة محسنة لإعادة إنشاء وتنظيم رؤوس أعمدة stock_movements
+export async function resetStockMovementsHeaders(): Promise<{ success: boolean; message: string }> {
+  try {
+    console.log('🔄 إعادة تنظيم رؤوس أعمدة stock_movements...');
+    
+    const auth = getAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
+    const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+    
+    if (!spreadsheetId) {
+      throw new Error('معرف Google Sheet غير موجود');
+    }
+
+    // العناوين المفصلة والمنظمة
+    const detailedHeaders = [
+      'رقم تسلسلي',                    // A - ID تسلسلي فريد
+      'تاريخ العملية',                 // B - التاريخ (YYYY-MM-DD)
+      'وقت العملية',                  // C - الوقت (HH:MM:SS)
+      'التوقيت الكامل (مصري)',         // D - التاريخ والوقت كاملاً بالتوقيت المصري
+      'اسم المنتج',                   // E - اسم المنتج المتأثر
+      'نوع العملية',                  // F - (إضافة أولية، إضافة مخزون، مبيعات، مرتجعات، تالف، مفقود، تعديل)
+      'الكمية المتأثرة',               // G - الكمية (موجب للإضافة، سالب للخصم)
+      'الكمية قبل العملية',            // H - الكمية المتوفرة قبل هذه العملية
+      'الكمية بعد العملية',           // I - الكمية المتوفرة بعد هذه العملية
+      'سبب العملية',                  // J - السبب التفصيلي للعملية
+      'المورد/المصدر',                // K - اسم المورد أو مصدر البضاعة
+      'تكلفة الوحدة',                 // L - تكلفة الوحدة الواحدة (ج.م)
+      'إجمالي التكلفة',               // M - إجمالي تكلفة العملية (ج.م)
+      'رقم الطلب المرتبط',             // N - رقم طلب العميل (إن وجد)
+      'المسؤول عن العملية',           // O - اسم الموظف المسؤول
+      'ملاحظات إضافية',               // P - أي ملاحظات أو تفاصيل إضافية
+      'حالة العملية',                 // Q - (مكتملة، معلقة، ملغاة)
+      'تاريخ الإدخال',                 // R - متى تم تسجيل هذه العملية في النظام
+      'IP العملية',                   // S - عنوان IP للجهاز المستخدم
+      'معرف الجلسة'                   // T - معرف جلسة المستخدم
+    ];
+
+    // حذف البيانات الموجودة وإعادة إنشاء العناوين
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: 'stock_movements!A:T'
+    });
+
+    console.log('🗑️ تم حذف البيانات القديمة');
+
+    // إدراج العناوين الجديدة
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'stock_movements!A1:T1',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [detailedHeaders]
+      }
+    });
+
+    console.log('📋 تم إدراج العناوين الجديدة');
+
+    // الحصول على معرف الشيت لتطبيق التنسيق
+    const sheetId = await getSheetId(spreadsheetId, 'stock_movements');
+
+    // تطبيق تنسيق متقدم للعناوين
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          // تنسيق صف العناوين
+          {
+            repeatCell: {
+              range: {
+                sheetId,
+                startRowIndex: 0,
+                endRowIndex: 1,
+                startColumnIndex: 0,
+                endColumnIndex: 20
+              },
+              cell: {
+                userEnteredFormat: {
+                  backgroundColor: { red: 0.2, green: 0.4, blue: 0.8 }, // أزرق داكن
+                  textFormat: { 
+                    foregroundColor: { red: 1, green: 1, blue: 1 }, // أبيض
+                    bold: true,
+                    fontSize: 11
+                  },
+                  horizontalAlignment: 'CENTER',
+                  verticalAlignment: 'MIDDLE',
+                  wrapStrategy: 'WRAP',
+                  borders: {
+                    top: { style: 'SOLID', width: 2, color: { red: 0.1, green: 0.2, blue: 0.6 } },
+                    bottom: { style: 'SOLID', width: 2, color: { red: 0.1, green: 0.2, blue: 0.6 } },
+                    left: { style: 'SOLID', width: 1, color: { red: 0.1, green: 0.2, blue: 0.6 } },
+                    right: { style: 'SOLID', width: 1, color: { red: 0.1, green: 0.2, blue: 0.6 } }
+                  }
+                }
+              },
+              fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy,borders)'
+            }
+          },
+          // تجميد صف العناوين
+          {
+            updateSheetProperties: {
+              properties: {
+                sheetId,
+                gridProperties: {
+                  frozenRowCount: 1,
+                  frozenColumnCount: 1 // تجميد العمود الأول أيضاً
+                }
+              },
+              fields: 'gridProperties.frozenRowCount,gridProperties.frozenColumnCount'
+            }
+          },
+          // تعديل عرض الأعمدة
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId,
+                dimension: 'COLUMNS',
+                startIndex: 0,
+                endIndex: 20
+              },
+              properties: {
+                pixelSize: 120 // عرض موحد للأعمدة
+              },
+              fields: 'pixelSize'
+            }
+          },
+          // عرض خاص للأعمدة المهمة
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId,
+                dimension: 'COLUMNS',
+                startIndex: 3, // عمود التوقيت الكامل
+                endIndex: 4
+              },
+              properties: {
+                pixelSize: 180
+              },
+              fields: 'pixelSize'
+            }
+          },
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId,
+                dimension: 'COLUMNS',
+                startIndex: 4, // عمود اسم المنتج
+                endIndex: 5
+              },
+              properties: {
+                pixelSize: 200
+              },
+              fields: 'pixelSize'
+            }
+          },
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId,
+                dimension: 'COLUMNS',
+                startIndex: 9, // عمود السبب
+                endIndex: 10
+              },
+              properties: {
+                pixelSize: 250
+              },
+              fields: 'pixelSize'
+            }
+          },
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId,
+                dimension: 'COLUMNS',
+                startIndex: 15, // عمود الملاحظات
+                endIndex: 16
+              },
+              properties: {
+                pixelSize: 300
+              },
+              fields: 'pixelSize'
+            }
+          }
+        ]
+      }
+    });
+
+    console.log('🎨 تم تطبيق التنسيق المتقدم');
+
+    // إضافة صف تفسيري تحت العناوين
+    const explanationRow = [
+      'رقم تلقائي',                    // A
+      'YYYY-MM-DD',                  // B
+      'HH:MM:SS',                    // C
+      'التوقيت الكامل بالقاهرة',       // D
+      'اسم دقيق للمنتج',              // E
+      'إضافة/خصم/تعديل',              // F
+      '+/- عدد القطع',                // G
+      'الكمية السابقة',               // H
+      'الكمية الجديدة',               // I
+      'سبب تفصيلي',                  // J
+      'اسم المورد',                  // K
+      'سعر الوحدة',                  // L
+      'إجمالي المبلغ',               // M
+      'رقم الطلب',                   // N
+      'اسم الموظف',                  // O
+      'تفاصيل إضافية',               // P
+      'مكتملة/معلقة',                // Q
+      'وقت التسجيل',                 // R
+      'عنوان الشبكة',                // S
+      'معرف المستخدم'                // T
+    ];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'stock_movements!A2:T2',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [explanationRow]
+      }
+    });
+
+    // تنسيق صف التفسير
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [{
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 1,
+              endRowIndex: 2,
+              startColumnIndex: 0,
+              endColumnIndex: 20
+            },
+            cell: {
+              userEnteredFormat: {
+                backgroundColor: { red: 0.95, green: 0.95, blue: 0.95 }, // رمادي فاتح
+                textFormat: { 
+                  foregroundColor: { red: 0.4, green: 0.4, blue: 0.4 },
+                  italic: true,
+                  fontSize: 9
+                },
+                horizontalAlignment: 'CENTER',
+                wrapStrategy: 'WRAP'
+              }
+            },
+            fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,wrapStrategy)'
+          }
+        }]
+      }
+    });
+
+    console.log('📝 تم إضافة صف التفسير');
+
+    return {
+      success: true,
+      message: `تم إعادة تنظيم رؤوس أعمدة stock_movements بنجاح!\n\n📊 تم إنشاء ${detailedHeaders.length} عمود مفصل:\n${detailedHeaders.map((header, index) => `${String.fromCharCode(65 + index)}: ${header}`).join('\n')}`
+    };
+
+  } catch (error) {
+    console.error('❌ خطأ في إعادة تنظيم stock_movements:', error);
+    return {
+      success: false,
+      message: `فشل في إعادة تنظيم stock_movements: ${error}`
+    };
+  }
 }

@@ -11,7 +11,8 @@ import {
   findProductBySynonyms,
   testStockSheetConnection,
   diagnoseGoogleSheets,
-  createTestProduct
+  createTestProduct,
+  resetStockMovementsHeaders
 } from '../../lib/googleSheets';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -183,6 +184,20 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
         return res.status(500).json({ 
           success: false, 
           message: `فشل في اختبار البحث الذكي: ${error}` 
+        });
+      }
+
+    case 'reset-movements-headers':
+      console.log('🔄 إعادة تنظيم رؤوس أعمدة stock_movements...');
+      try {
+        const resetResult = await resetStockMovementsHeaders();
+        console.log('📊 نتيجة إعادة التنظيم:', resetResult.success ? 'نجح' : 'فشل');
+        return res.status(200).json(resetResult);
+      } catch (error) {
+        console.error('❌ فشل إعادة تنظيم العناوين:', error);
+        return res.status(500).json({ 
+          success: false, 
+          message: `فشل في إعادة تنظيم العناوين: ${error}` 
         });
       }
 
