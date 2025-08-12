@@ -1,4 +1,8 @@
 import { google } from 'googleapis';
+import { silenceLogsIfProduction } from './logger';
+
+silenceLogsIfProduction();
+
 import { formatEgyptianPhone } from './phoneFormatter';
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID as string;

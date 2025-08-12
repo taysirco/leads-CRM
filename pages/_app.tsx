@@ -1,6 +1,9 @@
 import '../styles/globals.css';
 import type { AppProps } from 'next/app';
 import RTLWrapper from '../components/RTLWrapper';
+import { silenceLogsIfProduction } from '../lib/logger';
+
+silenceLogsIfProduction();
 
 function MyApp({ Component, pageProps }: AppProps) {
   return (

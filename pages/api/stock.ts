@@ -1,4 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import { silenceLogsIfProduction } from '../../lib/logger';
+
+silenceLogsIfProduction();
+
 import {
   fetchStock,
   addOrUpdateStockItem,
