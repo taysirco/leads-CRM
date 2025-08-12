@@ -28,7 +28,7 @@ export type LeadRow = {
   notes: string;
   source: string;
   whatsappSent: string; // ارسال واتس اب
-  assignee?: string; // المسؤول (Q/R column)
+  assignee?: string; // المسؤول (Q column - الفهرس 16)
 };
 
 export type StockItem = {
@@ -1545,7 +1545,7 @@ export async function fetchLeads() {
       notes: row[12] || '', // العمود M
       source: row[13] || '', // العمود N
       whatsappSent: row[14] || '', // العمود O
-      assignee: row[15] || '' // العمود P
+      assignee: row[16] || '' // العمود Q (الفهرس 16)
     };
   });
 }
@@ -1557,7 +1557,7 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const headers = ['تاريخ الطلب', 'الاسم', 'رقم الهاتف', 'رقم الواتساب', 'المحافظة', 'المنطقة', 'العنوان', 'تفاصيل الطلب', 'الكمية', 'إجمالي السعر', 'اسم المنتج', 'الحالة', 'ملاحظات', 'المصدر', 'ارسال واتس اب', 'المسؤول'];
+  const headers = ['تاريخ الطلب', 'الاسم', 'رقم الهاتف', 'رقم الواتساب', 'المحافظة', 'المنطقة', 'العنوان', 'تفاصيل الطلب', 'الكمية', 'إجمالي السعر', 'اسم المنتج', 'الحالة', 'ملاحظات', 'المصدر', 'ارسال واتس اب', 'عمود P', 'المسؤول'];
   
   const currentData = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
@@ -1616,7 +1616,7 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
     updatedRow[14] = updates.whatsappSent; // ارسال واتس اب
   }
   if (updates.assignee !== undefined) {
-    updatedRow[15] = updates.assignee; // المسؤول
+    updatedRow[16] = updates.assignee; // المسؤول
   }
 
   console.log(`✏️ البيانات الجديدة للصف ${rowNumber}:`, updatedRow);
@@ -1643,11 +1643,11 @@ export async function updateLeadsBatch(updates: Array<{ rowNumber: number; updat
   const requests = updates.map(({ rowNumber, updates: leadUpdates }) => {
     const values = [];
     
-    // إعداد القيم للتحديث - العمود P هو المسؤول (الفهرس 15)
+    // إعداد القيم للتحديث - العمود Q هو المسؤول (الفهرس 16)
     if (leadUpdates.assignee !== undefined) {
       console.log(`📋 تعيين الليد في صف ${rowNumber} للموظف: ${leadUpdates.assignee}`);
       values.push({
-        range: `leads!P${rowNumber}`, // العمود P (الفهرس 15) هو المسؤول
+        range: `leads!Q${rowNumber}`, // العمود Q (الفهرس 16) هو المسؤول
         values: [[leadUpdates.assignee]]
       });
     }
