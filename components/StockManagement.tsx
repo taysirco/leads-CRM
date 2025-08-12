@@ -2301,7 +2301,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
   );
 }
 
-// مكون حركة المخزون
+// مكون حركة المخزون المحسن والشامل
 function StockMovements({ stockItems, onAddStock, isLoading }: any) {
   const [movements, setMovements] = useState([]);
   const [filteredMovements, setFilteredMovements] = useState([]);
@@ -2309,75 +2309,312 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
     productName: '',
     dateFrom: '',
     dateTo: '',
-    type: 'all'
+    type: 'all',
+    searchTerm: '',
+    sortBy: 'newest', // newest, oldest, quantity_desc, quantity_asc
+    showToday: false
   });
 
-  // جلب بيانات حركة المخزون
+  const [stats, setStats] = useState({
+    totalMovements: 0,
+    todayMovements: 0,
+    totalAdditions: 0,
+    totalDeductions: 0,
+    uniqueProducts: 0
+  });
+
+  // جلب بيانات حركة المخزون مع التحديث التلقائي
   const { data: movementsData, mutate: refreshMovements } = useSWR('/api/stock?action=movements', fetcher, {
-    refreshInterval: 0,
-    revalidateOnFocus: false,
+    refreshInterval: 30000, // تحديث كل 30 ثانية
+    revalidateOnFocus: true,
     revalidateOnReconnect: true,
-    errorRetryCount: 1
+    errorRetryCount: 2
   });
 
+  // تحديث البيانات عند تغييرها
   useEffect(() => {
     if (movementsData?.movements) {
-      setMovements(movementsData.movements);
-      setFilteredMovements(movementsData.movements);
+      const sortedMovements = movementsData.movements.sort((a: any, b: any) => {
+        const dateA = new Date(a.timestamp || a.date || '');
+        const dateB = new Date(b.timestamp || b.date || '');
+        return dateB.getTime() - dateA.getTime(); // الأحدث أولاً
+      });
+      
+      setMovements(sortedMovements);
+      calculateStats(sortedMovements);
     }
   }, [movementsData]);
 
-  // تطبيق الفلاتر
+  // حساب الإحصائيات
+  const calculateStats = (movementsData: any[]) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const todayMovements = movementsData.filter(m => {
+      const moveDate = new Date(m.timestamp || m.date || '').toISOString().split('T')[0];
+      return moveDate === today;
+    }).length;
+
+    const totalAdditions = movementsData
+      .filter(m => m.quantity > 0)
+      .reduce((sum, m) => sum + m.quantity, 0);
+
+    const totalDeductions = Math.abs(movementsData
+      .filter(m => m.quantity < 0)
+      .reduce((sum, m) => sum + m.quantity, 0));
+
+    const uniqueProducts = new Set(movementsData.map(m => m.productName)).size;
+
+    setStats({
+      totalMovements: movementsData.length,
+      todayMovements,
+      totalAdditions,
+      totalDeductions,
+      uniqueProducts
+    });
+  };
+
+  // تطبيق الفلاتر والبحث
   useEffect(() => {
     let filtered = movements;
 
+    // فلتر المنتج
     if (filters.productName) {
       filtered = filtered.filter((movement: any) => 
         movement.productName.toLowerCase().includes(filters.productName.toLowerCase())
       );
     }
 
+    // فلتر البحث العام
+    if (filters.searchTerm) {
+      const searchTerm = filters.searchTerm.toLowerCase();
+      filtered = filtered.filter((movement: any) => 
+        movement.productName.toLowerCase().includes(searchTerm) ||
+        movement.reason?.toLowerCase().includes(searchTerm) ||
+        movement.notes?.toLowerCase().includes(searchTerm) ||
+        movement.supplier?.toLowerCase().includes(searchTerm) ||
+        movement.orderId?.toString().includes(searchTerm)
+      );
+    }
+
+    // فلتر التاريخ من
     if (filters.dateFrom) {
-      filtered = filtered.filter((movement: any) => movement.date >= filters.dateFrom);
+      filtered = filtered.filter((movement: any) => {
+        const moveDate = new Date(movement.timestamp || movement.date || '').toISOString().split('T')[0];
+        return moveDate >= filters.dateFrom;
+      });
     }
 
+    // فلتر التاريخ إلى
     if (filters.dateTo) {
-      filtered = filtered.filter((movement: any) => movement.date <= filters.dateTo);
+      filtered = filtered.filter((movement: any) => {
+        const moveDate = new Date(movement.timestamp || movement.date || '').toISOString().split('T')[0];
+        return moveDate <= filters.dateTo;
+      });
     }
 
+    // فلتر نوع العملية
     if (filters.type !== 'all') {
       filtered = filtered.filter((movement: any) => movement.type === filters.type);
+    }
+
+    // فلتر اليوم فقط
+    if (filters.showToday) {
+      const today = new Date().toISOString().split('T')[0];
+      filtered = filtered.filter((movement: any) => {
+        const moveDate = new Date(movement.timestamp || movement.date || '').toISOString().split('T')[0];
+        return moveDate === today;
+      });
+    }
+
+    // ترتيب النتائج
+    if (filters.sortBy === 'newest') {
+      filtered.sort((a: any, b: any) => {
+        const dateA = new Date(a.timestamp || a.date || '');
+        const dateB = new Date(b.timestamp || b.date || '');
+        return dateB.getTime() - dateA.getTime();
+      });
+    } else if (filters.sortBy === 'oldest') {
+      filtered.sort((a: any, b: any) => {
+        const dateA = new Date(a.timestamp || a.date || '');
+        const dateB = new Date(b.timestamp || b.date || '');
+        return dateA.getTime() - dateB.getTime();
+      });
+    } else if (filters.sortBy === 'quantity_desc') {
+      filtered.sort((a: any, b: any) => Math.abs(b.quantity) - Math.abs(a.quantity));
+    } else if (filters.sortBy === 'quantity_asc') {
+      filtered.sort((a: any, b: any) => Math.abs(a.quantity) - Math.abs(b.quantity));
     }
 
     setFilteredMovements(filtered);
   }, [movements, filters]);
 
+  // دالة لتنسيق نوع العملية
+  const getOperationLabel = (type: string) => {
+    const operationLabels: { [key: string]: string } = {
+      'initial': 'إضافة أولية',
+      'add_stock': 'إضافة مخزون',
+      'sale': 'مبيعات (شحن)',
+      'return': 'مرتجعات',
+      'damage': 'تالف',
+      'loss': 'مفقود',
+      'adjustment': 'تعديل يدوي'
+    };
+    return operationLabels[type] || type;
+  };
+
+  // دالة لتنسيق لون العملية
+  const getOperationColor = (type: string, quantity: number) => {
+    if (quantity > 0) {
+      return 'bg-green-100 text-green-800 border-green-200';
+    } else if (quantity < 0) {
+      switch (type) {
+        case 'sale':
+          return 'bg-blue-100 text-blue-800 border-blue-200';
+        case 'damage':
+        case 'loss':
+          return 'bg-red-100 text-red-800 border-red-200';
+        default:
+          return 'bg-orange-100 text-orange-800 border-orange-200';
+      }
+    }
+    return 'bg-gray-100 text-gray-800 border-gray-200';
+  };
+
+  // دالة لتنسيق التاريخ والوقت المصري
+  const formatEgyptianDateTime = (dateTimeString: string) => {
+    if (!dateTimeString) return { date: '-', time: '' };
+    
+    try {
+      const date = new Date(dateTimeString);
+      
+      // التاريخ بالعربية
+      const dateOptions: Intl.DateTimeFormatOptions = {
+        timeZone: 'Africa/Cairo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      };
+      
+      // الوقت بالعربية
+      const timeOptions: Intl.DateTimeFormatOptions = {
+        timeZone: 'Africa/Cairo',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      };
+
+      const formattedDate = date.toLocaleDateString('ar-EG-u-nu-latn', dateOptions);
+      const formattedTime = date.toLocaleTimeString('ar-EG-u-nu-latn', timeOptions);
+      
+      return { date: formattedDate, time: formattedTime };
+    } catch (error) {
+      return { date: dateTimeString, time: '' };
+    }
+  };
+
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-3 sm:space-y-0">
-        <h2 className="text-lg sm:text-xl font-bold text-gray-900">حركة المخزون</h2>
-        <button
-          onClick={onAddStock}
-          className="px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          <span className="hidden sm:inline">إضافة مخزون</span>
-          <span className="sm:hidden">إضافة</span>
-        </button>
+      {/* العنوان والإحصائيات السريعة */}
+      <div className="flex flex-col space-y-4">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-3 sm:space-y-0">
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900">سجل حركة المخزون</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              تتبع شامل لجميع عمليات المخزون بالتوقيت المصري الدقيق
+            </p>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={() => refreshMovements()}
+              className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span className="hidden sm:inline">تحديث</span>
+            </button>
+            
+            <button
+              onClick={onAddStock}
+              className="px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              <span className="hidden sm:inline">إضافة مخزون</span>
+              <span className="sm:hidden">إضافة</span>
+            </button>
+          </div>
+        </div>
+
+        {/* بطاقات الإحصائيات */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
+            <div className="text-2xl font-bold text-blue-600">{stats.totalMovements}</div>
+            <div className="text-sm text-gray-600">إجمالي الحركات</div>
+          </div>
+          
+          <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
+            <div className="text-2xl font-bold text-green-600">{stats.todayMovements}</div>
+            <div className="text-sm text-gray-600">حركات اليوم</div>
+          </div>
+          
+          <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
+            <div className="text-2xl font-bold text-emerald-600">+{stats.totalAdditions}</div>
+            <div className="text-sm text-gray-600">إجمالي الإضافات</div>
+          </div>
+          
+          <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
+            <div className="text-2xl font-bold text-red-600">-{stats.totalDeductions}</div>
+            <div className="text-sm text-gray-600">إجمالي الخصميات</div>
+          </div>
+          
+          <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
+            <div className="text-2xl font-bold text-purple-600">{stats.uniqueProducts}</div>
+            <div className="text-sm text-gray-600">المنتجات المتأثرة</div>
+          </div>
+        </div>
       </div>
 
-      {/* فلاتر البحث */}
-      <div className="bg-white p-4 rounded-lg border border-gray-200">
-        <h3 className="text-sm font-medium text-gray-700 mb-3">فلاتر البحث</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* فلاتر البحث المحسنة */}
+      <div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4">
+          <h3 className="text-base font-medium text-gray-700">فلاتر البحث والتصفية</h3>
+          <div className="flex items-center gap-2 mt-2 sm:mt-0">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={filters.showToday}
+                onChange={(e) => setFilters({...filters, showToday: e.target.checked})}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-gray-700">اليوم فقط</span>
+            </label>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {/* البحث العام */}
+          <div className="xl:col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1">البحث العام</label>
+            <input
+              type="text"
+              placeholder="ابحث في المنتج، السبب، الملاحظات، رقم الطلب..."
+              value={filters.searchTerm}
+              onChange={(e) => setFilters({...filters, searchTerm: e.target.value})}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+            />
+          </div>
+
+          {/* المنتج */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">المنتج</label>
             <select
               value={filters.productName}
               onChange={(e) => setFilters({...filters, productName: e.target.value})}
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             >
               <option value="">جميع المنتجات</option>
               {stockItems.map((item: any) => (
@@ -2386,112 +2623,264 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             </select>
           </div>
 
+          {/* نوع العملية */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">نوع العملية</label>
+            <select
+              value={filters.type}
+              onChange={(e) => setFilters({...filters, type: e.target.value})}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+            >
+              <option value="all">جميع العمليات</option>
+              <option value="initial">إضافة أولية</option>
+              <option value="add_stock">إضافة مخزون</option>
+              <option value="sale">مبيعات (شحن)</option>
+              <option value="return">مرتجعات</option>
+              <option value="damage">تالف</option>
+              <option value="loss">مفقود</option>
+              <option value="adjustment">تعديل يدوي</option>
+            </select>
+          </div>
+
+          {/* من تاريخ */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">من تاريخ</label>
             <input
               type="date"
               value={filters.dateFrom}
               onChange={(e) => setFilters({...filters, dateFrom: e.target.value})}
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             />
           </div>
 
+          {/* إلى تاريخ */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">إلى تاريخ</label>
             <input
               type="date"
               value={filters.dateTo}
               onChange={(e) => setFilters({...filters, dateTo: e.target.value})}
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             />
           </div>
 
+          {/* ترتيب النتائج */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">نوع العملية</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">ترتيب النتائج</label>
             <select
-              value={filters.type}
-              onChange={(e) => setFilters({...filters, type: e.target.value})}
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+              value={filters.sortBy}
+              onChange={(e) => setFilters({...filters, sortBy: e.target.value})}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             >
-              <option value="all">جميع العمليات</option>
-              <option value="add_stock">إضافة مخزون</option>
-              <option value="return">مرتجعات</option>
-              <option value="damage">تلف/مفقود</option>
-              <option value="sale">مبيعات</option>
+              <option value="newest">الأحدث أولاً</option>
+              <option value="oldest">الأقدم أولاً</option>
+              <option value="quantity_desc">الكمية (الأكبر أولاً)</option>
+              <option value="quantity_asc">الكمية (الأصغر أولاً)</option>
             </select>
           </div>
         </div>
+
+        {/* أزرار إعادة تعيين الفلاتر */}
+        <div className="flex justify-end mt-4 pt-4 border-t border-gray-200">
+          <button
+            onClick={() => setFilters({
+              productName: '',
+              dateFrom: '',
+              dateTo: '',
+              type: 'all',
+              searchTerm: '',
+              sortBy: 'newest',
+              showToday: false
+            })}
+            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            إعادة تعيين الفلاتر
+          </button>
+        </div>
       </div>
 
-      {/* جدول حركة المخزون */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
-          <h3 className="text-base sm:text-lg font-medium text-gray-900">
-            سجل الحركات ({filteredMovements.length})
-          </h3>
+      {/* جدول حركة المخزون المحسن */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center">
+            <h3 className="text-base sm:text-lg font-medium text-gray-900">
+              سجل الحركات المفصل ({filteredMovements.length} من {movements.length})
+            </h3>
+            <div className="text-sm text-gray-600 mt-2 sm:mt-0">
+              آخر تحديث: {new Date().toLocaleString('ar-EG', { timeZone: 'Africa/Cairo' })}
+            </div>
+          </div>
         </div>
+        
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">التاريخ</th>
-                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">المنتج</th>
-                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">العملية</th>
-                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm">الكمية</th>
-                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm hidden sm:table-cell">السبب</th>
-                <th className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium text-gray-700 text-xs sm:text-sm hidden lg:table-cell">التكلفة</th>
+                <th className="px-3 sm:px-4 py-3 text-right font-semibold text-gray-700 text-xs sm:text-sm">
+                  التاريخ والوقت
+                </th>
+                <th className="px-3 sm:px-4 py-3 text-right font-semibold text-gray-700 text-xs sm:text-sm">
+                  المنتج
+                </th>
+                <th className="px-3 sm:px-4 py-3 text-right font-semibold text-gray-700 text-xs sm:text-sm">
+                  العملية
+                </th>
+                <th className="px-3 sm:px-4 py-3 text-right font-semibold text-gray-700 text-xs sm:text-sm">
+                  الكمية
+                </th>
+                <th className="px-3 sm:px-4 py-3 text-right font-semibold text-gray-700 text-xs sm:text-sm hidden sm:table-cell">
+                  السبب
+                </th>
+                <th className="px-3 sm:px-4 py-3 text-right font-semibold text-gray-700 text-xs sm:text-sm hidden md:table-cell">
+                  المورد
+                </th>
+                <th className="px-3 sm:px-4 py-3 text-right font-semibold text-gray-700 text-xs sm:text-sm hidden lg:table-cell">
+                  التكلفة
+                </th>
+                <th className="px-3 sm:px-4 py-3 text-right font-semibold text-gray-700 text-xs sm:text-sm hidden lg:table-cell">
+                  رقم الطلب
+                </th>
+                <th className="px-3 sm:px-4 py-3 text-right font-semibold text-gray-700 text-xs sm:text-sm hidden xl:table-cell">
+                  ملاحظات
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredMovements.map((movement: any, index: number) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-2 sm:px-3 py-3 sm:py-4 text-xs sm:text-sm text-gray-900">
-                    {new Date(movement.date).toLocaleDateString('ar-EG')}
-                  </td>
-                  <td className="px-2 sm:px-3 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">
-                    {movement.productName}
-                  </td>
-                  <td className="px-2 sm:px-3 py-3 sm:py-4">
-                    <span className={`px-1.5 sm:px-2 py-1 text-xs font-medium rounded-full ${
-                      movement.type === 'add_stock' ? 'bg-green-100 text-green-800' :
-                      movement.type === 'return' ? 'bg-blue-100 text-blue-800' :
-                      movement.type === 'damage' ? 'bg-red-100 text-red-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {movement.type === 'add_stock' ? 'إضافة مخزون' :
-                       movement.type === 'return' ? 'مرتجع' :
-                       movement.type === 'damage' ? 'تلف/مفقود' :
-                       movement.typeLabel || movement.type}
-                    </span>
-                  </td>
-                  <td className="px-2 sm:px-3 py-3 sm:py-4">
-                    <span className={`font-bold text-xs sm:text-sm ${
-                      movement.quantity > 0 ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {movement.quantity > 0 ? '+' : ''}{movement.quantity}
-                    </span>
-                  </td>
-                  <td className="px-2 sm:px-3 py-3 sm:py-4 text-xs sm:text-sm text-gray-600 hidden sm:table-cell">
-                    {movement.reason || '-'}
-                  </td>
-                  <td className="px-2 sm:px-3 py-3 sm:py-4 text-xs sm:text-sm text-gray-600 hidden lg:table-cell">
-                    {movement.cost ? `${movement.cost} ج.م` : '-'}
-                  </td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-gray-100">
+              {filteredMovements.map((movement: any, index: number) => {
+                const dateTime = formatEgyptianDateTime(movement.timestamp || movement.date);
+                const isToday = new Date(movement.timestamp || movement.date || '').toISOString().split('T')[0] === new Date().toISOString().split('T')[0];
+                
+                return (
+                  <tr 
+                    key={movement.id || index} 
+                    className={`hover:bg-gray-50 transition-colors ${isToday ? 'bg-blue-50' : ''}`}
+                  >
+                    <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm">
+                      <div className="space-y-1">
+                        <div className="font-medium text-gray-900">{dateTime.date}</div>
+                        {dateTime.time && (
+                          <div className="text-gray-600 font-mono text-xs">{dateTime.time}</div>
+                        )}
+                        {isToday && (
+                          <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full inline-block">
+                            اليوم
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    
+                    <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm">
+                      <div className="font-medium text-gray-900">{movement.productName}</div>
+                    </td>
+                    
+                    <td className="px-3 sm:px-4 py-3">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-lg border ${getOperationColor(movement.type, movement.quantity)}`}>
+                        {getOperationLabel(movement.type)}
+                      </span>
+                    </td>
+                    
+                    <td className="px-3 sm:px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <span className={`font-bold text-sm ${movement.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {movement.quantity > 0 ? '+' : ''}{movement.quantity}
+                        </span>
+                        {movement.quantity > 0 ? (
+                          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+                          </svg>
+                        )}
+                      </div>
+                    </td>
+                    
+                    <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-gray-600 hidden sm:table-cell">
+                      <div className="max-w-32 truncate" title={movement.reason || '-'}>
+                        {movement.reason || '-'}
+                      </div>
+                    </td>
+                    
+                    <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-gray-600 hidden md:table-cell">
+                      <div className="max-w-24 truncate" title={movement.supplier || '-'}>
+                        {movement.supplier || '-'}
+                      </div>
+                    </td>
+                    
+                    <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm hidden lg:table-cell">
+                      {movement.cost && movement.cost > 0 ? (
+                        <span className="font-medium text-gray-900">
+                          {movement.cost.toLocaleString()} ج.م
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    
+                    <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm hidden lg:table-cell">
+                      {movement.orderId ? (
+                        <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-xs font-medium">
+                          #{movement.orderId}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    
+                    <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-gray-600 hidden xl:table-cell">
+                      <div className="max-w-32 truncate" title={movement.notes || '-'}>
+                        {movement.notes || '-'}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
+        {/* حالة عدم وجود نتائج */}
         {filteredMovements.length === 0 && (
-          <div className="text-center py-8 sm:py-12">
-            <div className="p-3 sm:p-4 bg-gray-100 rounded-full w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 flex items-center justify-center">
-              <svg className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="text-center py-12">
+            <div className="p-4 bg-gray-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">لا توجد حركات</h3>
-            <p className="text-gray-500 mb-4 text-sm sm:text-base">لم يتم العثور على حركات مخزون بالفلاتر المحددة</p>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">لا توجد حركات مطابقة</h3>
+            <p className="text-gray-500 mb-4">
+              {movements.length === 0 
+                ? 'لم يتم تسجيل أي حركات مخزون بعد'
+                : 'لم يتم العثور على حركات مخزون بالفلاتر المحددة'
+              }
+            </p>
+            {movements.length === 0 && (
+              <button
+                onClick={onAddStock}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                إضافة أول حركة مخزون
+              </button>
+            )}
+          </div>
+        )}
+        
+        {/* معلومات التصفح */}
+        {filteredMovements.length > 0 && (
+          <div className="px-4 sm:px-6 py-3 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-sm text-gray-600">
+              <div>
+                عرض {filteredMovements.length} من إجمالي {movements.length} حركة
+              </div>
+              <div className="mt-2 sm:mt-0">
+                {stats.todayMovements > 0 && (
+                  <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                    {stats.todayMovements} حركة اليوم
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
