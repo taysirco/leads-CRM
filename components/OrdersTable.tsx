@@ -1144,7 +1144,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                         type="text"
                         value={editingOrder.whatsapp || ''}
                         onChange={(e) => handleUpdateField('whatsapp', e.target.value)}
-                        placeholder="01XXXXXXXXX (إذا كان مختلف عن رقم الهاتف)"
+                        placeholder="01XXXXXXXXX"
                         className="w-full pr-12 pl-3 sm:pl-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base"
                       />
                     </div>
@@ -1152,7 +1152,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       {editingOrder.whatsapp && editingOrder.whatsapp.trim() ? (
                         <span className="text-green-600">الرقم الكامل: +20{editingOrder.whatsapp}</span>
                       ) : (
-                        <span>اتركه فارغاً إذا كان نفس رقم الهاتف</span>
+                        <span></span>
                       )}
                     </div>
                   </div>
