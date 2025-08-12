@@ -1350,9 +1350,66 @@ export async function fetchLeads() {
 
   const headers = rows[0].map((h: string) => (h || '').trim());
   const headerMap: { [key: string]: number } = headers.reduce((map: { [key: string]: number }, header, index) => {
-    map[header.toLowerCase()] = index;
+    map[header] = index; // استخدام العنوان كما هو بدون تحويل
     return map;
   }, {});
+
+  // طباعة العناوين للتشخيص في وضع التطوير
+  if (process.env.NODE_ENV === 'development') {
+    console.log('📋 عناوين الأعمدة:', headers);
+    console.log('🗺️ خريطة العناوين:', headerMap);
+    console.log('📍 فهرس عمود الهاتف:', headerMap['رقم الهاتف']);
+    console.log('📍 فهرس عمود الواتساب:', headerMap['رقم الواتساب']);
+    
+    // فحص العناوين المتاحة
+    console.log('🔍 جميع العناوين المتاحة:');
+    headers.forEach((header, index) => {
+      console.log(`  ${index}: "${header}" (طول: ${header.length})`);
+    });
+  }
+
+  // دالة مساعدة للعثور على العمود بطريقة مرنة
+  const findColumnIndex = (searchTerms: string[]): number => {
+    for (const term of searchTerms) {
+      if (headerMap[term] !== undefined) {
+        return headerMap[term];
+      }
+    }
+    
+    // بحث ضبابي إذا لم نجد تطابق مباشر
+    for (let i = 0; i < headers.length; i++) {
+      const header = headers[i].toLowerCase();
+      for (const term of searchTerms) {
+        if (header.includes(term.toLowerCase()) || term.toLowerCase().includes(header)) {
+          console.log(`🔍 وُجد عمود بالبحث الضبابي: "${headers[i]}" للبحث عن: ${term}`);
+          return i;
+        }
+      }
+    }
+    
+    return -1;
+  };
+
+  // العثور على فهارس الأعمدة
+  const phoneColumnIndex = findColumnIndex(['رقم الهاتف', 'الهاتف', 'phone', 'Phone']);
+  const whatsappColumnIndex = findColumnIndex(['رقم الواتساب', 'الواتساب', 'واتساب', 'whatsapp', 'WhatsApp']);
+
+  // استخدام فهارس ثابتة كبديل إذا لم نجد العناوين
+  const finalPhoneColumnIndex = phoneColumnIndex >= 0 ? phoneColumnIndex : 2; // العمود C (فهرس 2)
+  const finalWhatsappColumnIndex = whatsappColumnIndex >= 0 ? whatsappColumnIndex : 3; // العمود D (فهرس 3)
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log('📱 فهرس عمود الهاتف النهائي:', finalPhoneColumnIndex);
+    console.log('💬 فهرس عمود الواتساب النهائي:', finalWhatsappColumnIndex);
+  }
+
+  // التحقق من وجود الأعمدة المطلوبة
+  if (phoneColumnIndex === -1) {
+    console.error('❌ لم يتم العثور على عمود رقم الهاتف');
+  }
+  if (whatsappColumnIndex === -1) {
+    console.error('❌ لم يتم العثور على عمود رقم الواتساب');
+  }
 
   return rows.slice(1).map((row, index) => {
     const rowIndex = index + 2;
@@ -1361,95 +1418,134 @@ export async function fetchLeads() {
     const cleanAndFormatEgyptianPhone = (phoneStr: string): string => {
       if (!phoneStr) return '';
       
+      const originalInput = phoneStr.toString();
+      
       // تنظيف شامل: إزالة كل شيء عدا الأرقام
-      let cleaned = phoneStr.toString().replace(/\D/g, '');
+      let cleaned = originalInput.replace(/\D/g, '');
       
       if (!cleaned) return '';
+      
+      let result = '';
       
       // معالجة الحالات المختلفة للأرقام المصرية
       // الحالة 1: رقم دولي كامل (201XXXXXXXXX - 12 رقم)
       if (cleaned.length === 12 && cleaned.startsWith('201')) {
-        return '0' + cleaned.substring(2); // تحويل إلى 01XXXXXXXXX
+        result = '0' + cleaned.substring(2); // تحويل إلى 01XXXXXXXXX
       }
-      
       // الحالة 2: رقم محلي صحيح (01XXXXXXXXX - 11 رقم)
-      if (cleaned.length === 11 && cleaned.startsWith('01')) {
-        return cleaned; // صحيح كما هو
+      else if (cleaned.length === 11 && cleaned.startsWith('01')) {
+        result = cleaned; // صحيح كما هو
       }
-      
       // الحالة 3: رقم بدون الصفر الأول (1XXXXXXXXX - 10 أرقام)
-      if (cleaned.length === 10 && cleaned.startsWith('1')) {
-        return '0' + cleaned; // إضافة الصفر → 01XXXXXXXXX
+      else if (cleaned.length === 10 && cleaned.startsWith('1')) {
+        result = '0' + cleaned; // إضافة الصفر → 01XXXXXXXXX
       }
-      
       // الحالة 4: رقم يبدأ بـ 20 فقط (20XXXXXXXXX - 11 رقم)
-      if (cleaned.length === 11 && cleaned.startsWith('20')) {
-        return '0' + cleaned.substring(1); // تحويل إلى 01XXXXXXXXX
+      else if (cleaned.length === 11 && cleaned.startsWith('20')) {
+        result = '0' + cleaned.substring(1); // تحويل إلى 01XXXXXXXXX
       }
-      
       // الحالة 5: رقم يبدأ بـ 2 فقط (2XXXXXXXXX - 10 أرقام)
-      if (cleaned.length === 10 && cleaned.startsWith('2')) {
-        return '0' + cleaned; // إضافة الصفر → 02XXXXXXXXX
+      else if (cleaned.length === 10 && cleaned.startsWith('2')) {
+        result = '0' + cleaned; // إضافة الصفر → 02XXXXXXXXX
       }
-      
       // إذا لم يطابق أي حالة، حاول إصلاحه
-      if (cleaned.length >= 9) {
+      else if (cleaned.length >= 9) {
         // إذا كان الرقم طويل جداً، خذ آخر 10 أرقام وأضف 0
         if (cleaned.length > 11) {
           const last10 = cleaned.slice(-10);
           if (last10.startsWith('1') || last10.startsWith('2')) {
-            return '0' + last10;
+            result = '0' + last10;
+          } else {
+            result = cleaned; // إرجاع كما هو
           }
         }
-        
         // إذا كان الرقم قصير، حاول إضافة 01 في البداية
-        if (cleaned.length === 9) {
-          return '01' + cleaned;
+        else if (cleaned.length === 9) {
+          result = '01' + cleaned;
+        } else {
+          result = cleaned; // إرجاع كما هو
         }
+      } else {
+        // إرجاع الرقم كما هو إذا لم يمكن إصلاحه
+        result = cleaned;
       }
       
-      // إرجاع الرقم كما هو إذا لم يمكن إصلاحه
-      return cleaned;
+      // تسجيل عملية التنظيف للصف 120
+      if (rowIndex === 120 && originalInput) {
+        console.log(`🧹 تنظيف رقم للصف 120:`, {
+          original: originalInput,
+          cleaned: cleaned,
+          result: result,
+          length: cleaned.length,
+          startsWithPattern: cleaned.substring(0, 3)
+        });
+      }
+      
+      return result;
     };
     
     // تنظيف وتنسيق الأرقام
-    const phoneNumber = cleanAndFormatEgyptianPhone(row[headerMap['رقم الهاتف']] || '');
-    const whatsappNumber = cleanAndFormatEgyptianPhone(row[headerMap['رقم الواتساب']] || '');
+    const phoneNumber = cleanAndFormatEgyptianPhone(finalPhoneColumnIndex >= 0 ? (row[finalPhoneColumnIndex] || '') : '');
+    const whatsappNumber = cleanAndFormatEgyptianPhone(finalWhatsappColumnIndex >= 0 ? (row[finalWhatsappColumnIndex] || '') : '');
     
     // مقارنة ذكية للأرقام: إذا كانا متطابقان، لا نعرض الواتساب
-    const shouldShowWhatsApp = whatsappNumber && whatsappNumber !== phoneNumber;
+    // تنظيف إضافي للتأكد من المقارنة الدقيقة
+    const normalizedPhone = phoneNumber.trim();
+    const normalizedWhatsApp = whatsappNumber.trim();
+    
+    const shouldShowWhatsApp = normalizedWhatsApp && normalizedWhatsApp !== normalizedPhone;
     
     // تسجيل للتشخيص في وضع التطوير
     if (process.env.NODE_ENV === 'development' && (phoneNumber || whatsappNumber)) {
       console.log(`📱 معالجة أرقام الطلب ${rowIndex}:`, {
-        originalPhone: row[headerMap['رقم الهاتف']],
-        originalWhatsApp: row[headerMap['رقم الواتساب']],
+        originalPhone: finalPhoneColumnIndex >= 0 ? row[finalPhoneColumnIndex] : 'عمود غير موجود',
+        originalWhatsApp: finalWhatsappColumnIndex >= 0 ? row[finalWhatsappColumnIndex] : 'عمود غير موجود',
         cleanedPhone: phoneNumber,
         cleanedWhatsApp: whatsappNumber,
+        normalizedPhone: normalizedPhone,
+        normalizedWhatsApp: normalizedWhatsApp,
         shouldShowWhatsApp: shouldShowWhatsApp,
-        identical: phoneNumber === whatsappNumber
+        identical: normalizedPhone === normalizedWhatsApp
+      });
+    }
+    
+    // تسجيل خاص للصف 120
+    if (rowIndex === 120) {
+      console.log(`🔍 تشخيص خاص للصف 120:`, {
+        rowData: row,
+        phoneColumnIndex: finalPhoneColumnIndex,
+        whatsappColumnIndex: finalWhatsappColumnIndex,
+        rawPhone: finalPhoneColumnIndex >= 0 ? row[finalPhoneColumnIndex] : 'عمود غير موجود',
+        rawWhatsApp: finalWhatsappColumnIndex >= 0 ? row[finalWhatsappColumnIndex] : 'عمود غير موجود',
+        cleanedPhone: phoneNumber,
+        cleanedWhatsApp: whatsappNumber,
+        normalizedPhone: normalizedPhone,
+        normalizedWhatsApp: normalizedWhatsApp,
+        shouldShowWhatsApp: shouldShowWhatsApp,
+        comparison: normalizedPhone === normalizedWhatsApp ? 'متطابقان' : 'مختلفان',
+        finalWhatsAppValue: shouldShowWhatsApp ? normalizedWhatsApp : ''
       });
     }
     
     return {
       id: rowIndex,
       rowIndex,
-      orderDate: row[headerMap['تاريخ الطلب']] || '',
-      name: row[headerMap['الاسم']] || '',
-      phone: phoneNumber,
-      whatsapp: shouldShowWhatsApp ? whatsappNumber : '', // عرض الواتساب فقط إذا كان مختلف
-      governorate: row[headerMap['المحافظة']] || '',
-      area: row[headerMap['المنطقة']] || '',
-      address: row[headerMap['العنوان']] || '',
-      orderDetails: row[headerMap['تفاصيل الطلب']] || '',
-      quantity: row[headerMap['الكمية']] || '',
-      totalPrice: row[headerMap['إجمالي السعر']] || '',
-      productName: row[headerMap['اسم المنتج']] || '',
-      status: row[headerMap['الحالة']] || '',
-      notes: row[headerMap['ملاحظات']] || '',
-      source: row[headerMap['المصدر']] || '',
-      whatsappSent: row[headerMap['ارسال واتس اب']] || '',
-      assignee: row[headerMap['المسؤول']] || ''
+      orderDate: row[0] || '', // العمود A
+      name: row[1] || '', // العمود B
+      phone: normalizedPhone, // العمود C
+      whatsapp: shouldShowWhatsApp ? normalizedWhatsApp : '', // العمود D - عرض الواتساب فقط إذا كان مختلف
+      governorate: row[4] || '', // العمود E
+      area: row[5] || '', // العمود F
+      address: row[6] || '', // العمود G
+      orderDetails: row[7] || '', // العمود H
+      quantity: row[8] || '', // العمود I
+      totalPrice: row[9] || '', // العمود J
+      productName: row[10] || '', // العمود K
+      status: row[11] || '', // العمود L
+      notes: row[12] || '', // العمود M
+      source: row[13] || '', // العمود N
+      whatsappSent: row[14] || '', // العمود O
+      assignee: row[15] || '' // العمود P
     };
   });
 }
