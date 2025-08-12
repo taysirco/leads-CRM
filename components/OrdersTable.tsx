@@ -870,14 +870,6 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                             />
                           </div>
                           
-                          {/* معلومات إضافية للتشخيص (مؤقت) */}
-                          {process.env.NODE_ENV === 'development' && (
-                            <div className="text-xs text-gray-400 bg-gray-50 p-1 rounded">
-                              <div>هاتف: "{order.phone}" | واتساب: "{order.whatsapp}"</div>
-                              <div>مختلف؟ {order.whatsapp !== order.phone ? 'نعم' : 'لا'}</div>
-                              <div>فارغ؟ {!order.whatsapp || !order.whatsapp.trim() ? 'نعم' : 'لا'}</div>
-                            </div>
-                          )}
                         </div>
                       </td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4 hidden md:table-cell">
