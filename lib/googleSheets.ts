@@ -1,8 +1,4 @@
 import { google } from 'googleapis';
-import { silenceLogsIfProduction } from './logger';
-
-silenceLogsIfProduction();
-
 import { formatEgyptianPhone } from './phoneFormatter';
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID as string;
@@ -935,13 +931,13 @@ export async function getStockMovements(): Promise<StockMovement[]> {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range,
-    });
+  });
 
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
+  const rows = response.data.values;
+  if (!rows || rows.length === 0) {
       console.log('📋 لا توجد حركات مخزون مسجلة');
-      return [];
-    }
+    return [];
+  }
 
     // تحويل البيانات إلى كائنات منطقية مع الأعمدة الجديدة
     const movements: StockMovement[] = [];
@@ -1355,8 +1351,8 @@ export async function addStockMovement(movement: Partial<StockMovement>) {
       reason: movement.reason
     });
     
-    const auth = getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
     const spreadsheetId = process.env.GOOGLE_SHEET_ID;
     
     if (!spreadsheetId) {
@@ -1912,11 +1908,11 @@ export async function updateLeadsBatch(updates: Array<{ rowNumber: number; updat
 // دالة للحصول على إحصائيات الطلبات
 export async function getOrderStatistics() {
   try {
-    const leads = await fetchLeads();
-    
+  const leads = await fetchLeads();
+
     // الإحصائيات العامة
     const overall = {
-      total: leads.length,
+    total: leads.length,
       confirmed: leads.filter(lead => ['تم التأكيد', 'تم الشحن'].includes(lead.status)).length,
       pending: leads.filter(lead => ['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)).length,
       rejected: leads.filter(lead => lead.status === 'رفض التأكيد').length,
@@ -2437,4 +2433,4 @@ export async function resetStockMovementsHeaders(): Promise<{ success: boolean; 
       message: `فشل في إعادة تنظيم stock_movements: ${error}`
     };
   }
-}
+} 
