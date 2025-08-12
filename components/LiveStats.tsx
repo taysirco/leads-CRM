@@ -34,8 +34,22 @@ const LiveStats: React.FC<LiveStatsProps> = ({ orders }) => {
   const revenue = orders
     .filter(o => o.status === 'تم الشحن')
     .reduce((sum, order) => {
-      const price = parseFloat(order.totalPrice?.replace(/[^\d.]/g, '') || '0');
-      return sum + price;
+      // التعامل مع totalPrice سواء كان string أو number
+      const totalPriceValue = order.totalPrice;
+      let price = 0;
+      
+      if (typeof totalPriceValue === 'string') {
+        // إذا كان نص، نظف الرموز واستخرج الرقم
+        price = parseFloat(totalPriceValue.replace(/[^\d.]/g, '') || '0');
+      } else if (typeof totalPriceValue === 'number') {
+        // إذا كان رقم، استخدمه مباشرة
+        price = totalPriceValue;
+      } else {
+        // في حالة null أو undefined أو أي نوع آخر
+        price = 0;
+      }
+      
+      return sum + (isNaN(price) ? 0 : price);
     }, 0);
 
   // Detect changes and trigger animations/sounds

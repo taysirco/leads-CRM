@@ -294,7 +294,16 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
 
       // --- Order Details ---
       'Type': 'Cash Collection', // Default type as per requirement
-      'Cash Amount': order.totalPrice ? order.totalPrice.replace(/\D/g, '') : '0',
+      'Cash Amount': (() => {
+        const totalPriceValue = order.totalPrice;
+        if (typeof totalPriceValue === 'string') {
+          return totalPriceValue.replace(/\D/g, '') || '0';
+        } else if (typeof totalPriceValue === 'number') {
+          return String(totalPriceValue);
+        } else {
+          return '0';
+        }
+      })(),
       '#Items': order.quantity || '1',
       'Package Description': order.productName || order.orderDetails || 'Order',
       'Order Reference': `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}`, // Unique reference
