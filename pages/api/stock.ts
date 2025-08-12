@@ -111,6 +111,41 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
           message: `فشل في إنشاء المنتج التجريبي: ${error}` 
         });
       }
+      
+    case 'test-search':
+      console.log('🔍 اختبار البحث بالمتردفات...');
+      try {
+        const { searchTerm } = req.query;
+        if (!searchTerm) {
+          return res.status(400).json({ error: 'searchTerm مطلوب' });
+        }
+        
+        const stockData = await fetchStock(true);
+        const foundProduct = findProductBySynonyms(searchTerm as string, stockData.stockItems);
+        
+        return res.status(200).json({
+          success: true,
+          searchTerm,
+          found: !!foundProduct,
+          product: foundProduct ? {
+            name: foundProduct.productName,
+            currentQuantity: foundProduct.currentQuantity,
+            synonyms: foundProduct.synonyms
+          } : null,
+          totalProducts: stockData.stockItems.length,
+          allProducts: stockData.stockItems.map(item => ({
+            name: item.productName,
+            synonyms: item.synonyms,
+            quantity: item.currentQuantity
+          }))
+        });
+      } catch (error) {
+        console.error('❌ فشل اختبار البحث:', error);
+        return res.status(500).json({ 
+          success: false, 
+          message: `فشل في اختبار البحث: ${error}` 
+        });
+      }
 
     default:
       return res.status(400).json({ error: 'Invalid action parameter' });

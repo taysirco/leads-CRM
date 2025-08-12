@@ -574,15 +574,29 @@ export async function deductStock(productName: string, quantity: number, orderId
     if (!stockItem) {
       console.error(`❌ المنتج "${productName}" غير موجود في المخزون`);
       
-      // اقتراح منتجات مشابهة
+      // اقتراح منتجات مشابهة بشكل أكثر ذكاءً
       const suggestions = stockItems.stockItems
         .filter(item => {
           const itemName = item.productName.toLowerCase();
           const searchName = productName.toLowerCase();
-          return itemName.includes('جرس') || itemName.includes('باب') || itemName.includes('كاميرا') ||
+          
+          // البحث عن كلمات مشتركة
+          const searchWords = searchName.split(' ').filter(w => w.length > 2);
+          const itemWords = itemName.split(' ').filter(w => w.length > 2);
+          
+          // إذا كان هناك كلمات مشتركة
+          const commonWords = searchWords.some(sw => 
+            itemWords.some(iw => iw.includes(sw) || sw.includes(iw))
+          );
+          
+          // أو البحث في المتردفات
+          const synonymMatch = item.synonyms && item.synonyms.toLowerCase().includes(searchName.substring(0, 4));
+          
+          return commonWords || synonymMatch ||
+                 itemName.includes('جرس') || itemName.includes('باب') || itemName.includes('كاميرا') ||
                  searchName.includes(itemName.split(' ')[0]) || itemName.includes(searchName.split(' ')[0]);
         })
-        .map(item => item.productName)
+        .map(item => `${item.productName} (الكمية: ${item.currentQuantity})`)
         .slice(0, 3);
       
       let suggestionText = '';
@@ -590,13 +604,32 @@ export async function deductStock(productName: string, quantity: number, orderId
         suggestionText = `\n\n💡 منتجات مشابهة متاحة:\n${suggestions.map(s => `• ${s}`).join('\n')}`;
       }
       
+      // إضافة معلومات عن المتردفات
+      let synonymInfo = '\n\n🔍 للبحث بالمتردفات، تأكد من أن اسم المنتج في الطلب يطابق:\n';
+      synonymInfo += '• الاسم الأساسي للمنتج في المخزون\n';
+      synonymInfo += '• أو أحد المتردفات المسجلة للمنتج\n';
+      synonymInfo += '\n📋 أمثلة على المتردفات الموجودة:\n';
+      
+      stockItems.stockItems.slice(0, 3).forEach(item => {
+        if (item.synonyms) {
+          synonymInfo += `• "${item.productName}": ${item.synonyms}\n`;
+        }
+      });
+      
       return {
         success: false,
-        message: `المنتج "${productName}" غير موجود في المخزون${suggestionText}`
+        message: `المنتج "${productName}" غير موجود في المخزون${suggestionText}${synonymInfo}`
       };
     }
 
     console.log(`📊 المنتج الموجود: "${stockItem.productName}" | الكمية المتاحة: ${stockItem.currentQuantity} | المطلوب: ${quantity}`);
+
+    // توضيح كيف تم العثور على المنتج
+    if (stockItem.productName.toLowerCase().trim() === productName.toLowerCase().trim()) {
+      console.log(`✅ تم العثور على المنتج بالاسم الأساسي`);
+    } else {
+      console.log(`✅ تم العثور على المنتج بالمتردفات - الاسم الأساسي: "${stockItem.productName}"`);
+    }
 
     if (stockItem.currentQuantity < quantity) {
       console.error(`❌ المخزون غير كافي للمنتج "${stockItem.productName}": متوفر ${stockItem.currentQuantity}، مطلوب ${quantity}`);
