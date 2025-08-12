@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import StatusBadge from './StatusBadge';
 import WhatsAppTemplates from './WhatsAppTemplates';
-import { testPhoneFormatter, formatPhoneForDisplay } from '../lib/phoneFormatter';
+import { testPhoneFormatter, formatPhoneForDisplay, formatEgyptianPhone } from '../lib/phoneFormatter';
 import { cleanText, getUniqueProducts, compareCleanText, testProductCleaning, analyzeOrderStatuses, testStatusFilter } from '../lib/textCleaner';
 
 interface Order {
@@ -334,7 +334,12 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
 
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return '';
-    return phone.startsWith('+') ? phone.substring(1) : phone;
+    
+    // استخدام formatEgyptianPhone لتنسيق الرقم بشكل صحيح
+    const formatted = formatEgyptianPhone(phone);
+    
+    // إزالة علامة + للاستخدام مع WhatsApp
+    return formatted.startsWith('+') ? formatted.substring(1) : formatted;
   };
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
@@ -778,6 +783,10 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                           {/* عرض معلومات إضافية على الهواتف المحمولة */}
                           <div className="block sm:hidden space-y-1">
                             <div className="text-xs text-gray-600">📞 {order.phone}</div>
+                            {/* عرض رقم الواتساب إذا كان موجود ومختلف */}
+                            {order.whatsapp && order.whatsapp.trim() && order.whatsapp !== order.phone && (
+                              <div className="text-xs text-green-600 font-mono">📱 واتساب: {order.whatsapp}</div>
+                            )}
                             <div className="text-xs text-gray-600">📍 {order.governorate}</div>
                             <div className="text-xs text-green-700 font-medium">💰 {order.totalPrice}</div>
                           </div>
@@ -785,6 +794,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       </td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4 hidden sm:table-cell">
                         <div className="flex flex-col space-y-3">
+                          {/* عرض رقم الهاتف الأساسي */}
                           <div className="flex items-center gap-3">
                             <button
                               onClick={() => handleCopy(order.phone)}
@@ -797,6 +807,26 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                               <span className="text-gray-900 hidden sm:inline">{formatPhoneForDisplay(order.phone)}</span>
                             </button>
                           </div>
+                          
+                          {/* عرض رقم الواتساب إذا كان موجود وغير فارغ */}
+                          {order.whatsapp && order.whatsapp.trim() && (
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => handleCopy(order.whatsapp)}
+                                className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 bg-green-100 hover:bg-green-200 text-green-800 rounded-lg transition-all duration-200 text-xs sm:text-sm font-medium"
+                                title={`اضغط لنسخ الواتساب: ${formatPhoneForDisplay(order.whatsapp)}`}
+                              >
+                                <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                                </svg>
+                                <span className="text-gray-900 text-xs font-mono">
+                                  واتساب: {formatPhoneForDisplay(order.whatsapp)}
+                                </span>
+                              </button>
+                            </div>
+                          )}
+                          
+                          {/* أزرار WhatsApp */}
                           <div className="flex items-center gap-2">
                             {/* WhatsApp للرقم الأساسي */}
                             {order.phone && (
@@ -812,20 +842,22 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                                 </svg>
                               </a>
                             )}
-                            {/* WhatsApp للرقم الثاني إذا كان مختلف */}
-                            {order.whatsapp && order.whatsapp !== order.phone && (
+                            
+                            {/* WhatsApp لرقم الواتساب المنفصل */}
+                            {order.whatsapp && order.whatsapp.trim() && order.whatsapp !== order.phone && (
                               <a
                                 href={`https://wa.me/${formatPhoneNumber(order.whatsapp)}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-green-100 hover:bg-green-200 text-green-600 rounded-full transition-all duration-200 shadow-sm hover:shadow-md"
-                                title={`WhatsApp الثاني: ${order.whatsapp}`}
+                                className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-green-100 hover:bg-green-200 text-green-600 rounded-full transition-all duration-200 shadow-sm hover:shadow-md border-2 border-green-300"
+                                title={`WhatsApp المنفصل: ${order.whatsapp}`}
                               >
                                 <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 24 24">
                                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
                                 </svg>
                               </a>
                             )}
+                            
                             {/* رسائل WhatsApp الجاهزة */}
                             <WhatsAppTemplates
                               customer={{
@@ -837,6 +869,15 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                               orderStatus={order.status || 'جديد'}
                             />
                           </div>
+                          
+                          {/* معلومات إضافية للتشخيص (مؤقت) */}
+                          {process.env.NODE_ENV === 'development' && (
+                            <div className="text-xs text-gray-400 bg-gray-50 p-1 rounded">
+                              <div>هاتف: "{order.phone}" | واتساب: "{order.whatsapp}"</div>
+                              <div>مختلف؟ {order.whatsapp !== order.phone ? 'نعم' : 'لا'}</div>
+                              <div>فارغ؟ {!order.whatsapp || !order.whatsapp.trim() ? 'نعم' : 'لا'}</div>
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4 hidden md:table-cell">

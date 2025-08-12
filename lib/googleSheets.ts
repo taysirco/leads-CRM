@@ -1357,13 +1357,23 @@ export async function fetchLeads() {
   return rows.slice(1).map((row, index) => {
     const rowIndex = index + 2;
     
+    // دالة مساعدة لتنظيف أرقام الهاتف والواتساب
+    const cleanPhoneNumber = (phoneStr: string): string => {
+      if (!phoneStr) return '';
+      // إزالة المسافات والأحرف غير المرغوب فيها
+      return phoneStr.toString().trim().replace(/\s+/g, '');
+    };
+    
+    const phone = cleanPhoneNumber(row[headerMap['رقم الهاتف']] || '');
+    const whatsapp = cleanPhoneNumber(row[headerMap['رقم الواتساب']] || '');
+    
     return {
       id: rowIndex,
       rowIndex,
       orderDate: row[headerMap['تاريخ الطلب']] || '',
       name: row[headerMap['الاسم']] || '',
-      phone: row[headerMap['رقم الهاتف']] || '',
-      whatsapp: row[headerMap['رقم الواتساب']] || '',
+      phone: phone,
+      whatsapp: whatsapp,
       governorate: row[headerMap['المحافظة']] || '',
       area: row[headerMap['المنطقة']] || '',
       address: row[headerMap['العنوان']] || '',

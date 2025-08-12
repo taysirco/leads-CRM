@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import StatusBadge from './StatusBadge';
-import { formatPhoneForDisplay } from '../lib/phoneFormatter';
+import { formatPhoneForDisplay, formatEgyptianPhone } from '../lib/phoneFormatter';
 import { cleanText, getUniqueProducts } from '../lib/textCleaner';
 
 interface Order {
@@ -80,7 +80,9 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
     return orders.filter(order => {
       const matchesSearch = !searchTerm || 
         order.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.phone.includes(searchTerm);
+        order.phone.includes(searchTerm) ||
+        order.governorate.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.productName.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesSource = !sourceFilter || order.source === sourceFilter;
       const matchesGovernorate = !governorateFilter || order.governorate === governorateFilter;
@@ -103,7 +105,13 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
   };
 
   const formatPhoneNumber = (phone: string) => {
-    return phone.replace(/\+/g, '');
+    if (!phone) return '';
+    
+    // استخدام formatEgyptianPhone لتنسيق الرقم بشكل صحيح
+    const formatted = formatEgyptianPhone(phone);
+    
+    // إزالة علامة + للاستخدام مع WhatsApp
+    return formatted.startsWith('+') ? formatted.substring(1) : formatted;
   };
 
   const handleRestoreOrder = async (orderId: number, newStatus: string) => {
