@@ -165,11 +165,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         console.log(`📦 تحديث جماعي: ${orders.length} طلب إلى حالة "${status}"`);
         
+        // الخطوة 1: تحديث جميع الطلبات إلى الحالة الجديدة أولاً
+        console.log('🔄 الخطوة 1: تحديث حالة الطلبات...');
+        const updatePromises = orders.map((orderId: number) => updateLead(Number(orderId), { status }));
+        await Promise.all(updatePromises);
+        console.log('✅ تم تحديث جميع الطلبات بنجاح');
+        
         let stockResults: any[] = [];
         let failedOrders: number[] = [];
+        let ordersToRevert: number[] = [];
         
-        // إذا كانت الحالة الجديدة "تم الشحن"، نحتاج لخصم المخزون لكل طلب
+        // الخطوة 2: إذا كانت الحالة الجديدة "تم الشحن"، اخصم المخزون بعد التحديث
         if (status === 'تم الشحن') {
+          console.log('🚚 الخطوة 2: خصم المخزون بعد تأكيد الشحن...');
           const leads = await fetchLeads();
           
           for (const orderId of orders) {
@@ -180,7 +188,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 const quantity = parseInt(targetLead.quantity) || 1;
                 const productName = targetLead.productName || 'غير محدد';
                 
-                console.log(`🚚 معالجة شحن الطلب ${orderId}: ${quantity} × ${productName}`);
+                console.log(`🚚 معالجة خصم مخزون الطلب ${orderId}: ${quantity} × ${productName}`);
                 
                 const stockResult = await deductStock(productName, quantity, targetLead.id);
                 stockResults.push({
@@ -193,10 +201,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 if (!stockResult.success) {
                   console.error(`❌ فشل خصم مخزون الطلب ${orderId}: ${stockResult.message}`);
                   failedOrders.push(orderId);
+                  ordersToRevert.push(orderId);
                 }
               } else {
                 console.error(`❌ لم يتم العثور على الطلب ${orderId} أو بيانات ناقصة`);
                 failedOrders.push(orderId);
+                ordersToRevert.push(orderId);
                 stockResults.push({
                   orderId,
                   success: false,
@@ -206,6 +216,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             } catch (error) {
               console.error(`❌ خطأ في معالجة الطلب ${orderId}:`, error);
               failedOrders.push(orderId);
+              ordersToRevert.push(orderId);
               stockResults.push({
                 orderId,
                 success: false,
@@ -214,27 +225,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
           }
           
-          // إذا فشل أي طلب في خصم المخزون، أرجع خطأ مع التفاصيل
-          if (failedOrders.length > 0) {
+          // الخطوة 3: إرجاع الطلبات التي فشل خصم مخزونها إلى حالة سابقة
+          if (ordersToRevert.length > 0) {
+            console.log(`🔄 الخطوة 3: إرجاع ${ordersToRevert.length} طلب إلى حالة "تم التأكيد"...`);
+            try {
+              const revertPromises = ordersToRevert.map((orderId: number) => 
+                updateLead(Number(orderId), { status: 'تم التأكيد' })
+              );
+              await Promise.all(revertPromises);
+              console.log('✅ تم إرجاع الطلبات الفاشلة بنجاح');
+            } catch (revertError) {
+              console.error('❌ خطأ في إرجاع الطلبات:', revertError);
+            }
+            
             const failedStockResults = stockResults.filter(r => !r.success);
             const errorDetails = failedStockResults.map(r => 
               `• الطلب ${r.orderId}: ${r.message}${r.availableQuantity !== undefined ? ` (متوفر: ${r.availableQuantity})` : ''}`
             ).join('\n');
             
+            const successfulOrders = orders.filter((id: number) => !failedOrders.includes(id));
+            
             return res.status(400).json({
               error: 'فشل في شحن بعض الطلبات',
               stockError: true,
-              message: `❌ لا يمكن شحن ${failedOrders.length} من ${orders.length} طلب بسبب نقص المخزون:\n\n${errorDetails}`,
+              message: `❌ تم شحن ${successfulOrders.length} من ${orders.length} طلب فقط بسبب نقص المخزون:\n\n${errorDetails}\n\n⚠️ تم إرجاع الطلبات الفاشلة إلى حالة "تم التأكيد"`,
               failedOrders,
               stockResults,
-              successfulOrders: orders.filter((id: number) => !failedOrders.includes(id))
+              successfulOrders,
+              revertedOrders: ordersToRevert
             });
           }
         }
-        
-        // تحديث جميع الطلبات إذا نجحت عمليات المخزون
-        const updatePromises = orders.map((orderId: number) => updateLead(Number(orderId), { status }));
-        await Promise.all(updatePromises);
         
         const response: any = {
           success: true,
@@ -270,58 +291,87 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         console.log(`🚀 بدء تحديث الطلب ${rowNumber}...`);
         let stockResult = null;
+        let originalStatus = null;
         
-        // إذا تم تغيير الحالة إلى "تم الشحن"، اخصم من المخزون
+        // الخطوة 1: حفظ الحالة الأصلية إذا كان التحديث إلى "تم الشحن"
         if (updates.status === 'تم الشحن') {
+          console.log('🔍 الخطوة 1: جلب الحالة الأصلية للطلب...');
+          const leads = await fetchLeads();
+          const targetLead = leads.find(lead => lead.id === Number(rowNumber));
+          
+          if (!targetLead) {
+            console.error(`❌ لم يتم العثور على الطلب ${rowNumber}`);
+            return res.status(400).json({
+              error: 'لا يمكن الشحن',
+              stockError: true,
+              message: 'لم يتم العثور على بيانات الطلب في النظام'
+            });
+          }
+          
+          originalStatus = targetLead.status || 'جديد';
+          console.log(`📋 الحالة الأصلية للطلب ${rowNumber}: "${originalStatus}"`);
+          
+          // التحقق من وجود البيانات المطلوبة للشحن
+          const productName = targetLead!.productName?.trim();
+          const quantityStr = targetLead!.quantity?.toString().trim();
+          
+          if (!productName || !quantityStr) {
+            console.error(`❌ بيانات ناقصة للطلب ${rowNumber}: منتج=${productName}, كمية=${quantityStr}`);
+            return res.status(400).json({
+              error: 'لا يمكن الشحن',
+              stockError: true,
+              message: 'بيانات الطلب غير مكتملة (اسم المنتج أو الكمية مفقود)'
+            });
+          }
+        }
+        
+        // الخطوة 2: تحديث الطلب أولاً
+        console.log('🔄 الخطوة 2: تحديث حالة الطلب...');
+        await updateLead(Number(rowNumber), updates);
+        console.log('✅ تم تحديث الطلب بنجاح');
+        
+        // الخطوة 3: إذا تم تغيير الحالة إلى "تم الشحن"، اخصم من المخزون بعد التحديث
+        if (updates.status === 'تم الشحن') {
+          console.log('🚚 الخطوة 3: خصم المخزون بعد تأكيد الشحن...');
           try {
-            // جلب بيانات الطلب للحصول على معلومات المنتج
+            // جلب بيانات الطلب المحدثة
             const leads = await fetchLeads();
             const targetLead = leads.find(lead => lead.id === Number(rowNumber));
             
-            if (!targetLead) {
-              console.error(`❌ لم يتم العثور على الطلب ${rowNumber}`);
-              return res.status(400).json({
-                error: 'لا يمكن الشحن',
-                stockError: true,
-                message: 'لم يتم العثور على بيانات الطلب في النظام'
-              });
-            }
-            
-            // التحقق من وجود البيانات المطلوبة للشحن
             const productName = targetLead!.productName?.trim();
             const quantityStr = targetLead!.quantity?.toString().trim();
             const orderId = targetLead!.id;
+            const quantity = parseInt(quantityStr!) || 1;
             
-            if (!productName || !quantityStr) {
-              console.error(`❌ بيانات ناقصة للطلب ${rowNumber}: منتج=${productName}, كمية=${quantityStr}`);
-              return res.status(400).json({
-                error: 'لا يمكن الشحن',
-                stockError: true,
-                message: 'بيانات الطلب غير مكتملة (اسم المنتج أو الكمية مفقود)'
-              });
-            }
-            
-            const quantity = parseInt(quantityStr) || 1;
-            
-            console.log(`🚚 محاولة شحن الطلب ${rowNumber}: ${quantity} × ${productName}`);
+            console.log(`🚚 محاولة خصم مخزون الطلب ${rowNumber}: ${quantity} × ${productName}`);
             
             // خصم المخزون وتسجيل النتيجة
-            stockResult = await deductStock(productName, quantity, orderId);
+            stockResult = await deductStock(productName!, quantity, orderId);
             
             if (stockResult.success) {
               console.log(`✅ تم خصم المخزون بنجاح: ${stockResult.message}`);
             } else {
               console.error(`❌ فشل خصم المخزون: ${stockResult.message}`);
               
-              // في حالة عدم توفر المخزون، منع تحديث الحالة إلى "تم الشحن"
+              // الخطوة 4: إرجاع الطلب إلى حالته الأصلية في حالة فشل خصم المخزون
+              console.log(`🔄 الخطوة 4: إرجاع الطلب ${rowNumber} إلى الحالة الأصلية "${originalStatus}"...`);
+              try {
+                await updateLead(Number(rowNumber), { status: originalStatus });
+                console.log('✅ تم إرجاع الطلب إلى حالته الأصلية بنجاح');
+              } catch (revertError) {
+                console.error('❌ خطأ في إرجاع الطلب:', revertError);
+              }
+              
+              // في حالة عدم توفر المخزون، إرجاع خطأ مع تفاصيل الإرجاع
               if (stockResult.message.includes('المخزون غير كافي')) {
                 return res.status(400).json({
                   error: 'لا يمكن الشحن',
                   stockError: true,
-                  message: `⚠️ ${stockResult.message}`,
+                  message: `⚠️ ${stockResult.message}\n\n🔄 تم إرجاع الطلب إلى حالة "${originalStatus}"`,
                   availableQuantity: stockResult.availableQuantity,
                   requiredQuantity: quantity,
-                  productName: productName
+                  productName: productName,
+                  revertedToStatus: originalStatus
                 });
               }
               
@@ -329,23 +379,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               return res.status(500).json({
                 error: 'خطأ في نظام المخزون',
                 stockError: true,
-                message: `فشل في معالجة المخزون: ${stockResult.message}`
+                message: `فشل في معالجة المخزون: ${stockResult.message}\n\n🔄 تم إرجاع الطلب إلى حالة "${originalStatus}"`,
+                revertedToStatus: originalStatus
               });
             }
           } catch (stockError) {
             console.error(`❌ خطأ في خصم المخزون للطلب ${rowNumber}:`, stockError);
             
-            // في حالة خطأ في النظام، منع الشحن أيضاً
+            // إرجاع الطلب إلى حالته الأصلية في حالة خطأ النظام
+            console.log(`🔄 إرجاع الطلب ${rowNumber} إلى الحالة الأصلية "${originalStatus}" بسبب خطأ في النظام...`);
+            try {
+              await updateLead(Number(rowNumber), { status: originalStatus });
+              console.log('✅ تم إرجاع الطلب إلى حالته الأصلية بنجاح');
+            } catch (revertError) {
+              console.error('❌ خطأ في إرجاع الطلب:', revertError);
+            }
+            
             return res.status(500).json({
               error: 'خطأ في نظام المخزون',
               stockError: true,
-              message: 'حدث خطأ أثناء التحقق من المخزون. يرجى المحاولة مرة أخرى أو التحقق من المخزون يدوياً.'
+              message: `حدث خطأ أثناء التحقق من المخزون. تم إرجاع الطلب إلى حالة "${originalStatus}". يرجى المحاولة مرة أخرى أو التحقق من المخزون يدوياً.`,
+              revertedToStatus: originalStatus
             });
           }
         }
-        
-        // تحديث الطلب فقط إذا لم تكن هناك مشاكل في المخزون
-        await updateLead(Number(rowNumber), updates);
         
         // إرسال النتيجة مع معلومات المخزون إذا كانت متوفرة
         const response: any = { 
