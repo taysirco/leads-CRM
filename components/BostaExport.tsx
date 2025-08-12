@@ -358,7 +358,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
 
       // --- Order Details ---
       'Type': 'Cash Collection', // Default type as per requirement
-      'Cash Amount': String(order.totalPrice || '0').replace(/\D/g, '') || '0',
+      'Cash Amount': order.totalPrice ? String(order.totalPrice).replace(/\D/g, '') || '0' : '0',
       '#Items': order.quantity || '1',
       'Package Description': order.productName || order.orderDetails || 'Order',
       'Order Reference': `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}`, // Unique reference
@@ -473,20 +473,6 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
               </select>
             </div>
           </div>
-        </div>
-
-        <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <h3 className="font-medium text-blue-800 mb-2 text-sm sm:text-base">تصدير الطلبات المؤكدة:</h3>
-          <ul className="text-xs sm:text-sm text-blue-700 space-y-1">
-            <li>• يمكنك الآن تحديد وتصدير أي طلب مؤكد دون قيود.</li>
-            <li>• سيتم استخدام البيانات المتاحة. قد تحتاج إلى إكمال البيانات المفقودة في ملف Excel.</li>
-            <li className="font-bold">
-              • إجمالي الطلبات المؤكدة: <span className="text-blue-700">{orders.length}</span>
-            </li>
-            <li className="font-bold">
-              • الطلبات المعروضة: <span className="text-blue-700">{filteredOrders.length}</span>
-            </li>
-          </ul>
         </div>
 
         <div className="overflow-x-auto mb-4 sm:mb-6">
