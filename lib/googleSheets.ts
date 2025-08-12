@@ -424,52 +424,127 @@ export async function fetchStock(forceFresh = false): Promise<{ stockItems: Stoc
   }
 }
 
-// دالة محسنة للبحث عن المنتج بالمتردفات
+// دالة محسنة للبحث عن المنتج بالمتردفات مع مقارنة ذكية
 export function findProductBySynonyms(productName: string, stockItems: StockItem[]): StockItem | null {
   if (!productName || !stockItems || stockItems.length === 0) {
+    console.log('❌ معطيات غير صالحة للبحث');
     return null;
   }
 
+  console.log(`🔍 بدء البحث الذكي عن المنتج: "${productName}"`);
+
+  // تنظيف وتطبيع اسم المنتج المطلوب
   const normalizedSearchName = productName.toLowerCase().trim()
     .replace(/[إأآا]/g, 'ا')
     .replace(/[ىي]/g, 'ي')
     .replace(/ة/g, 'ه')
     .replace(/\s+/g, ' ');
 
-  for (const item of stockItems) {
-    // البحث في الاسم الأساسي
-    const normalizedItemName = item.productName.toLowerCase().trim()
+  // تقسيم اسم المنتج إلى كلمات (تجاهل الكلمات القصيرة جداً)
+  const searchWords = normalizedSearchName.split(' ')
+    .map(word => word.trim())
+    .filter(word => word.length >= 2); // تجاهل الكلمات أقل من حرفين
+
+  console.log(`📝 كلمات البحث المستخرجة: [${searchWords.join(', ')}]`);
+
+  // دالة مساعدة لتنظيف وتطبيع النص
+  const normalizeText = (text: string): string => {
+    return text.toLowerCase().trim()
       .replace(/[إأآا]/g, 'ا')
       .replace(/[ىي]/g, 'ي')
       .replace(/ة/g, 'ه')
       .replace(/\s+/g, ' ');
+  };
 
-    if (normalizedItemName === normalizedSearchName || 
-        normalizedItemName.includes(normalizedSearchName) || 
-        normalizedSearchName.includes(normalizedItemName)) {
-      return item;
+  // دالة للتحقق من وجود كلمات مشتركة
+  const hasCommonWords = (text: string, searchWords: string[]): { match: boolean; matchedWords: string[]; percentage: number } => {
+    const textWords = normalizeText(text).split(' ')
+      .map(word => word.trim())
+      .filter(word => word.length >= 2);
+    
+    const matchedWords: string[] = [];
+    
+    // البحث عن تطابقات مباشرة أو جزئية
+    searchWords.forEach(searchWord => {
+      textWords.forEach(textWord => {
+        // تطابق مباشر
+        if (textWord === searchWord) {
+          matchedWords.push(searchWord);
+        }
+        // تطابق جزئي (كلمة تحتوي على الأخرى)
+        else if (textWord.includes(searchWord) && searchWord.length >= 3) {
+          matchedWords.push(searchWord);
+        }
+        else if (searchWord.includes(textWord) && textWord.length >= 3) {
+          matchedWords.push(textWord);
+        }
+      });
+    });
+
+    // إزالة التكرارات
+    const uniqueMatches = [...new Set(matchedWords)];
+    const matchPercentage = (uniqueMatches.length / searchWords.length) * 100;
+    
+    return {
+      match: uniqueMatches.length > 0,
+      matchedWords: uniqueMatches,
+      percentage: Math.round(matchPercentage)
+    };
+  };
+
+  let bestMatch: StockItem | null = null;
+  let bestScore = 0;
+  let bestMatchDetails = '';
+
+  // البحث في جميع المنتجات
+  for (const item of stockItems) {
+    console.log(`\n🔎 فحص المنتج: "${item.productName}"`);
+    
+    // 1. البحث في الاسم الأساسي
+    const nameMatch = hasCommonWords(item.productName, searchWords);
+    console.log(`   📋 مطابقة الاسم الأساسي: ${nameMatch.match ? '✅' : '❌'} (${nameMatch.percentage}%) - كلمات متطابقة: [${nameMatch.matchedWords.join(', ')}]`);
+
+    if (nameMatch.match && nameMatch.percentage > bestScore) {
+      bestMatch = item;
+      bestScore = nameMatch.percentage;
+      bestMatchDetails = `اسم أساسي - ${nameMatch.percentage}% تطابق - كلمات: [${nameMatch.matchedWords.join(', ')}]`;
+      console.log(`   🎯 أفضل مطابقة جديدة: ${bestMatchDetails}`);
     }
 
-    // البحث في المتردفات
+    // 2. البحث في المتردفات
     if (item.synonyms) {
-      const synonyms = item.synonyms.split(',').map(s => s.trim());
-      for (const synonym of synonyms) {
-        const normalizedSynonym = synonym.toLowerCase().trim()
-          .replace(/[إأآا]/g, 'ا')
-          .replace(/[ىي]/g, 'ي')
-          .replace(/ة/g, 'ه')
-          .replace(/\s+/g, ' ');
+      const synonymsList = item.synonyms.split(',').map(s => s.trim()).filter(s => s.length > 0);
+      console.log(`   📚 المتردفات المتاحة: [${synonymsList.join(', ')}]`);
 
-        if (normalizedSynonym === normalizedSearchName || 
-            normalizedSynonym.includes(normalizedSearchName) || 
-            normalizedSearchName.includes(normalizedSynonym)) {
-          return item;
+      for (const synonym of synonymsList) {
+        const synonymMatch = hasCommonWords(synonym, searchWords);
+        console.log(`     🔍 مطابقة المترادف "${synonym}": ${synonymMatch.match ? '✅' : '❌'} (${synonymMatch.percentage}%) - كلمات: [${synonymMatch.matchedWords.join(', ')}]`);
+
+        if (synonymMatch.match && synonymMatch.percentage > bestScore) {
+          bestMatch = item;
+          bestScore = synonymMatch.percentage;
+          bestMatchDetails = `مترادف "${synonym}" - ${synonymMatch.percentage}% تطابق - كلمات: [${synonymMatch.matchedWords.join(', ')}]`;
+          console.log(`     🎯 أفضل مطابقة جديدة: ${bestMatchDetails}`);
         }
       }
+    } else {
+      console.log(`   📚 لا توجد متردفات لهذا المنتج`);
     }
   }
 
-  return null;
+  // النتيجة النهائية
+  if (bestMatch) {
+    console.log(`\n✅ تم العثور على المنتج بنجاح!`);
+    console.log(`📦 المنتج المطابق: "${bestMatch.productName}"`);
+    console.log(`🎯 تفاصيل المطابقة: ${bestMatchDetails}`);
+    console.log(`📊 نسبة التطابق: ${bestScore}%`);
+    console.log(`💰 الكمية المتاحة: ${bestMatch.currentQuantity}`);
+  } else {
+    console.log(`\n❌ لم يتم العثور على أي مطابقة للمنتج "${productName}"`);
+    console.log(`📝 كلمات البحث المستخدمة: [${searchWords.join(', ')}]`);
+  }
+
+  return bestMatch;
 }
 
 // دالة لإضافة أو تحديث منتج في المخزون
@@ -625,10 +700,17 @@ export async function deductStock(productName: string, quantity: number, orderId
     console.log(`📊 المنتج الموجود: "${stockItem.productName}" | الكمية المتاحة: ${stockItem.currentQuantity} | المطلوب: ${quantity}`);
 
     // توضيح كيف تم العثور على المنتج
-    if (stockItem.productName.toLowerCase().trim() === productName.toLowerCase().trim()) {
-      console.log(`✅ تم العثور على المنتج بالاسم الأساسي`);
+    const searchWords = productName.toLowerCase().trim().split(' ').filter(w => w.length >= 2);
+    const productWords = stockItem.productName.toLowerCase().trim().split(' ').filter(w => w.length >= 2);
+    const directMatch = searchWords.some(sw => productWords.some(pw => pw.includes(sw) || sw.includes(pw)));
+    
+    if (directMatch) {
+      console.log(`✅ تم العثور على المنتج بمطابقة ذكية للكلمات`);
+      console.log(`🔍 كلمات البحث: [${searchWords.join(', ')}]`);
+      console.log(`📦 كلمات المنتج: [${productWords.join(', ')}]`);
     } else {
-      console.log(`✅ تم العثور على المنتج بالمتردفات - الاسم الأساسي: "${stockItem.productName}"`);
+      console.log(`✅ تم العثور على المنتج عبر المتردفات`);
+      console.log(`📚 المتردفات المستخدمة: "${stockItem.synonyms}"`);
     }
 
     if (stockItem.currentQuantity < quantity) {

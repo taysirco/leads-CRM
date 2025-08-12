@@ -147,6 +147,45 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
         });
       }
 
+    case 'test-smart-search':
+      console.log('🧠 اختبار البحث الذكي المحسن...');
+      try {
+        const { searchTerm } = req.query;
+        if (!searchTerm) {
+          return res.status(400).json({ error: 'searchTerm مطلوب' });
+        }
+        
+        console.log(`\n🎯 ===== بدء اختبار البحث الذكي =====`);
+        console.log(`🔍 المنتج المطلوب: "${searchTerm}"`);
+        
+        const stockData = await fetchStock(true);
+        const foundProduct = findProductBySynonyms(searchTerm as string, stockData.stockItems);
+        
+        console.log(`\n📊 ===== نتائج البحث الذكي =====`);
+        
+        return res.status(200).json({
+          success: true,
+          searchTerm,
+          found: !!foundProduct,
+          product: foundProduct ? {
+            name: foundProduct.productName,
+            currentQuantity: foundProduct.currentQuantity,
+            synonyms: foundProduct.synonyms,
+            minThreshold: foundProduct.minThreshold
+          } : null,
+          message: foundProduct 
+            ? `✅ تم العثور على المنتج "${foundProduct.productName}" بنجاح!`
+            : `❌ لم يتم العثور على المنتج "${searchTerm}"`,
+          totalProducts: stockData.stockItems.length
+        });
+      } catch (error) {
+        console.error('❌ فشل اختبار البحث الذكي:', error);
+        return res.status(500).json({ 
+          success: false, 
+          message: `فشل في اختبار البحث الذكي: ${error}` 
+        });
+      }
+
     default:
       return res.status(400).json({ error: 'Invalid action parameter' });
   }
