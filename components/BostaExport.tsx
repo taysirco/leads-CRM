@@ -122,7 +122,8 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
           
           if (result.successfulOrders && result.successfulOrders.length > 0) {
             onDeselectAll();
-            await onUpdateOrder(0, {});
+            // إعادة تحديث البيانات بإعادة تحميل الصفحة للتأكد من التحديث الكامل
+      window.location.reload();
           }
           
           return;
@@ -143,7 +144,8 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       alert(successMessage);
       
       onDeselectAll();
-      await onUpdateOrder(0, {});
+      // إعادة تحديث البيانات بإعادة تحميل الصفحة للتأكد من التحديث الكامل
+      window.location.reload();
       
       console.log("🔄 تم تحديث البيانات بعد الأرشفة");
       

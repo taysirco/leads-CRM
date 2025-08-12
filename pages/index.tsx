@@ -80,6 +80,13 @@ export default function Home() {
 
   const handleUpdateOrder = async (orderId: number, updates: any): Promise<void> => {
     try {
+      // إذا كان orderId = 0، فهذا يعني طلب إعادة جلب البيانات فقط
+      if (orderId === 0) {
+        console.log('🔄 إعادة جلب البيانات...');
+        await mutate();
+        return;
+      }
+      
       const response = await fetch('/api/orders', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
