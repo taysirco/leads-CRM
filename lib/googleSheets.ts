@@ -1635,17 +1635,28 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
 
 // دالة لتحديث عدة طلبات
 export async function updateLeadsBatch(updates: Array<{ rowNumber: number; updates: Partial<LeadRow> }>) {
+  console.log(`🔄 تحديث مجمع لـ ${updates.length} ليد...`);
+  
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
 
   const requests = updates.map(({ rowNumber, updates: leadUpdates }) => {
     const values = [];
     
-    // إعداد القيم للتحديث
+    // إعداد القيم للتحديث - العمود P هو المسؤول (الفهرس 15)
     if (leadUpdates.assignee !== undefined) {
+      console.log(`📋 تعيين الليد في صف ${rowNumber} للموظف: ${leadUpdates.assignee}`);
       values.push({
-        range: `leads!Q${rowNumber}`, // عمود المسؤول
+        range: `leads!P${rowNumber}`, // العمود P (الفهرس 15) هو المسؤول
         values: [[leadUpdates.assignee]]
+      });
+    }
+    
+    // إضافة تحديثات أخرى إذا لزم الأمر
+    if (leadUpdates.status !== undefined) {
+      values.push({
+        range: `leads!L${rowNumber}`, // العمود L (الفهرس 11) هو الحالة
+        values: [[leadUpdates.status]]
       });
     }
     
@@ -1653,6 +1664,7 @@ export async function updateLeadsBatch(updates: Array<{ rowNumber: number; updat
   }).flat();
 
   if (requests.length > 0) {
+    console.log(`⚡ تنفيذ ${requests.length} تحديث مجمع...`);
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SHEET_ID,
       requestBody: {
@@ -1660,6 +1672,9 @@ export async function updateLeadsBatch(updates: Array<{ rowNumber: number; updat
         data: requests
       }
     });
+    console.log('✅ تم تنفيذ التحديث المجمع بنجاح');
+  } else {
+    console.log('⚠️ لا توجد تحديثات للتنفيذ');
   }
 }
 

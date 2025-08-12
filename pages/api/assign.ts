@@ -71,33 +71,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // توزيع عادل: نبدأ بالموظف الذي لديه أقل عدد (ترتيب تصاعدي)
-    const sortedEmployees = EMPLOYEES.slice().sort((a, b) => 
-      (currentCounts[a] || 0) - (currentCounts[b] || 0)
-    );
-
-    console.log('👥 ترتيب الموظفين حسب العبء الحالي:', 
-      sortedEmployees.map(emp => `${emp}: ${currentCounts[emp]}`).join(', '));
-
-    // توزيع دفعي للحفاظ على الكوتا (حد أقصى 100 في الدفعة الواحدة)
-    const maxBatchSize = 100;
+    // توزيع دفعي للحفاظ على الكوتا (حد أقصى 200 في الدفعة الواحدة)
+    const maxBatchSize = 200;
     const totalToDistribute = Math.min(unassigned.length, maxBatchSize);
     
     const updates: Array<{ rowNumber: number; updates: { assignee: string } }> = [];
     
-    // توزيع ذكي باستخدام Round-Robin مع مراعاة التوزيع الحالي
+    // توزيع ذكي ومتوازن: نعطي الأولوية للموظف الذي لديه أقل ليدز
     for (let i = 0; i < totalToDistribute; i++) {
-      // استخدام modulo للتوزيع الدائري
-      const employeeIndex = i % EMPLOYEES.length;
-      const assignee = sortedEmployees[employeeIndex];
+      const lead = unassigned[i];
+      
+      // العثور على الموظف الذي لديه أقل ليدز حالياً
+      const employeeWithLeastLeads = EMPLOYEES.reduce((minEmp, emp) => 
+        (currentCounts[emp] || 0) < (currentCounts[minEmp] || 0) ? emp : minEmp
+      );
+      
+      const assignee = employeeWithLeastLeads;
       
       // تحديث العداد المحلي لضمان التوزيع العادل في نفس الدفعة
       currentCounts[assignee] = (currentCounts[assignee] || 0) + 1;
       
-      console.log(`📋 تعيين الليد #${unassigned[i].id} (صف ${unassigned[i].rowIndex}) للموظف: ${assignee}`);
+      console.log(`📋 تعيين الليد #${lead.id} (صف ${lead.rowIndex}) للموظف: ${assignee} (إجمالي جديد: ${currentCounts[assignee]})`);
       
       updates.push({
-        rowNumber: unassigned[i].rowIndex,
+        rowNumber: lead.rowIndex,
         updates: { assignee }
       });
     }

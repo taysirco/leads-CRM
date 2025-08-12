@@ -27,6 +27,7 @@ function getEmployeesFromEnv(): string[] {
 const EMPLOYEES = getEmployeesFromEnv();
 let lastAutoAssignAt = 0; // ms timestamp
 let autoAssignInProgress = false; // منع التداخل
+let hasRunInitialAutoAssign = false; // ضمان التوزيع التلقائي عند التشغيل الأول
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'GET') {
@@ -44,7 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // توزيع تلقائي محسّن مع قيود صارمة لتجنب الكوتا
       const now = Date.now();
       const canAutoAssign = !autoAssignInProgress && 
-                          (now - lastAutoAssignAt > 120_000) && // مرة كل دقيقتين
+                          (!hasRunInitialAutoAssign || (now - lastAutoAssignAt > 60_000)) && // التشغيل الأول أو كل دقيقة
                           req.query.noAutoAssign !== 'true'; // السماح بتجاهل التوزيع التلقائي
       
       if (canAutoAssign) {
@@ -74,8 +75,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (unassigned.length > 0) {
             console.log(`📈 عدد الليدز غير المعينة: ${unassigned.length}`);
             
-            // حد أقصى 20 تحديث في الدفعة الواحدة لتوفير الكوتا
-            const batchSize = Math.min(20, unassigned.length);
+            // حد أقصى 50 تحديث في الدفعة الواحدة لضمان التوزيع السريع
+            const batchSize = Math.min(50, unassigned.length);
             const slice = unassigned.slice(0, batchSize);
             
             // ترتيب الموظفين حسب أقل عدد ليدز مُعينة (التوزيع العادل)
@@ -86,28 +87,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             console.log('👥 ترتيب الموظفين حسب العبء الحالي:', sortedEmployees.map(emp => 
               `${emp}: ${currentAssignments[emp]}`).join(', '));
             
-            // إنشاء دفعة التحديث مع توزيع ذكي
-            const batch = slice.map((lead, index) => {
-              // استخدام Round-Robin للتوزيع العادل
-              const assigneeIndex = index % EMPLOYEES.length;
-              const assignee = sortedEmployees[assigneeIndex];
+            // إنشاء دفعة التحديث مع توزيع ذكي ومتوازن
+            const batch = [];
+            
+            // توزيع متوازن: نوزع الليدز على الموظفين بالتناوب
+            for (let i = 0; i < slice.length; i++) {
+              const lead = slice[i];
+              
+              // العثور على الموظف الذي لديه أقل ليدز حالياً
+              const employeeWithLeastLeads = EMPLOYEES.reduce((minEmp, emp) => 
+                (currentAssignments[emp] || 0) < (currentAssignments[minEmp] || 0) ? emp : minEmp
+              );
+              
+              const assignee = employeeWithLeastLeads;
               
               // تحديث العداد المحلي لضمان التوزيع العادل في نفس الدفعة
               currentAssignments[assignee] = (currentAssignments[assignee] || 0) + 1;
               
-              console.log(`📋 تعيين الليد #${lead.id} (صف ${lead.rowIndex}) للموظف: ${assignee}`);
+              console.log(`📋 تعيين الليد #${lead.id} (صف ${lead.rowIndex}) للموظف: ${assignee} (إجمالي جديد: ${currentAssignments[assignee]})`);
               
-              return { 
+              batch.push({ 
                 rowNumber: lead.rowIndex, 
                 updates: { assignee } 
-              };
-            });
+              });
+            }
 
             console.log(`⚡ سيتم توزيع ${batch.length} ليد في هذه الدفعة`);
             
             // تنفيذ التحديث المجمع
             await updateLeadsBatch(batch);
             lastAutoAssignAt = now;
+            hasRunInitialAutoAssign = true; // تم تشغيل التوزيع التلقائي لأول مرة
             
             // إعادة جلب البيانات بعد التحديث للتأكد من التحديث
             leads = await fetchLeads();
