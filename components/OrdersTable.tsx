@@ -809,7 +809,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                           </div>
                           
                           {/* عرض رقم الواتساب إذا كان موجود وغير فارغ */}
-                          {order.whatsapp && order.whatsapp.trim() && (
+                          {order.whatsapp && order.whatsapp.trim() && order.whatsapp !== order.phone && (
                             <div className="flex items-center gap-3">
                               <button
                                 onClick={() => handleCopy(order.whatsapp)}
@@ -976,13 +976,30 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                               <div className="space-y-2">
-                                <span className="font-medium text-gray-700 text-sm">📞 رقم الهاتف الكامل</span>
-                                <p className="text-gray-900 font-mono bg-gray-50 px-3 py-2 rounded-lg">{order.phone || '-'}</p>
+                                <span className="font-medium text-gray-700 text-sm">📞 رقم الهاتف</span>
+                                <div className="bg-gray-50 px-3 py-2 rounded-lg">
+                                  <p className="text-gray-900 font-mono text-sm">
+                                    {order.phone ? `+20${order.phone}` : '-'}
+                                  </p>
+                                  {order.phone && (
+                                    <p className="text-xs text-gray-500 mt-1">محلي: {order.phone}</p>
+                                  )}
+                                </div>
                               </div>
-                              <div className="space-y-2">
-                                <span className="font-medium text-gray-700 text-sm">💬 رقم الواتساب</span>
-                                <p className="text-gray-900 font-mono bg-gray-50 px-3 py-2 rounded-lg">{order.whatsapp || '-'}</p>
-                              </div>
+                              
+                              {/* عرض الواتساب فقط إذا كان مختلف */}
+                              {order.whatsapp && order.whatsapp.trim() && order.whatsapp !== order.phone && (
+                                <div className="space-y-2">
+                                  <span className="font-medium text-gray-700 text-sm">💬 رقم الواتساب</span>
+                                  <div className="bg-green-50 px-3 py-2 rounded-lg border border-green-200">
+                                    <p className="text-gray-900 font-mono text-sm">
+                                      +20{order.whatsapp}
+                                    </p>
+                                    <p className="text-xs text-green-600 mt-1">محلي: {order.whatsapp}</p>
+                                  </div>
+                                </div>
+                              )}
+                              
                               <div className="space-y-2">
                                 <span className="font-medium text-gray-700 text-sm">📍 المنطقة</span>
                                 <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">{order.area || '-'}</p>
@@ -1084,23 +1101,70 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">📞 رقم الهاتف</label>
-                  <input
-                    type="text"
-                    value={editingOrder.phone}
-                    onChange={(e) => handleUpdateField('phone', e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base"
-                  />
+                  <div className="relative">
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                      <span className="text-gray-500 text-sm font-mono">+20</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={editingOrder.phone}
+                      onChange={(e) => handleUpdateField('phone', e.target.value)}
+                      placeholder="01XXXXXXXXX"
+                      className="w-full pr-12 pl-3 sm:pl-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base"
+                    />
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    الرقم الكامل: +20{editingOrder.phone || 'XXXXXXXXXXX'}
+                  </div>
                 </div>
                 
-                <div className="space-y-1 sm:space-y-2">
-                  <label className="block text-xs sm:text-sm font-bold text-gray-700">💬 رقم الواتساب</label>
-                  <input
-                    type="text"
-                    value={editingOrder.whatsapp}
-                    onChange={(e) => handleUpdateField('whatsapp', e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base"
-                  />
-                </div>
+                {/* عرض حقل الواتساب فقط إذا كان مختلف عن الهاتف */}
+                {(editingOrder.whatsapp && editingOrder.whatsapp.trim() && editingOrder.whatsapp !== editingOrder.phone) && (
+                  <div className="space-y-1 sm:space-y-2">
+                    <label className="block text-xs sm:text-sm font-bold text-gray-700">💬 رقم الواتساب</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <span className="text-green-600 text-sm font-mono">+20</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={editingOrder.whatsapp}
+                        onChange={(e) => handleUpdateField('whatsapp', e.target.value)}
+                        placeholder="01XXXXXXXXX"
+                        className="w-full pr-12 pl-3 sm:pl-4 py-2 sm:py-3 border border-green-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base bg-green-50"
+                      />
+                    </div>
+                    <div className="text-xs text-green-600">
+                      الرقم الكامل: +20{editingOrder.whatsapp || 'XXXXXXXXXXX'}
+                    </div>
+                  </div>
+                )}
+                
+                {/* خيار إضافة رقم واتساب منفصل إذا لم يكن موجود */}
+                {(!editingOrder.whatsapp || !editingOrder.whatsapp.trim() || editingOrder.whatsapp === editingOrder.phone) && (
+                  <div className="space-y-1 sm:space-y-2">
+                    <label className="block text-xs sm:text-sm font-bold text-gray-700">💬 رقم الواتساب (اختياري)</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <span className="text-green-600 text-sm font-mono">+20</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={editingOrder.whatsapp || ''}
+                        onChange={(e) => handleUpdateField('whatsapp', e.target.value)}
+                        placeholder="01XXXXXXXXX (إذا كان مختلف عن رقم الهاتف)"
+                        className="w-full pr-12 pl-3 sm:pl-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base"
+                      />
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {editingOrder.whatsapp && editingOrder.whatsapp.trim() ? (
+                        <span className="text-green-600">الرقم الكامل: +20{editingOrder.whatsapp}</span>
+                      ) : (
+                        <span>اتركه فارغاً إذا كان نفس رقم الهاتف</span>
+                      )}
+                    </div>
+                  </div>
+                )}
                 
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">🏙️ المحافظة</label>

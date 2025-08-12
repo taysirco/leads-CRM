@@ -1357,23 +1357,87 @@ export async function fetchLeads() {
   return rows.slice(1).map((row, index) => {
     const rowIndex = index + 2;
     
-    // دالة مساعدة لتنظيف أرقام الهاتف والواتساب
-    const cleanPhoneNumber = (phoneStr: string): string => {
+    // دالة مساعدة لتنظيف وتنسيق أرقام الهاتف المصرية
+    const cleanAndFormatEgyptianPhone = (phoneStr: string): string => {
       if (!phoneStr) return '';
-      // إزالة المسافات والأحرف غير المرغوب فيها
-      return phoneStr.toString().trim().replace(/\s+/g, '');
+      
+      // تنظيف شامل: إزالة كل شيء عدا الأرقام
+      let cleaned = phoneStr.toString().replace(/\D/g, '');
+      
+      if (!cleaned) return '';
+      
+      // معالجة الحالات المختلفة للأرقام المصرية
+      // الحالة 1: رقم دولي كامل (201XXXXXXXXX - 12 رقم)
+      if (cleaned.length === 12 && cleaned.startsWith('201')) {
+        return '0' + cleaned.substring(2); // تحويل إلى 01XXXXXXXXX
+      }
+      
+      // الحالة 2: رقم محلي صحيح (01XXXXXXXXX - 11 رقم)
+      if (cleaned.length === 11 && cleaned.startsWith('01')) {
+        return cleaned; // صحيح كما هو
+      }
+      
+      // الحالة 3: رقم بدون الصفر الأول (1XXXXXXXXX - 10 أرقام)
+      if (cleaned.length === 10 && cleaned.startsWith('1')) {
+        return '0' + cleaned; // إضافة الصفر → 01XXXXXXXXX
+      }
+      
+      // الحالة 4: رقم يبدأ بـ 20 فقط (20XXXXXXXXX - 11 رقم)
+      if (cleaned.length === 11 && cleaned.startsWith('20')) {
+        return '0' + cleaned.substring(1); // تحويل إلى 01XXXXXXXXX
+      }
+      
+      // الحالة 5: رقم يبدأ بـ 2 فقط (2XXXXXXXXX - 10 أرقام)
+      if (cleaned.length === 10 && cleaned.startsWith('2')) {
+        return '0' + cleaned; // إضافة الصفر → 02XXXXXXXXX
+      }
+      
+      // إذا لم يطابق أي حالة، حاول إصلاحه
+      if (cleaned.length >= 9) {
+        // إذا كان الرقم طويل جداً، خذ آخر 10 أرقام وأضف 0
+        if (cleaned.length > 11) {
+          const last10 = cleaned.slice(-10);
+          if (last10.startsWith('1') || last10.startsWith('2')) {
+            return '0' + last10;
+          }
+        }
+        
+        // إذا كان الرقم قصير، حاول إضافة 01 في البداية
+        if (cleaned.length === 9) {
+          return '01' + cleaned;
+        }
+      }
+      
+      // إرجاع الرقم كما هو إذا لم يمكن إصلاحه
+      return cleaned;
     };
     
-    const phone = cleanPhoneNumber(row[headerMap['رقم الهاتف']] || '');
-    const whatsapp = cleanPhoneNumber(row[headerMap['رقم الواتساب']] || '');
+    // تنظيف وتنسيق الأرقام
+    const phoneNumber = cleanAndFormatEgyptianPhone(row[headerMap['رقم الهاتف']] || '');
+    const whatsappNumber = cleanAndFormatEgyptianPhone(row[headerMap['رقم الواتساب']] || '');
+    
+    // مقارنة ذكية للأرقام: إذا كانا متطابقان، لا نعرض الواتساب
+    const shouldShowWhatsApp = whatsappNumber && whatsappNumber !== phoneNumber;
+    
+    // تسجيل للتشخيص في وضع التطوير
+    if (process.env.NODE_ENV === 'development' && (phoneNumber || whatsappNumber)) {
+      console.log(`📱 معالجة أرقام الطلب ${rowIndex}:`, {
+        originalPhone: row[headerMap['رقم الهاتف']],
+        originalWhatsApp: row[headerMap['رقم الواتساب']],
+        cleanedPhone: phoneNumber,
+        cleanedWhatsApp: whatsappNumber,
+        shouldShowWhatsApp: shouldShowWhatsApp,
+        identical: phoneNumber === whatsappNumber
+      });
+    }
     
     return {
       id: rowIndex,
       rowIndex,
       orderDate: row[headerMap['تاريخ الطلب']] || '',
       name: row[headerMap['الاسم']] || '',
-      phone: phone,
-      whatsapp: whatsapp,
+      phone: phoneNumber,
+      whatsapp: shouldShowWhatsApp ? whatsappNumber : '', // عرض الواتساب فقط إذا كان مختلف
       governorate: row[headerMap['المحافظة']] || '',
       area: row[headerMap['المنطقة']] || '',
       address: row[headerMap['العنوان']] || '',
