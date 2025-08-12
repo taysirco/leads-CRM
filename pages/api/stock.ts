@@ -10,7 +10,8 @@ import {
   getStockMovements,
   findProductBySynonyms,
   testStockSheetConnection,
-  diagnoseGoogleSheets
+  diagnoseGoogleSheets,
+  createTestProduct
 } from '../../lib/googleSheets';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -88,6 +89,28 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
       console.log('🩺 تشخيص شامل لـ Google Sheets...');
       const diagnoseResult = await diagnoseGoogleSheets();
       return res.status(200).json({ diagnoseResult });
+
+    case 'test-connection':
+      console.log('🧪 اختبار الاتصال مع Google Sheets...');
+      const connectionResult = await testStockSheetConnection();
+      console.log('🧪 نتيجة الاختبار:', connectionResult.success ? 'نجح' : 'فشل');
+      return res.status(200).json(connectionResult);
+      
+    case 'create-test-product':
+      console.log('🧪 إنشاء منتج تجريبي للاختبار...');
+      try {
+        await createTestProduct();
+        return res.status(200).json({ 
+          success: true, 
+          message: 'تم إنشاء المنتج التجريبي "جرس الباب الحديث بكاميرا" بنجاح' 
+        });
+      } catch (error) {
+        console.error('❌ فشل إنشاء المنتج التجريبي:', error);
+        return res.status(500).json({ 
+          success: false, 
+          message: `فشل في إنشاء المنتج التجريبي: ${error}` 
+        });
+      }
 
     default:
       return res.status(400).json({ error: 'Invalid action parameter' });

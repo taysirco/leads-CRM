@@ -557,17 +557,49 @@ export async function addOrUpdateStockItem(stockItem: Partial<StockItem>): Promi
 // دالة لخصم المخزون عند الشحن
 export async function deductStock(productName: string, quantity: number, orderId?: number): Promise<{ success: boolean; message: string; availableQuantity?: number }> {
   try {
+    console.log(`🔍 محاولة خصم المخزون للمنتج: "${productName}" | الكمية: ${quantity} | رقم الطلب: ${orderId}`);
+    
     const stockItems = await fetchStock(true); // استخدام force refresh
+    console.log(`📦 تم جلب ${stockItems.stockItems.length} منتج من المخزون`);
+    
+    // طباعة جميع المنتجات المتاحة للتشخيص
+    console.log('📋 المنتجات المتاحة في المخزون:');
+    stockItems.stockItems.forEach((item, index) => {
+      console.log(`  ${index + 1}. "${item.productName}" (الكمية: ${item.currentQuantity}) | المتردفات: "${item.synonyms || 'لا توجد'}"`);
+    });
+    
     const stockItem = findProductBySynonyms(productName, stockItems.stockItems);
+    console.log(`🔍 نتيجة البحث عن "${productName}":`, stockItem ? `وُجد: "${stockItem.productName}"` : 'لم يوجد');
 
     if (!stockItem) {
+      console.error(`❌ المنتج "${productName}" غير موجود في المخزون`);
+      
+      // اقتراح منتجات مشابهة
+      const suggestions = stockItems.stockItems
+        .filter(item => {
+          const itemName = item.productName.toLowerCase();
+          const searchName = productName.toLowerCase();
+          return itemName.includes('جرس') || itemName.includes('باب') || itemName.includes('كاميرا') ||
+                 searchName.includes(itemName.split(' ')[0]) || itemName.includes(searchName.split(' ')[0]);
+        })
+        .map(item => item.productName)
+        .slice(0, 3);
+      
+      let suggestionText = '';
+      if (suggestions.length > 0) {
+        suggestionText = `\n\n💡 منتجات مشابهة متاحة:\n${suggestions.map(s => `• ${s}`).join('\n')}`;
+      }
+      
       return {
         success: false,
-        message: `المنتج "${productName}" غير موجود في المخزون`
+        message: `المنتج "${productName}" غير موجود في المخزون${suggestionText}`
       };
     }
 
+    console.log(`📊 المنتج الموجود: "${stockItem.productName}" | الكمية المتاحة: ${stockItem.currentQuantity} | المطلوب: ${quantity}`);
+
     if (stockItem.currentQuantity < quantity) {
+      console.error(`❌ المخزون غير كافي للمنتج "${stockItem.productName}": متوفر ${stockItem.currentQuantity}، مطلوب ${quantity}`);
       return {
         success: false,
         message: `المخزون غير كافي. المتوفر: ${stockItem.currentQuantity}، المطلوب: ${quantity}`,
@@ -577,6 +609,8 @@ export async function deductStock(productName: string, quantity: number, orderId
 
     // تحديث الكمية
     const newQuantity = stockItem.currentQuantity - quantity;
+    console.log(`🔄 تحديث المخزون: ${stockItem.currentQuantity} - ${quantity} = ${newQuantity}`);
+    
     await addOrUpdateStockItem({
       ...stockItem,
       currentQuantity: newQuantity
@@ -591,16 +625,18 @@ export async function deductStock(productName: string, quantity: number, orderId
       reason: 'شحن طلب'
     });
 
+    console.log(`✅ تم خصم المخزون بنجاح: ${quantity} من "${stockItem.productName}". المتبقي: ${newQuantity}`);
+
     return {
       success: true,
       message: `تم خصم ${quantity} من ${stockItem.productName}. المتبقي: ${newQuantity}`
     };
 
   } catch (error) {
-    console.error('Error deducting stock:', error);
+    console.error('❌ خطأ في خصم المخزون:', error);
     return {
       success: false,
-      message: 'حدث خطأ أثناء خصم المخزون'
+      message: `حدث خطأ أثناء خصم المخزون: ${error}`
     };
   }
 }
@@ -1869,3 +1905,73 @@ export async function getOrderStatistics() {
     throw error;
   }
 } 
+
+// دالة لإنشاء منتج تجريبي لاختبار الربط
+export async function createTestProduct(): Promise<void> {
+  try {
+    console.log('🧪 إنشاء منتج تجريبي لاختبار الربط...');
+    
+    const testProduct: Partial<StockItem> = {
+      productName: 'جرس الباب الحديث بكاميرا',
+      initialQuantity: 100,
+      currentQuantity: 100,
+      synonyms: 'جرس باب, جرس الباب, جرس بكاميرا, جرس حديث, باب جرس, كاميرا باب',
+      minThreshold: 10
+    };
+    
+    await addOrUpdateStockItem(testProduct);
+    console.log('✅ تم إنشاء المنتج التجريبي بنجاح');
+    
+  } catch (error) {
+    console.error('❌ خطأ في إنشاء المنتج التجريبي:', error);
+    throw error;
+  }
+}
+
+// دالة محسنة للبحث عن المنتج بالمتردفات مع تشخيص أفضل
+export function findProductBySynonymsEnhanced(productName: string, stockItems: StockItem[]): StockItem | null {
+  if (!productName || !stockItems || stockItems.length === 0) {
+    return null;
+  }
+
+  const normalizedSearchName = productName.toLowerCase().trim()
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/[ىي]/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ');
+
+  for (const item of stockItems) {
+    // البحث في الاسم الأساسي
+    const normalizedItemName = item.productName.toLowerCase().trim()
+      .replace(/[إأآا]/g, 'ا')
+      .replace(/[ىي]/g, 'ي')
+      .replace(/ة/g, 'ه')
+      .replace(/\s+/g, ' ');
+
+    if (normalizedItemName === normalizedSearchName || 
+        normalizedItemName.includes(normalizedSearchName) || 
+        normalizedSearchName.includes(normalizedItemName)) {
+      return item;
+    }
+
+    // البحث في المتردفات
+    if (item.synonyms) {
+      const synonyms = item.synonyms.split(',').map(s => s.trim());
+      for (const synonym of synonyms) {
+        const normalizedSynonym = synonym.toLowerCase().trim()
+          .replace(/[إأآا]/g, 'ا')
+          .replace(/[ىي]/g, 'ي')
+          .replace(/ة/g, 'ه')
+          .replace(/\s+/g, ' ');
+
+        if (normalizedSynonym === normalizedSearchName || 
+            normalizedSynonym.includes(normalizedSearchName) || 
+            normalizedSearchName.includes(normalizedSynonym)) {
+          return item;
+        }
+      }
+    }
+  }
+
+  return null;
+}
