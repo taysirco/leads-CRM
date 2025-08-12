@@ -2350,17 +2350,28 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
     const today = new Date().toISOString().split('T')[0];
     
     const todayMovements = movementsData.filter(m => {
-      const moveDate = new Date(m.timestamp || m.date || '').toISOString().split('T')[0];
-      return moveDate === today;
+      try {
+        const dateStr = m.timestamp || m.date || '';
+        if (!dateStr) return false;
+        
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return false; // تحقق من صحة التاريخ
+        
+        const moveDate = date.toISOString().split('T')[0];
+        return moveDate === today;
+      } catch (error) {
+        console.warn('خطأ في معالجة التاريخ:', m.timestamp || m.date, error);
+        return false;
+      }
     }).length;
 
     const totalAdditions = movementsData
       .filter(m => m.quantity > 0)
-      .reduce((sum, m) => sum + m.quantity, 0);
+      .reduce((sum, m) => sum + (m.quantity || 0), 0);
 
     const totalDeductions = Math.abs(movementsData
       .filter(m => m.quantity < 0)
-      .reduce((sum, m) => sum + m.quantity, 0));
+      .reduce((sum, m) => sum + (m.quantity || 0), 0));
 
     const uniqueProducts = new Set(movementsData.map(m => m.productName)).size;
 
@@ -2399,16 +2410,38 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
     // فلتر التاريخ من
     if (filters.dateFrom) {
       filtered = filtered.filter((movement: any) => {
-        const moveDate = new Date(movement.timestamp || movement.date || '').toISOString().split('T')[0];
-        return moveDate >= filters.dateFrom;
+        try {
+          const dateStr = movement.timestamp || movement.date || '';
+          if (!dateStr) return false;
+          
+          const date = new Date(dateStr);
+          if (isNaN(date.getTime())) return false;
+          
+          const moveDate = date.toISOString().split('T')[0];
+          return moveDate >= filters.dateFrom;
+        } catch (error) {
+          console.warn('خطأ في فلتر التاريخ من:', movement.timestamp || movement.date, error);
+          return false;
+        }
       });
     }
 
     // فلتر التاريخ إلى
     if (filters.dateTo) {
       filtered = filtered.filter((movement: any) => {
-        const moveDate = new Date(movement.timestamp || movement.date || '').toISOString().split('T')[0];
-        return moveDate <= filters.dateTo;
+        try {
+          const dateStr = movement.timestamp || movement.date || '';
+          if (!dateStr) return false;
+          
+          const date = new Date(dateStr);
+          if (isNaN(date.getTime())) return false;
+          
+          const moveDate = date.toISOString().split('T')[0];
+          return moveDate <= filters.dateTo;
+        } catch (error) {
+          console.warn('خطأ في فلتر التاريخ إلى:', movement.timestamp || movement.date, error);
+          return false;
+        }
       });
     }
 
@@ -2421,28 +2454,59 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
     if (filters.showToday) {
       const today = new Date().toISOString().split('T')[0];
       filtered = filtered.filter((movement: any) => {
-        const moveDate = new Date(movement.timestamp || movement.date || '').toISOString().split('T')[0];
-        return moveDate === today;
+        try {
+          const dateStr = movement.timestamp || movement.date || '';
+          if (!dateStr) return false;
+          
+          const date = new Date(dateStr);
+          if (isNaN(date.getTime())) return false;
+          
+          const moveDate = date.toISOString().split('T')[0];
+          return moveDate === today;
+        } catch (error) {
+          console.warn('خطأ في فلتر اليوم:', movement.timestamp || movement.date, error);
+          return false;
+        }
       });
     }
 
     // ترتيب النتائج
     if (filters.sortBy === 'newest') {
       filtered.sort((a: any, b: any) => {
-        const dateA = new Date(a.timestamp || a.date || '');
-        const dateB = new Date(b.timestamp || b.date || '');
-        return dateB.getTime() - dateA.getTime();
+        try {
+          const dateA = new Date(a.timestamp || a.date || '');
+          const dateB = new Date(b.timestamp || b.date || '');
+          
+          if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) {
+            return 0; // إذا كان أحد التواريخ غير صالح، لا نغير الترتيب
+          }
+          
+          return dateB.getTime() - dateA.getTime();
+        } catch (error) {
+          console.warn('خطأ في ترتيب التواريخ:', error);
+          return 0;
+        }
       });
     } else if (filters.sortBy === 'oldest') {
       filtered.sort((a: any, b: any) => {
-        const dateA = new Date(a.timestamp || a.date || '');
-        const dateB = new Date(b.timestamp || b.date || '');
-        return dateA.getTime() - dateB.getTime();
+        try {
+          const dateA = new Date(a.timestamp || a.date || '');
+          const dateB = new Date(b.timestamp || b.date || '');
+          
+          if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) {
+            return 0;
+          }
+          
+          return dateA.getTime() - dateB.getTime();
+        } catch (error) {
+          console.warn('خطأ في ترتيب التواريخ:', error);
+          return 0;
+        }
       });
     } else if (filters.sortBy === 'quantity_desc') {
-      filtered.sort((a: any, b: any) => Math.abs(b.quantity) - Math.abs(a.quantity));
+      filtered.sort((a: any, b: any) => Math.abs(b.quantity || 0) - Math.abs(a.quantity || 0));
     } else if (filters.sortBy === 'quantity_asc') {
-      filtered.sort((a: any, b: any) => Math.abs(a.quantity) - Math.abs(b.quantity));
+      filtered.sort((a: any, b: any) => Math.abs(a.quantity || 0) - Math.abs(b.quantity || 0));
     }
 
     setFilteredMovements(filtered);
@@ -2748,7 +2812,19 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             <tbody className="divide-y divide-gray-100">
               {filteredMovements.map((movement: any, index: number) => {
                 const dateTime = formatEgyptianDateTime(movement.timestamp || movement.date);
-                const isToday = new Date(movement.timestamp || movement.date || '').toISOString().split('T')[0] === new Date().toISOString().split('T')[0];
+                
+                let isToday = false;
+                try {
+                  const dateStr = movement.timestamp || movement.date || '';
+                  if (dateStr) {
+                    const date = new Date(dateStr);
+                    if (!isNaN(date.getTime())) {
+                      isToday = date.toISOString().split('T')[0] === new Date().toISOString().split('T')[0];
+                    }
+                  }
+                } catch (error) {
+                  console.warn('خطأ في تحديد تاريخ اليوم:', movement.timestamp || movement.date, error);
+                }
                 
                 return (
                   <tr 
