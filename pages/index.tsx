@@ -177,9 +177,18 @@ export default function Home() {
       // رسالة تفصيلية عن نتيجة التوزيع
       let message = data.message;
       if (data.distributed > 0) {
+        const getEmployeeName = (username: string) => {
+          const nameMap: Record<string, string> = {
+            'heba.': 'هبة',
+            'ahmed.': 'أحمد', 
+            'aisha.': 'عائشة'
+          };
+          return nameMap[username] || username;
+        };
+        
         const distDetails = Object.entries(data.currentDistribution || {})
           .map(([emp, count]) => {
-            const name = emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'عائشة';
+            const name = getEmployeeName(emp);
             return `${name}: ${count}`;
           })
           .join(' | ');
@@ -191,6 +200,8 @@ export default function Home() {
         
         if (!data.isBalanced) {
           message += `\n⚡ فارق التوزيع: ${data.balanceDifference} (قد تحتاج توزيع إضافي)`;
+        } else {
+          message += `\n✅ التوزيع متوازن تماماً`;
         }
       }
       

@@ -4,12 +4,24 @@ import { deductStock } from '../../lib/googleSheets';
 
 // استخراج قائمة الموظفين من CALL_CENTER_USERS
 function getEmployeesFromEnv(): string[] {
+  const fallback = ['heba.', 'ahmed.', 'aisha.'];
   const envVal = process.env.CALL_CENTER_USERS || '';
+  
+  if (!envVal || !envVal.trim()) {
+    console.log('⚠️ لم يتم العثور على CALL_CENTER_USERS في متغيرات البيئة، استخدام القيم الافتراضية');
+    return fallback;
+  }
+  
   const entries = envVal.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
   const users = entries.map(e => e.split(':')[0]).filter(Boolean);
-  // fallback للأسماء الافتراضية
-  const fallback = ['heba.', 'ahmed.', 'aisha.'];
-  return users.length > 0 ? users : fallback;
+  
+  if (users.length === 0) {
+    console.log('⚠️ لم يتم العثور على مستخدمين صالحين، استخدام القيم الافتراضية');
+    return fallback;
+  }
+  
+  console.log('✅ تم تحميل موظفي الكول سنتر:', users);
+  return users;
 }
 
 const EMPLOYEES = getEmployeesFromEnv();
@@ -38,45 +50,72 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (canAutoAssign) {
         autoAssignInProgress = true;
         try {
-          // حساب التوزيع الحالي
-          const currentAssignments: Record<string, number> = Object.fromEntries(EMPLOYEES.map(e => [e, 0]));
+          console.log('🔄 بدء التوزيع التلقائي...');
+          
+          // حساب التوزيع الحالي بدقة
+          const currentAssignments: Record<string, number> = {};
+          EMPLOYEES.forEach(emp => {
+            currentAssignments[emp] = 0;
+          });
+          
+          // عد الليدز المعينة حالياً لكل موظف
           for (const lead of leads) {
             const assignee = (lead.assignee || '').trim();
-            if (EMPLOYEES.includes(assignee)) {
+            if (assignee && EMPLOYEES.includes(assignee)) {
               currentAssignments[assignee] = (currentAssignments[assignee] || 0) + 1;
             }
           }
+
+          console.log('📊 التوزيع الحالي قبل التوزيع التلقائي:', currentAssignments);
 
           // العثور على الليدز غير المعينة
           const unassigned = leads.filter(l => !l.assignee || String(l.assignee).trim() === '');
           
           if (unassigned.length > 0) {
+            console.log(`📈 عدد الليدز غير المعينة: ${unassigned.length}`);
+            
             // حد أقصى 20 تحديث في الدفعة الواحدة لتوفير الكوتا
             const batchSize = Math.min(20, unassigned.length);
             const slice = unassigned.slice(0, batchSize);
             
-            // ترتيب الموظفين حسب أقل عدد ليدز مُعينة
+            // ترتيب الموظفين حسب أقل عدد ليدز مُعينة (التوزيع العادل)
             const sortedEmployees = EMPLOYEES.slice().sort((a, b) => 
               (currentAssignments[a] || 0) - (currentAssignments[b] || 0)
             );
             
+            console.log('👥 ترتيب الموظفين حسب العبء الحالي:', sortedEmployees.map(emp => 
+              `${emp}: ${currentAssignments[emp]}`).join(', '));
+            
+            // إنشاء دفعة التحديث مع توزيع ذكي
             const batch = slice.map((lead, index) => {
+              // استخدام Round-Robin للتوزيع العادل
               const assigneeIndex = index % EMPLOYEES.length;
               const assignee = sortedEmployees[assigneeIndex];
+              
+              // تحديث العداد المحلي لضمان التوزيع العادل في نفس الدفعة
               currentAssignments[assignee] = (currentAssignments[assignee] || 0) + 1;
+              
+              console.log(`📋 تعيين الليد #${lead.id} (صف ${lead.rowIndex}) للموظف: ${assignee}`);
+              
               return { 
                 rowNumber: lead.rowIndex, 
                 updates: { assignee } 
               };
             });
 
+            console.log(`⚡ سيتم توزيع ${batch.length} ليد في هذه الدفعة`);
+            
+            // تنفيذ التحديث المجمع
             await updateLeadsBatch(batch);
             lastAutoAssignAt = now;
             
-            // إعادة جلب البيانات بعد التحديث
+            // إعادة جلب البيانات بعد التحديث للتأكد من التحديث
             leads = await fetchLeads();
             
-            console.log(`✅ تم توزيع ${batch.length} ليد تلقائياً. التوزيع الحالي:`, currentAssignments);
+            console.log(`✅ تم توزيع ${batch.length} ليد تلقائياً بنجاح`);
+            console.log('📊 التوزيع المتوقع بعد التحديث:', currentAssignments);
+          } else {
+            console.log('ℹ️ لا توجد ليدز غير معينة للتوزيع التلقائي');
           }
         } catch (e) {
           console.error('❌ فشل التوزيع التلقائي:', e);
