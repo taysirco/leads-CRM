@@ -450,13 +450,13 @@ export default function Home() {
                 </div>
               )}
               {user?.role !== 'admin' && (
-                <button
-                  onClick={() => setShowSettings(true)}
+              <button
+                onClick={() => setShowSettings(true)}
                   className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2 text-xs sm:text-sm self-start sm:self-auto"
-                  title="إعدادات الإشعارات"
-                >
-                  الإعدادات
-                </button>
+                title="إعدادات الإشعارات"
+              >
+                الإعدادات
+              </button>
               )}
             </div>
           </header>
@@ -524,32 +524,32 @@ export default function Home() {
               />
             )}
             {activeTab === 'follow-up' && (
-              <OrdersTable
+                <OrdersTable 
                 orders={getFilteredOrders('follow-up')}
-                onUpdateOrder={handleUpdateOrder}
-              />
+                  onUpdateOrder={handleUpdateOrder} 
+                />
             )}
             {activeTab === 'export' && (
-              <BostaExport 
+                <BostaExport
                 orders={getFilteredOrders('export')}
-                selectedOrders={selectedOrders}
-                onSelectOrder={handleSelectOrder}
-                onSelectAll={handleSelectAll}
-                onDeselectAll={handleDeselectAll}
-                onUpdateOrder={handleUpdateOrder}
-              />
+                  selectedOrders={selectedOrders}
+                  onSelectOrder={handleSelectOrder}
+                  onSelectAll={handleSelectAll}
+                  onDeselectAll={handleDeselectAll}
+                  onUpdateOrder={handleUpdateOrder}
+                />
             )}
             {activeTab === 'archive' && (
-              <ArchiveTable 
+                <ArchiveTable 
                 orders={getFilteredOrders('archive')} 
-                onUpdateOrder={handleUpdateOrder}
-              />
+                  onUpdateOrder={handleUpdateOrder} 
+                />
             )}
             {activeTab === 'rejected' && (
-              <RejectedTable 
+                <RejectedTable 
                 orders={getFilteredOrders('rejected')} 
-                onUpdateOrder={handleUpdateOrder}
-              />
+                  onUpdateOrder={handleUpdateOrder} 
+                />
             )}
             {activeTab === 'stock' && user?.role === 'admin' && (
               <StockManagement />

@@ -2434,3 +2434,218 @@ export async function resetStockMovementsHeaders(): Promise<{ success: boolean; 
     };
   }
 } 
+
+// دالة جديدة لخصم المخزون الجماعي - أكثر كفاءة للطلبات المتعددة
+export async function deductStockBulk(
+  orderItems: Array<{ productName: string; quantity: number; orderId: number }>
+): Promise<{
+  success: boolean;
+  message: string;
+  results: Array<{
+    orderId: number;
+    productName: string;
+    quantity: number;
+    success: boolean;
+    message: string;
+    availableQuantity?: number;
+  }>;
+  summary?: {
+    totalOrders: number;
+    successfulOrders: number;
+    failedOrders: number;
+    productsSummary: Array<{
+      productName: string;
+      totalQuantityRequested: number;
+      availableQuantity: number;
+      totalQuantityDeducted: number;
+    }>;
+  };
+}> {
+  try {
+    console.log(`📦 بدء خصم المخزون الجماعي لـ ${orderItems.length} طلب...`);
+    
+    // الخطوة 1: تجميع الكميات المطلوبة حسب المنتج
+    const productQuantities = new Map<string, {
+      totalQuantity: number;
+      orders: Array<{ orderId: number; quantity: number }>;
+    }>();
+    
+    for (const item of orderItems) {
+      const normalizedName = item.productName.trim();
+      if (!productQuantities.has(normalizedName)) {
+        productQuantities.set(normalizedName, {
+          totalQuantity: 0,
+          orders: []
+        });
+      }
+      
+      const productData = productQuantities.get(normalizedName)!;
+      productData.totalQuantity += item.quantity;
+      productData.orders.push({ orderId: item.orderId, quantity: item.quantity });
+    }
+    
+    console.log(`📊 تم تجميع ${productQuantities.size} منتج مختلف`);
+    
+    // الخطوة 2: جلب المخزون مرة واحدة فقط
+    const stockData = await fetchStock(true);
+    const stockItems = stockData.stockItems;
+    console.log(`📦 تم جلب ${stockItems.length} منتج من المخزون`);
+    
+    // الخطوة 3: التحقق من توفر المخزون وتحضير التحديثات
+    const results: Array<any> = [];
+    const stockUpdates: Array<{ stockItem: StockItem; newQuantity: number }> = [];
+    const stockMovements: Array<any> = [];
+    const productsSummary: Array<any> = [];
+    
+    for (const [productName, data] of productQuantities.entries()) {
+      console.log(`\n🔍 معالجة المنتج: "${productName}" - الكمية المطلوبة الإجمالية: ${data.totalQuantity}`);
+      
+      // البحث عن المنتج في المخزون
+      const stockItem = findProductBySynonyms(productName, stockItems);
+      
+      if (!stockItem) {
+        console.error(`❌ المنتج "${productName}" غير موجود في المخزون`);
+        
+        // إضافة نتائج فاشلة لجميع الطلبات الخاصة بهذا المنتج
+        for (const order of data.orders) {
+          results.push({
+            orderId: order.orderId,
+            productName,
+            quantity: order.quantity,
+            success: false,
+            message: `المنتج "${productName}" غير موجود في المخزون`
+          });
+        }
+        
+        productsSummary.push({
+          productName,
+          totalQuantityRequested: data.totalQuantity,
+          availableQuantity: 0,
+          totalQuantityDeducted: 0
+        });
+        
+        continue;
+      }
+      
+      console.log(`✅ تم العثور على المنتج: "${stockItem.productName}" - المتوفر: ${stockItem.currentQuantity}`);
+      
+      // التحقق من كفاية المخزون
+      if (stockItem.currentQuantity < data.totalQuantity) {
+        console.error(`❌ المخزون غير كافي للمنتج "${productName}". المطلوب: ${data.totalQuantity}, المتوفر: ${stockItem.currentQuantity}`);
+        
+        // إضافة نتائج فاشلة لجميع الطلبات
+        for (const order of data.orders) {
+          results.push({
+            orderId: order.orderId,
+            productName,
+            quantity: order.quantity,
+            success: false,
+            message: `المخزون غير كافي. المتوفر الإجمالي: ${stockItem.currentQuantity}، المطلوب الإجمالي: ${data.totalQuantity}`,
+            availableQuantity: stockItem.currentQuantity
+          });
+        }
+        
+        productsSummary.push({
+          productName: stockItem.productName,
+          totalQuantityRequested: data.totalQuantity,
+          availableQuantity: stockItem.currentQuantity,
+          totalQuantityDeducted: 0
+        });
+        
+        continue;
+      }
+      
+      // المخزون كافي - تحضير التحديثات
+      const newQuantity = stockItem.currentQuantity - data.totalQuantity;
+      console.log(`✅ المخزون كافي. سيتم تحديث: ${stockItem.currentQuantity} - ${data.totalQuantity} = ${newQuantity}`);
+      
+      stockUpdates.push({
+        stockItem,
+        newQuantity
+      });
+      
+      // إضافة نتائج ناجحة لجميع الطلبات
+      for (const order of data.orders) {
+        results.push({
+          orderId: order.orderId,
+          productName: stockItem.productName,
+          quantity: order.quantity,
+          success: true,
+          message: `سيتم خصم ${order.quantity} من ${stockItem.productName}`
+        });
+        
+        // تحضير حركة مخزون لكل طلب
+        stockMovements.push({
+          productName: stockItem.productName,
+          type: 'sale',
+          quantity: -order.quantity,
+          orderId: order.orderId,
+          reason: 'شحن طلب - خصم جماعي'
+        });
+      }
+      
+      productsSummary.push({
+        productName: stockItem.productName,
+        totalQuantityRequested: data.totalQuantity,
+        availableQuantity: stockItem.currentQuantity,
+        totalQuantityDeducted: data.totalQuantity
+      });
+    }
+    
+    // الخطوة 4: تنفيذ جميع التحديثات دفعة واحدة
+    console.log(`\n🚀 تنفيذ ${stockUpdates.length} تحديث مخزون...`);
+    
+    // تحديث المخزون دفعة واحدة
+    for (const update of stockUpdates) {
+      await addOrUpdateStockItem({
+        ...update.stockItem,
+        currentQuantity: update.newQuantity
+      });
+      console.log(`✅ تم تحديث "${update.stockItem.productName}": ${update.stockItem.currentQuantity} → ${update.newQuantity}`);
+    }
+    
+    // تسجيل حركات المخزون دفعة واحدة
+    console.log(`📝 تسجيل ${stockMovements.length} حركة مخزون...`);
+    for (const movement of stockMovements) {
+      await addStockMovement(movement);
+    }
+    
+    // حساب الإحصائيات
+    const successfulOrders = results.filter(r => r.success).length;
+    const failedOrders = results.filter(r => !r.success).length;
+    
+    const summaryMessage = `✅ تم معالجة ${orderItems.length} طلب:
+- نجح: ${successfulOrders} طلب
+- فشل: ${failedOrders} طلب
+- منتجات مختلفة: ${productQuantities.size}
+- تحديثات مخزون: ${stockUpdates.length}`;
+    
+    console.log(`\n📊 ${summaryMessage}`);
+    
+    return {
+      success: failedOrders === 0,
+      message: summaryMessage,
+      results,
+      summary: {
+        totalOrders: orderItems.length,
+        successfulOrders,
+        failedOrders,
+        productsSummary
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ خطأ في خصم المخزون الجماعي:', error);
+    return {
+      success: false,
+      message: `حدث خطأ أثناء خصم المخزون الجماعي: ${error}`,
+      results: orderItems.map(item => ({
+        orderId: item.orderId,
+        productName: item.productName,
+        quantity: item.quantity,
+        success: false,
+        message: 'خطأ في النظام'
+      }))
+    };
+  }
+}

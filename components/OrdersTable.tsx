@@ -519,8 +519,8 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
       }
       
       if (closeModal) {
-        setEditModalOpen(false);
-        setEditingOrder(null);
+      setEditModalOpen(false);
+      setEditingOrder(null);
         setOriginalOrder(null);
       }
       
@@ -531,7 +531,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
     } catch (error) {
       console.error('❌ خطأ في حفظ التغييرات:', error);
       if (closeModal) {
-        alert('فشل في حفظ التغييرات. حاول مرة أخرى.');
+      alert('فشل في حفظ التغييرات. حاول مرة أخرى.');
       }
       throw error;
     } finally {
@@ -976,19 +976,19 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                                   {order.phone && (
                                     <p className="text-xs text-gray-500 mt-1">محلي: {order.phone}</p>
                                   )}
-                                </div>
+                              </div>
                               </div>
                               
                               {/* عرض الواتساب فقط إذا كان مختلف */}
                               {order.whatsapp && order.whatsapp.trim() && order.whatsapp !== order.phone && (
-                                <div className="space-y-2">
-                                  <span className="font-medium text-gray-700 text-sm">💬 رقم الواتساب</span>
+                              <div className="space-y-2">
+                                <span className="font-medium text-gray-700 text-sm">💬 رقم الواتساب</span>
                                   <div className="bg-green-50 px-3 py-2 rounded-lg border border-green-200">
                                     <p className="text-gray-900 font-mono text-sm">
                                       +20{order.whatsapp}
                                     </p>
                                     <p className="text-xs text-green-600 mt-1">محلي: {order.whatsapp}</p>
-                                  </div>
+                              </div>
                                 </div>
                               )}
                               
@@ -1097,13 +1097,13 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                       <span className="text-gray-500 text-sm font-mono">+20</span>
                     </div>
-                    <input
-                      type="text"
-                      value={editingOrder.phone}
-                      onChange={(e) => handleUpdateField('phone', e.target.value)}
+                  <input
+                    type="text"
+                    value={editingOrder.phone}
+                    onChange={(e) => handleUpdateField('phone', e.target.value)}
                       placeholder="01XXXXXXXXX"
                       className="w-full pr-12 pl-3 sm:pl-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base"
-                    />
+                  />
                   </div>
                   <div className="text-xs text-gray-500">
                     الرقم الكامل: +20{editingOrder.phone || 'XXXXXXXXXXX'}
@@ -1118,14 +1118,14 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                         <span className="text-green-600 text-sm font-mono">+20</span>
                       </div>
-                      <input
-                        type="text"
-                        value={editingOrder.whatsapp}
-                        onChange={(e) => handleUpdateField('whatsapp', e.target.value)}
+                  <input
+                    type="text"
+                    value={editingOrder.whatsapp}
+                    onChange={(e) => handleUpdateField('whatsapp', e.target.value)}
                         placeholder="01XXXXXXXXX"
                         className="w-full pr-12 pl-3 sm:pl-4 py-2 sm:py-3 border border-green-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base bg-green-50"
-                      />
-                    </div>
+                  />
+                </div>
                     <div className="text-xs text-green-600">
                       الرقم الكامل: +20{editingOrder.whatsapp || 'XXXXXXXXXXX'}
                     </div>
@@ -1284,7 +1284,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 </div>
                 
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                  <button
+                <button
                     onClick={() => {
                       if (hasUnsavedChanges) {
                         const confirmClose = confirm('يوجد تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟');
@@ -1300,29 +1300,29 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       setOriginalOrder(null);
                       setHasUnsavedChanges(false);
                     }}
-                    disabled={loadingOrders.has(editingOrder.id)}
+                  disabled={loadingOrders.has(editingOrder.id)}
                     className="px-4 sm:px-6 py-2 sm:py-3 text-gray-600 border border-gray-300 rounded-lg sm:rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-all duration-200 font-medium text-sm sm:text-base order-2 sm:order-1"
-                  >
+                >
                     {hasUnsavedChanges ? 'إلغاء (بدون حفظ)' : 'إغلاق'}
-                  </button>
+                </button>
                   
-                  <button
-                    onClick={saveOrder}
-                    disabled={loadingOrders.has(editingOrder.id)}
+                <button
+                  onClick={saveOrder}
+                  disabled={loadingOrders.has(editingOrder.id)}
                     className={`px-6 sm:px-8 py-2 sm:py-3 rounded-lg sm:rounded-xl flex items-center justify-center gap-2 sm:gap-3 transition-all duration-200 font-bold shadow-lg text-sm sm:text-base order-1 sm:order-2 ${
                       hasUnsavedChanges 
                         ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:from-yellow-600 hover:to-orange-600' 
                         : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700'
                     } disabled:opacity-50`}
-                  >
-                    {loadingOrders.has(editingOrder.id) && (
+                >
+                  {loadingOrders.has(editingOrder.id) && (
                       <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
-                    )}
+                  )}
                     <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
                     {hasUnsavedChanges ? 'حفظ التغييرات الآن' : 'حفظ'}
-                  </button>
+                </button>
                 </div>
               </div>
             </div>

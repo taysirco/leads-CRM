@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { fetchLeads, updateLead, getOrderStatistics, LeadRow, updateLeadsBatch } from '../../lib/googleSheets';
-import { deductStock } from '../../lib/googleSheets';
+import { deductStock, deductStockBulk } from '../../lib/googleSheets';
 
 // استخراج قائمة الموظفين من CALL_CENTER_USERS
 function getEmployeesFromEnv(): string[] {
@@ -174,112 +174,67 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         let stockResults: any[] = [];
         let failedOrders: number[] = [];
         let ordersToRevert: number[] = [];
+        let bulkResult: any = null;
         
         // الخطوة 2: إذا كانت الحالة الجديدة "تم الشحن"، اخصم المخزون بعد التحديث
         if (status === 'تم الشحن') {
           console.log('🚚 الخطوة 2: خصم المخزون بعد تأكيد الشحن...');
           const leads = await fetchLeads();
-          console.log(`📊 تم جلب ${leads.length} ليد من قاعدة البيانات`);
+          
+          // جمع بيانات جميع الطلبات للخصم الجماعي
+          const orderItems: Array<{ productName: string; quantity: number; orderId: number }> = [];
           
           for (const orderId of orders) {
-            console.log(`\n🔍 معالجة الطلب ${orderId}...`);
-            try {
-              const targetLead = leads.find(lead => lead.id === Number(orderId));
+            const targetLead = leads.find(lead => lead.id === Number(orderId));
+            
+            if (targetLead && targetLead.productName && targetLead.quantity) {
+              const quantity = parseInt(targetLead.quantity) || 1;
+              const productName = targetLead.productName || 'غير محدد';
               
-              if (!targetLead) {
-                console.error(`❌ لم يتم العثور على الطلب ${orderId} في قاعدة البيانات`);
-                failedOrders.push(orderId);
-                ordersToRevert.push(orderId);
-                stockResults.push({
-                  orderId,
-                  success: false,
-                  message: 'لم يتم العثور على الطلب في قاعدة البيانات'
-                });
-                continue;
-              }
-              
-              // التحقق الصارم من البيانات المطلوبة
-              const productName = (targetLead.productName || '').trim();
-              const quantityStr = (targetLead.quantity || '').toString().trim();
-              const quantity = parseInt(quantityStr) || 0;
-              
-              console.log(`📋 بيانات الطلب ${orderId}:`);
-              console.log(`  - اسم المنتج: "${productName}"`);
-              console.log(`  - الكمية (نص): "${quantityStr}"`);
-              console.log(`  - الكمية (رقم): ${quantity}`);
-              
-              // التحقق من صحة البيانات
-              if (!productName) {
-                console.error(`❌ الطلب ${orderId}: اسم المنتج فارغ أو غير موجود`);
-                failedOrders.push(orderId);
-                ordersToRevert.push(orderId);
-                stockResults.push({
-                  orderId,
-                  productName: 'غير محدد',
-                  quantity: 0,
-                  success: false,
-                  message: 'اسم المنتج فارغ أو غير موجود'
-                });
-                continue;
-              }
-              
-              if (quantity <= 0) {
-                console.error(`❌ الطلب ${orderId}: الكمية غير صحيحة (${quantity})`);
-                failedOrders.push(orderId);
-                ordersToRevert.push(orderId);
-                stockResults.push({
-                  orderId,
-                  productName,
-                  quantity,
-                  success: false,
-                  message: `الكمية غير صحيحة: ${quantityStr} → ${quantity}`
-                });
-                continue;
-              }
-              
-              // خصم المخزون
-              console.log(`🚚 محاولة خصم المخزون للطلب ${orderId}: ${quantity} × ${productName}`);
-              const stockResult = await deductStock(productName, quantity, targetLead.id);
-              
-              stockResults.push({
-                orderId,
+              orderItems.push({
                 productName,
                 quantity,
-                ...stockResult
+                orderId: targetLead.id
               });
-              
-              if (stockResult.success) {
-                console.log(`✅ نجح خصم المخزون للطلب ${orderId}: ${stockResult.message}`);
-              } else {
-                console.error(`❌ فشل خصم المخزون للطلب ${orderId}: ${stockResult.message}`);
-                failedOrders.push(orderId);
-                ordersToRevert.push(orderId);
-              }
-              
-            } catch (error) {
-              console.error(`❌ خطأ في معالجة الطلب ${orderId}:`, error);
+            } else {
+              console.error(`❌ لم يتم العثور على الطلب ${orderId} أو بيانات ناقصة`);
               failedOrders.push(orderId);
               ordersToRevert.push(orderId);
               stockResults.push({
                 orderId,
-                productName: 'غير محدد',
-                quantity: 0,
                 success: false,
-                message: `خطأ في النظام: ${error}`
+                message: 'لم يتم العثور على بيانات الطلب أو بيانات ناقصة'
               });
             }
           }
           
-          console.log(`\n📊 ملخص خصم المخزون:`);
-          console.log(`  - إجمالي الطلبات: ${orders.length}`);
-          console.log(`  - نجحت: ${orders.length - failedOrders.length}`);
-          console.log(`  - فشلت: ${failedOrders.length}`);
-          console.log(`  - ستُرجع: ${ordersToRevert.length}`);
-          
-          if (stockResults.length > 0) {
-            const successfulResults = stockResults.filter(r => r.success);
-            const totalDeducted = successfulResults.reduce((sum, r) => sum + (r.quantity || 0), 0);
-            console.log(`  - إجمالي المخصوم: ${totalDeducted} قطعة`);
+          // تنفيذ خصم المخزون الجماعي
+          if (orderItems.length > 0) {
+            console.log(`📦 تنفيذ خصم مخزون جماعي لـ ${orderItems.length} طلب...`);
+            bulkResult = await deductStockBulk(orderItems);
+            
+            // معالجة النتائج
+            stockResults = bulkResult.results;
+            
+            // تحديد الطلبات الفاشلة
+            for (const result of stockResults) {
+              if (!result.success) {
+                if (!failedOrders.includes(result.orderId)) {
+                  failedOrders.push(result.orderId);
+                  ordersToRevert.push(result.orderId);
+                }
+              }
+            }
+            
+            console.log(`📊 نتيجة الخصم الجماعي: ${bulkResult.message}`);
+            
+            // عرض ملخص المنتجات إذا كان متوفراً
+            if (bulkResult.summary) {
+              console.log('📋 ملخص المنتجات:');
+              for (const product of bulkResult.summary.productsSummary) {
+                console.log(`  - ${product.productName}: مطلوب ${product.totalQuantityRequested}، متوفر ${product.availableQuantity}، تم خصم ${product.totalQuantityDeducted}`);
+              }
+            }
           }
           
           // الخطوة 3: إرجاع الطلبات التي فشل خصم مخزونها إلى حالة سابقة
@@ -296,40 +251,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
             
             const failedStockResults = stockResults.filter(r => !r.success);
-            const errorDetails = failedStockResults.map(r => {
-              let detail = `• الطلب ${r.orderId} (${r.productName || 'غير محدد'}): ${r.message}`;
-              if (r.availableQuantity !== undefined && r.quantity) {
-                detail += ` | متوفر: ${r.availableQuantity} | مطلوب: ${r.quantity}`;
-              } else if (r.quantity) {
-                detail += ` | الكمية المطلوبة: ${r.quantity}`;
-              }
-              return detail;
-            }).join('\n');
+            const errorDetails = failedStockResults.map(r => 
+              `• الطلب ${r.orderId}: ${r.message}${r.availableQuantity !== undefined ? ` (متوفر: ${r.availableQuantity})` : ''}`
+            ).join('\n');
             
             const successfulOrders = orders.filter((id: number) => !failedOrders.includes(id));
-            const successfulResults = stockResults.filter(r => r.success);
-            const totalDeductedFromFailed = successfulResults.reduce((sum, r) => sum + (r.quantity || 0), 0);
             
-            let detailedMessage = `❌ تم شحن ${successfulOrders.length} من ${orders.length} طلب فقط:\n\n`;
-            detailedMessage += `✅ الطلبات الناجحة: ${successfulOrders.length}\n`;
-            detailedMessage += `📦 إجمالي المخصوم من المخزون: ${totalDeductedFromFailed} قطعة\n\n`;
-            detailedMessage += `❌ الطلبات الفاشلة (${failedOrders.length}):\n${errorDetails}\n\n`;
-            detailedMessage += `🔄 تم إرجاع الطلبات الفاشلة إلى حالة "تم التأكيد"`;
+            // إضافة ملخص المنتجات إذا كان متوفراً
+            let productSummary = '';
+            if (bulkResult && bulkResult.summary && bulkResult.summary.productsSummary.length > 0) {
+              productSummary = '\n\n📋 ملخص المنتجات:\n';
+              for (const product of bulkResult.summary.productsSummary) {
+                productSummary += `• ${product.productName}: مطلوب إجمالي ${product.totalQuantityRequested}، متوفر ${product.availableQuantity}${product.totalQuantityDeducted > 0 ? `، تم خصم ${product.totalQuantityDeducted}` : ''}\n`;
+              }
+            }
             
             return res.status(400).json({
               error: 'فشل في شحن بعض الطلبات',
               stockError: true,
-              message: detailedMessage,
+              message: `❌ تم شحن ${successfulOrders.length} من ${orders.length} طلب فقط بسبب نقص المخزون:\n\n${errorDetails}\n\n⚠️ تم إرجاع الطلبات الفاشلة إلى حالة "تم التأكيد"${productSummary}`,
               failedOrders,
               stockResults,
               successfulOrders,
               revertedOrders: ordersToRevert,
-              summary: {
-                total: orders.length,
-                successful: successfulOrders.length,
-                failed: failedOrders.length,
-                totalDeducted: totalDeductedFromFailed
-              }
+              stockSummary: bulkResult?.summary
             });
           }
         }
@@ -339,22 +284,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           message: `تم تحديث ${orders.length} طلب بنجاح إلى حالة "${status}"`
         };
         
-        if (stockResults.length > 0) {
-          const totalDeducted = stockResults.reduce((sum, r) => sum + (r.quantity || 0), 0);
-          const successfulDeductions = stockResults.filter(r => r.success);
-          const totalSuccessfulDeducted = successfulDeductions.reduce((sum, r) => sum + (r.quantity || 0), 0);
+        if (bulkResult && bulkResult.summary) {
+          // إضافة ملخص تفصيلي للخصم الجماعي
+          response.message += `\n\n📦 تفاصيل خصم المخزون الجماعي:`;
+          response.message += `\n• إجمالي الطلبات: ${bulkResult.summary.totalOrders}`;
+          response.message += `\n• نجح: ${bulkResult.summary.successfulOrders} طلب`;
+          response.message += `\n• فشل: ${bulkResult.summary.failedOrders} طلب`;
+          response.message += `\n• منتجات مختلفة: ${bulkResult.summary.productsSummary.length}`;
           
-          response.message = `✅ تم تحديث ${orders.length} طلب بنجاح إلى حالة "${status}"`;
-          response.message += `\n📦 تم خصم إجمالي ${totalSuccessfulDeducted} قطعة من المخزون`;
-          response.message += `\n🎯 تفاصيل الخصم: ${successfulDeductions.length} منتج مختلف`;
+          // حساب إجمالي القطع المخصومة
+          const totalDeducted = bulkResult.summary.productsSummary.reduce(
+            (sum: number, product: any) => sum + product.totalQuantityDeducted, 
+            0
+          );
+          response.message += `\n• إجمالي القطع المخصومة: ${totalDeducted}`;
           
-          response.stockResults = stockResults;
-          response.summary = {
-            totalOrders: orders.length,
-            totalDeducted: totalSuccessfulDeducted,
-            productsAffected: successfulDeductions.length,
-            allSuccessful: stockResults.every(r => r.success)
-          };
+          response.stockResults = bulkResult.results;
+          response.stockSummary = bulkResult.summary;
         }
         
         return res.status(200).json(response);
@@ -366,7 +312,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
     }
-    
+
     // التحديث الفردي
     else if (rowNumber) {
       console.log('👤 تحديث فردي مكتشف');
@@ -411,7 +357,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               stockError: true,
               message: 'بيانات الطلب غير مكتملة (اسم المنتج أو الكمية مفقود)'
             });
-          }
+    }
         }
         
         // الخطوة 2: تحديث الطلب أولاً
@@ -509,7 +455,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
         
         return res.status(200).json(response);
-      } catch (error: any) {
+    } catch (error: any) {
         console.error(`❌ خطأ في تحديث الطلب ${rowNumber}:`, error);
         return res.status(500).json({ 
           error: 'خطأ في النظام',
