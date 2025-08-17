@@ -9,8 +9,7 @@ import StockManagement from '../components/StockManagement';
 import LiveStats from '../components/LiveStats';
 import SmartNotificationSystem from '../components/SmartNotificationSystem';
 import SmartNotificationSettings from '../components/SmartNotificationSettings';
-import NotificationTester from '../components/NotificationTester';
-import RealTimeStatusTracker from '../components/RealTimeStatusTracker';
+
 import { useRealTimeOrderTracking } from '../hooks/useRealTimeOrderTracking';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 
@@ -88,10 +87,7 @@ export default function Home() {
     newOrdersCount,
     criticalCount,
     hasUserInteracted: smartHasInteracted,
-    orderStats,
-    statusStats,
-    criticalOrders,
-    statusChangeHistory
+
   } = useRealTimeOrderTracking(orders, hasInteracted);
 
   const handleUpdateOrder = async (orderId: number, updates: any): Promise<void> => {
@@ -363,14 +359,7 @@ export default function Home() {
         onClose={() => setShowNotificationSettings(false)}
       />
       
-      <NotificationTester />
-      
-      <RealTimeStatusTracker
-        statusStats={statusStats}
-        criticalOrders={criticalOrders}
-        statusChangeHistory={statusChangeHistory}
-        totalOrders={orders.length}
-      />
+
 
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto p-2 sm:p-4">
