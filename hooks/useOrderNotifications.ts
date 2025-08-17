@@ -110,15 +110,11 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
       let priority: 'low' | 'normal' | 'high' | 'critical' = 'normal';
 
       if (previousOrder.status !== order.status) {
-        updateMessage = `تم تحديث حالة الطلب #${order.id} إلى "${order.status}"`;
-        
-        if (order.status === 'تم الشحن') {
-          updateType = 'success';
-          updateMessage = `✅ تم شحن الطلب #${order.id} بنجاح`;
-        } else if (order.status === 'مرفوض') {
-          updateType = 'warning';
-          updateMessage = `❌ تم رفض الطلب #${order.id}`;
-        }
+        // تحديد نوع الإشعار والأولوية حسب الحالة الجديدة
+        const statusNotification = getStatusNotificationDetails(order.status, order.id);
+        updateType = statusNotification.type;
+        updateMessage = statusNotification.message;
+        priority = statusNotification.priority;
       } else if (previousOrder.assignee !== order.assignee) {
         updateMessage = `تم تعيين الطلب #${order.id} إلى ${order.assignee || 'غير محدد'}`;
         if (order.assignee === getCurrentUser()) {
@@ -199,34 +195,237 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
     }
   };
 
-  // تحديد أولوية الطلب
+  // تحديد أولوية الطلب بناءً على الحالة والقيمة والمصدر
   const determineOrderPriority = (order: Order): 'low' | 'normal' | 'high' | 'critical' => {
-    // طلبات VIP أو قيمة عالية جداً
-    let totalPrice = 0;
+    // 1. أولوية حسب حالة الطلب/الليد
+    const statusPriority = getStatusPriority(order.status);
     
-    if (order.totalPrice) {
-      if (typeof order.totalPrice === 'string') {
-        totalPrice = parseFloat(order.totalPrice.replace(/[^\d.]/g, '') || '0');
-      } else {
-        totalPrice = parseFloat(String(order.totalPrice));
+    // 2. أولوية حسب القيمة المالية
+    const pricePriority = getPricePriority(order.totalPrice);
+    
+    // 3. أولوية حسب المصدر
+    const sourcePriority = getSourcePriority(order.source);
+    
+    // 4. أولوية حسب الوقت (الطلبات الجديدة أهم)
+    const timePriority = getTimePriority(order.createdAt);
+    
+    // اختيار أعلى أولوية من بين جميع العوامل
+    const allPriorities = [statusPriority, pricePriority, sourcePriority, timePriority];
+    const priorityOrder = ['critical', 'high', 'normal', 'low'];
+    
+    let finalPriority: 'low' | 'normal' | 'high' | 'critical' = 'normal';
+    
+    for (const priority of priorityOrder) {
+      if (allPriorities.includes(priority as any)) {
+        finalPriority = priority as 'low' | 'normal' | 'high' | 'critical';
+        break;
       }
     }
     
-    if (totalPrice > 5000) {
-      return 'critical';
+    // سجل تشخيصي لفهم كيفية تحديد الأولوية
+    console.log(`🎯 تحديد أولوية الطلب #${order.id}:`, {
+      status: order.status,
+      statusPriority,
+      price: order.totalPrice,
+      pricePriority,
+      source: order.source,
+      sourcePriority,
+      createdAt: order.createdAt,
+      timePriority,
+      finalPriority,
+      customerName: order.customerName
+    });
+    
+    return finalPriority;
+  };
+
+  // تحديد الأولوية حسب حالة الطلب
+  const getStatusPriority = (status: string): 'low' | 'normal' | 'high' | 'critical' => {
+    const statusPriorities: Record<string, 'low' | 'normal' | 'high' | 'critical'> = {
+      // حالات حرجة تحتاج تدخل فوري
+      'عودة اتصال': 'critical',
+      'اعتراض': 'critical',
+      'شكوى': 'critical',
+      'إلغاء': 'high',
+      
+      // حالات مهمة
+      'جديد': 'high',
+      'تم التأكيد': 'high',
+      'معاد جدولة': 'high',
+      
+      // حالات عادية
+      'تم الاتصال': 'normal',
+      'مهتم': 'normal',
+      'يفكر': 'normal',
+      'متابعة': 'normal',
+      
+      // حالات منخفضة الأولوية
+      'لا يرد': 'low',
+      'رقم خطأ': 'low',
+      'مرفوض': 'low',
+      'تم الشحن': 'low',
+      'مكتمل': 'low'
+    };
+    
+    return statusPriorities[status] || 'normal';
+  };
+
+  // تحديد الأولوية حسب القيمة المالية
+  const getPricePriority = (totalPrice?: string): 'low' | 'normal' | 'high' | 'critical' => {
+    let price = 0;
+    
+    if (totalPrice) {
+      if (typeof totalPrice === 'string') {
+        price = parseFloat(totalPrice.replace(/[^\d.]/g, '') || '0');
+      } else {
+        price = parseFloat(String(totalPrice));
+      }
     }
     
-    if (totalPrice > 1000) {
-      return 'high';
-    }
+    if (price > 10000) return 'critical';  // طلبات كبيرة جداً
+    if (price > 5000) return 'high';       // طلبات كبيرة
+    if (price > 1000) return 'normal';     // طلبات متوسطة
+    return 'low';                          // طلبات صغيرة
+  };
 
-    // طلبات من مصادر مهمة
-    if (order.source === 'Facebook Ads' || order.source === 'Google Ads') {
-      return 'normal';
-    }
+  // تحديد الأولوية حسب المصدر
+  const getSourcePriority = (source?: string): 'low' | 'normal' | 'high' | 'critical' => {
+    const sourcePriorities: Record<string, 'low' | 'normal' | 'high' | 'critical'> = {
+      // مصادر مهمة (مدفوعة)
+      'Facebook Ads': 'high',
+      'Google Ads': 'high',
+      'Instagram Ads': 'high',
+      'TikTok Ads': 'high',
+      
+      // مصادر عادية
+      'Facebook': 'normal',
+      'Instagram': 'normal',
+      'WhatsApp': 'normal',
+      'موقع إلكتروني': 'normal',
+      
+      // مصادر أقل أهمية
+      'إحالة': 'low',
+      'أخرى': 'low'
+    };
+    
+    return sourcePriorities[source || ''] || 'normal';
+  };
 
-    // طلبات عادية
-    return 'normal';
+  // تحديد الأولوية حسب الوقت
+  const getTimePriority = (createdAt?: string): 'low' | 'normal' | 'high' | 'critical' => {
+    if (!createdAt) return 'normal';
+    
+    const now = new Date();
+    const orderDate = new Date(createdAt);
+    const hoursDiff = (now.getTime() - orderDate.getTime()) / (1000 * 60 * 60);
+    
+    if (hoursDiff < 1) return 'critical';    // أقل من ساعة
+    if (hoursDiff < 4) return 'high';        // أقل من 4 ساعات
+    if (hoursDiff < 24) return 'normal';     // أقل من يوم
+    return 'low';                            // أكثر من يوم
+  };
+
+  // تحديد تفاصيل إشعار تحديث الحالة
+  const getStatusNotificationDetails = (status: string, orderId: number) => {
+    const statusNotifications: Record<string, {
+      type: NotificationType;
+      message: string;
+      priority: 'low' | 'normal' | 'high' | 'critical';
+      emoji: string;
+    }> = {
+      // حالات إيجابية
+      'تم التأكيد': {
+        type: 'success',
+        message: `✅ تم تأكيد الطلب #${orderId}`,
+        priority: 'high',
+        emoji: '✅'
+      },
+      'تم الشحن': {
+        type: 'success',
+        message: `🚚 تم شحن الطلب #${orderId} بنجاح`,
+        priority: 'normal',
+        emoji: '🚚'
+      },
+      'مكتمل': {
+        type: 'success',
+        message: `🎉 تم إكمال الطلب #${orderId}`,
+        priority: 'low',
+        emoji: '🎉'
+      },
+
+      // حالات تحتاج متابعة
+      'جديد': {
+        type: 'new_order',
+        message: `🆕 طلب جديد #${orderId} يحتاج معالجة`,
+        priority: 'high',
+        emoji: '🆕'
+      },
+      'عودة اتصال': {
+        type: 'warning',
+        message: `📞 طلب عودة اتصال #${orderId} - عاجل!`,
+        priority: 'critical',
+        emoji: '📞'
+      },
+      'معاد جدولة': {
+        type: 'warning',
+        message: `📅 تم إعادة جدولة الطلب #${orderId}`,
+        priority: 'high',
+        emoji: '📅'
+      },
+      'متابعة': {
+        type: 'info',
+        message: `📋 الطلب #${orderId} يحتاج متابعة`,
+        priority: 'normal',
+        emoji: '📋'
+      },
+
+      // حالات سلبية
+      'مرفوض': {
+        type: 'error',
+        message: `❌ تم رفض الطلب #${orderId}`,
+        priority: 'normal',
+        emoji: '❌'
+      },
+      'إلغاء': {
+        type: 'warning',
+        message: `🚫 تم إلغاء الطلب #${orderId}`,
+        priority: 'high',
+        emoji: '🚫'
+      },
+      'لا يرد': {
+        type: 'warning',
+        message: `📵 العميل لا يرد - الطلب #${orderId}`,
+        priority: 'low',
+        emoji: '📵'
+      },
+      'رقم خطأ': {
+        type: 'error',
+        message: `📞 رقم خطأ - الطلب #${orderId}`,
+        priority: 'low',
+        emoji: '📞'
+      },
+
+      // حالات خاصة
+      'اعتراض': {
+        type: 'error',
+        message: `⚠️ اعتراض على الطلب #${orderId} - يحتاج تدخل فوري!`,
+        priority: 'critical',
+        emoji: '⚠️'
+      },
+      'شكوى': {
+        type: 'error',
+        message: `😠 شكوى من العميل - الطلب #${orderId}`,
+        priority: 'critical',
+        emoji: '😠'
+      }
+    };
+
+    return statusNotifications[status] || {
+      type: 'order_update' as NotificationType,
+      message: `📝 تم تحديث حالة الطلب #${orderId} إلى "${status}"`,
+      priority: 'normal' as const,
+      emoji: '📝'
+    };
   };
 
   // تحديد أنماط العرض للطلب
