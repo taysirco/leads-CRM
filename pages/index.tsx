@@ -6,12 +6,10 @@ import BostaExport from '../components/BostaExport';
 import ArchiveTable from '../components/ArchiveTable';
 import RejectedTable from '../components/RejectedTable';
 import StockManagement from '../components/StockManagement';
-import NotificationSystem from '../components/NotificationSystem';
-import NotificationPermission from '../components/NotificationPermission';
 import LiveStats from '../components/LiveStats';
-import EnhancedAlerts from '../components/EnhancedAlerts';
-import NotificationSettingsComponent from '../components/NotificationSettings';
-import { useNotifications } from '../hooks/useNotifications';
+import SmartNotificationSystem from '../components/SmartNotificationSystem';
+import SmartNotificationSettings from '../components/SmartNotificationSettings';
+import { useOrderNotifications } from '../hooks/useOrderNotifications';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 
 interface Lead {
@@ -38,6 +36,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'follow-up' | 'export' | 'archive' | 'rejected' | 'stock'>('orders');
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState<any>({
     autoRefresh: true,
     refreshInterval: 30,
@@ -69,14 +68,20 @@ export default function Home() {
   
   const orders = data?.data || [];
   
-  const { 
-    notifications, 
-    addNotification, 
-    removeNotification, 
-    removeAllNotifications 
-  } = useNotifications(orders, hasInteracted);
-
-  const newOrdersCount = notifications.filter(n => n.type === 'new_order').length;
+  const {
+    notifications,
+    removeNotification,
+    clearAllNotifications,
+    clearNotificationsByType,
+    notifySuccess,
+    notifyError,
+    notifyWarning,
+    settings: smartNotificationSettings,
+    updateSettings: updateNotificationSettings,
+    newOrdersCount,
+    criticalCount,
+    hasUserInteracted: smartHasInteracted
+  } = useOrderNotifications(orders, hasInteracted);
 
   const handleUpdateOrder = async (orderId: number, updates: any): Promise<void> => {
     try {
@@ -105,28 +110,13 @@ export default function Home() {
           if (result.availableQuantity !== undefined) {
             const details = `\n\n📦 التفاصيل:\n• المنتج: ${result.productName}\n• المطلوب: ${result.requiredQuantity}\n• المتوفر: ${result.availableQuantity}\n• النقص: ${result.requiredQuantity - result.availableQuantity}`;
             
-            addNotification({
-              type: 'error',
-              title: 'نفاد المخزون',
-              message: errorMessage + details,
-              duration: 8000
-            });
+            notifyError(errorMessage + details, result);
           } else {
-            addNotification({
-              type: 'error',
-              title: 'خطأ في المخزون',
-              message: errorMessage,
-              duration: 6000
-            });
+            notifyError(errorMessage, result);
           }
         } else {
           // خطأ عادي
-          addNotification({
-            type: 'error',
-            title: 'خطأ في التحديث',
-            message: result.message || 'فشل في تحديث الطلب. حاول مرة أخرى.',
-            duration: 5000
-          });
+          notifyError(result.message || 'فشل في تحديث الطلب. حاول مرة أخرى.', result);
         }
         throw new Error(result.message || 'فشل في التحديث');
       }
@@ -136,29 +126,14 @@ export default function Home() {
       
       // عرض رسالة نجاح مع معلومات المخزون إن وُجدت
       if (result.stockResult && result.stockResult.success) {
-        addNotification({
-          type: 'success',
-          title: 'تم الشحن بنجاح',
-          message: `✅ تم شحن الطلب رقم ${orderId}\n📦 ${result.stockResult.message}`,
-          duration: 4000
-        });
+        notifySuccess(`✅ تم شحن الطلب رقم ${orderId}\n📦 ${result.stockResult.message}`, result);
       } else if (updates.status === 'تم الشحن') {
-        addNotification({
-          type: 'success',
-          title: 'تم التحديث',
-          message: `تم تحديث الطلب رقم ${orderId} بنجاح`,
-          duration: 3000
-        });
+        notifySuccess(`تم تحديث الطلب رقم ${orderId} بنجاح`, result);
       }
       
       // عرض تحذيرات المخزون إن وُجدت
       if (result.warning) {
-        addNotification({
-          type: 'warning',
-          title: 'تحذير',
-          message: result.warning,
-          duration: 5000
-        });
+        notifyWarning(result.warning, result);
       }
       
     } catch (error) {
@@ -169,12 +144,7 @@ export default function Home() {
 
   const handleAssign = async () => {
     try {
-      addNotification({ 
-        type: 'warning', 
-        title: '🔄 جاري التوزيع...', 
-        message: 'جاري توزيع الليدز غير المعيّنة بالتساوي بين موظفي الكول سنتر...', 
-        duration: 3000 
-      });
+      notifyWarning('🔄 جاري توزيع الليدز غير المعيّنة بالتساوي بين موظفي الكول سنتر...');
       
       const res = await fetch('/api/assign', { method: 'POST' });
       const data = await res.json();
@@ -212,21 +182,15 @@ export default function Home() {
         }
       }
       
-      addNotification({ 
-        type: data.distributed > 0 ? 'success' : 'warning', 
-        title: data.distributed > 0 ? '✅ تم التوزيع بنجاح' : 'ℹ️ لا يوجد توزيع مطلوب', 
-        message, 
-        duration: data.distributed > 0 ? 8000 : 4000 
-      });
+      if (data.distributed > 0) {
+        notifySuccess(message, data);
+      } else {
+        notifyWarning(message, data);
+      }
       
       await mutate(); // تحديث البيانات بعد التوزيع
     } catch (e: any) {
-      addNotification({ 
-        type: 'error', 
-        title: '❌ فشل التوزيع', 
-        message: e.message + '\n💡 تأكد من الاتصال بالإنترنت وحاول مرة أخرى', 
-        duration: 6000 
-      });
+      notifyError(e.message + '\n💡 تأكد من الاتصال بالإنترنت وحاول مرة أخرى', e);
     }
   };
 
@@ -373,18 +337,19 @@ export default function Home() {
 
   return (
     <>
-      <EnhancedAlerts 
-        hasNewOrders={newOrdersCount > 0}
-        newOrdersCount={newOrdersCount}
-        initialUserInteraction={hasInteracted}
-      />
-      <NotificationPermission />
-      <NotificationSystem
+      <SmartNotificationSystem
         notifications={notifications}
         onDismiss={removeNotification}
-        onDismissAll={removeAllNotifications}
-        soundEnabled={notificationSettings.soundEnabled}
-        initialUserInteraction={hasInteracted}
+        onDismissAll={clearAllNotifications}
+        onDismissType={(type: string) => clearNotificationsByType(type as any)}
+        hasUserInteracted={smartHasInteracted}
+      />
+      
+      <SmartNotificationSettings
+        settings={smartNotificationSettings}
+        onSettingsChange={updateNotificationSettings}
+        isOpen={showNotificationSettings}
+        onClose={() => setShowNotificationSettings(false)}
       />
 
       <div className="min-h-screen bg-gray-50">
@@ -558,11 +523,7 @@ export default function Home() {
         </div>
       </div>
 
-      <NotificationSettingsComponent
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        onSettingsChange={setNotificationSettings}
-      />
+
     </>
   );
 } 
