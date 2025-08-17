@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { getStatusConfig, getStatusColor, getStatusIcon, sortStatusesByPriority } from '../utils/statusColors';
 
 interface StatusChangeEvent {
   orderId: number;
@@ -14,7 +15,7 @@ interface RealTimeStatusTrackerProps {
   statusStats: Record<string, number>;
   criticalOrders: Array<{
     id: number;
-    customerName: string;
+    name: string; // تصحيح اسم الحقل
     status: string;
     productName: string;
     totalPrice?: string;
@@ -33,40 +34,13 @@ const RealTimeStatusTracker: React.FC<RealTimeStatusTrackerProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'stats' | 'critical' | 'history'>('stats');
 
-  // تحديد ألوان الحالات
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      'جديد': 'bg-blue-500',
-      'تم الاتصال': 'bg-yellow-500',
-      'تم التأكيد': 'bg-green-500',
-      'تم الشحن': 'bg-purple-500',
-      'مرفوض': 'bg-red-500',
-      'عودة اتصال': 'bg-orange-500',
-      'اعتراض': 'bg-red-600',
-      'شكوى': 'bg-red-700',
-      'مكتمل': 'bg-gray-500',
-      'لا يرد': 'bg-gray-400',
-      'إلغاء': 'bg-red-400'
-    };
-    return colors[status] || 'bg-gray-300';
+  // استخدام نظام الألوان الموحد
+  const getStatusColorClass = (status: string) => {
+    return getStatusColor(status);
   };
 
-  // تحديد أيقونة الحالة
-  const getStatusIcon = (status: string) => {
-    const icons: Record<string, string> = {
-      'جديد': '🆕',
-      'تم الاتصال': '📞',
-      'تم التأكيد': '✅',
-      'تم الشحن': '🚚',
-      'مرفوض': '❌',
-      'عودة اتصال': '📞',
-      'اعتراض': '⚠️',
-      'شكوى': '😠',
-      'مكتمل': '🎉',
-      'لا يرد': '📵',
-      'إلغاء': '🚫'
-    };
-    return icons[status] || '📝';
+  const getStatusIconEmoji = (status: string) => {
+    return getStatusIcon(status);
   };
 
   // حساب النسب المئوية
@@ -74,18 +48,16 @@ const RealTimeStatusTracker: React.FC<RealTimeStatusTrackerProps> = ({
     return totalOrders > 0 ? ((count / totalOrders) * 100).toFixed(1) : '0.0';
   };
 
-  // ترتيب الحالات حسب الأولوية
+  // ترتيب الحالات حسب الأولوية باستخدام النظام الموحد
   const sortedStatuses = useMemo(() => {
-    const priorityOrder = [
-      'عودة اتصال', 'اعتراض', 'شكوى', // حرجة
-      'جديد', 'تم التأكيد', 'إلغاء', // مهمة
-      'تم الاتصال', 'تم الشحن', // عادية
-      'مرفوض', 'لا يرد', 'مكتمل' // منخفضة
-    ];
-
-    return priorityOrder
-      .filter(status => statusStats[status] > 0)
-      .map(status => ({ status, count: statusStats[status] }));
+    const availableStatuses = Object.keys(statusStats).filter(status => statusStats[status] > 0);
+    const sortedStatusNames = sortStatusesByPriority(availableStatuses);
+    
+    return sortedStatusNames.map(status => ({ 
+      status, 
+      count: statusStats[status],
+      config: getStatusConfig(status)
+    }));
   }, [statusStats]);
 
   // تنسيق الوقت
@@ -149,18 +121,21 @@ const RealTimeStatusTracker: React.FC<RealTimeStatusTrackerProps> = ({
           <div className="max-h-64 overflow-y-auto">
             {activeTab === 'stats' && (
               <div className="space-y-2">
-                {sortedStatuses.map(({ status, count }) => (
-                  <div key={status} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                {sortedStatuses.map(({ status, count, config }) => (
+                  <div key={status} className={`flex items-center justify-between p-2 rounded border ${config.bgColor} ${config.borderColor}`}>
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">{getStatusIcon(status)}</span>
-                      <span className="text-sm font-medium">{status}</span>
+                      <span className="text-lg">{config.icon}</span>
+                      <div className="flex flex-col">
+                        <span className={`text-sm font-medium ${config.textColor}`}>{status}</span>
+                        <span className="text-xs text-gray-500">{config.description}</span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold">{count}</span>
+                      <span className={`text-sm font-bold ${config.textColor}`}>{count}</span>
                       <span className="text-xs text-gray-500">
                         {getStatusPercentage(count)}%
                       </span>
-                      <div className={`w-3 h-3 rounded-full ${getStatusColor(status)}`}></div>
+                      <div className={`w-3 h-3 rounded-full ${config.color}`}></div>
                     </div>
                   </div>
                 ))}
@@ -178,24 +153,24 @@ const RealTimeStatusTracker: React.FC<RealTimeStatusTrackerProps> = ({
               <div className="space-y-2">
                 {criticalOrders.map(order => (
                   <div key={order.id} className="p-3 bg-red-50 border border-red-200 rounded">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-lg">{getStatusIcon(order.status)}</span>
-                          <span className="font-bold text-sm">#{order.id}</span>
-                          <span className={`px-2 py-1 rounded text-xs font-medium text-white ${getStatusColor(order.status)}`}>
-                            {order.status}
-                          </span>
+                                          <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-lg">{getStatusIconEmoji(order.status)}</span>
+                            <span className="font-bold text-sm">#{order.id}</span>
+                            <span className={`px-2 py-1 rounded text-xs font-medium text-white ${getStatusColorClass(order.status)}`}>
+                              {order.status}
+                            </span>
+                          </div>
+                          <p className="text-sm font-medium">{order.name}</p>
+                          <p className="text-xs text-gray-600">{order.productName}</p>
+                          {order.totalPrice && (
+                            <p className="text-xs font-medium text-green-600">
+                              {order.totalPrice} جنيه
+                            </p>
+                          )}
                         </div>
-                        <p className="text-sm font-medium">{order.customerName}</p>
-                        <p className="text-xs text-gray-600">{order.productName}</p>
-                        {order.totalPrice && (
-                          <p className="text-xs font-medium text-green-600">
-                            {order.totalPrice} جنيه
-                          </p>
-                        )}
                       </div>
-                    </div>
                   </div>
                 ))}
                 
@@ -218,11 +193,11 @@ const RealTimeStatusTracker: React.FC<RealTimeStatusTrackerProps> = ({
                       <span className="text-gray-500">{formatTime(change.timestamp)}</span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <span className={`px-2 py-1 rounded text-white ${getStatusColor(change.previousStatus)}`}>
+                      <span className={`px-2 py-1 rounded text-white ${getStatusColorClass(change.previousStatus)}`}>
                         {change.previousStatus}
                       </span>
                       <span className="text-gray-400">→</span>
-                      <span className={`px-2 py-1 rounded text-white ${getStatusColor(change.newStatus)}`}>
+                      <span className={`px-2 py-1 rounded text-white ${getStatusColorClass(change.newStatus)}`}>
                         {change.newStatus}
                       </span>
                     </div>

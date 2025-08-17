@@ -3,7 +3,7 @@ import { useOrderNotifications } from './useOrderNotifications';
 
 interface Order {
   id: number;
-  customerName: string;
+  name: string; // الاسم الصحيح للعميل
   phone: string;
   status: string;
   productName: string;
@@ -19,7 +19,7 @@ interface StatusChangeEvent {
   newStatus: string;
   timestamp: Date;
   userId?: string;
-  customerName: string;
+  customerName: string; // نحتفظ بـ customerName هنا للتوافق
   productName: string;
   totalPrice?: string;
 }
@@ -98,7 +98,7 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
         const hasStatusChange = previousOrder.status !== currentOrder.status;
         const hasAssigneeChange = previousOrder.assignee !== currentOrder.assignee;
         const hasOtherChanges = (
-          previousOrder.customerName !== currentOrder.customerName ||
+          previousOrder.name !== currentOrder.name ||
           previousOrder.productName !== currentOrder.productName ||
           previousOrder.phone !== currentOrder.phone
         );
@@ -113,7 +113,7 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
               previousStatus: previousOrder.status,
               newStatus: currentOrder.status,
               timestamp: new Date(),
-              customerName: currentOrder.customerName,
+              customerName: currentOrder.name, // استخدام الحقل الصحيح
               productName: currentOrder.productName,
               totalPrice: currentOrder.totalPrice
             };
@@ -142,7 +142,7 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
       
       if (order.source?.includes('Ads')) priority = 'high';
 
-      notifySuccess(`🛒 طلب جديد من ${order.customerName}`, {
+      notifySuccess(`🛒 طلب جديد من ${order.name}`, {
         orderId: order.id,
         productName: order.productName,
         totalPrice: order.totalPrice,
@@ -294,7 +294,7 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
     // معالجة التحديثات الأخرى (تعيين، تعديل بيانات)
     updatedOrders.forEach(({ previous, current }) => {
       if (previous.assignee !== current.assignee && current.assignee) {
-        notifyInfo(`📋 تم تعيين طلب ${current.customerName} إلى ${current.assignee}`);
+        notifyInfo(`📋 تم تعيين طلب ${current.name} إلى ${current.assignee}`);
       }
     });
 

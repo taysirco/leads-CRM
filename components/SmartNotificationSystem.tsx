@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { SmartNotification, NotificationPriority, NotificationDisplayMode } from '../hooks/useSmartNotifications';
+import { getStatusConfig, getStatusColor, getStatusIcon } from '../utils/statusColors';
 
 interface SmartNotificationSystemProps {
   notifications: SmartNotification[];
@@ -78,9 +79,15 @@ const SmartNotificationSystem: React.FC<SmartNotificationSystemProps> = ({
     });
   };
 
-  // الحصول على أيقونة حسب النوع
-  const getTypeIcon = (type: string) => {
-    const icons = {
+  // الحصول على أيقونة حسب النوع والبيانات
+  const getNotificationIcon = (notification: SmartNotification) => {
+    // إذا كان الإشعار يحتوي على معلومات الطلب، استخدم أيقونة الحالة
+    if (notification.data?.status) {
+      return getStatusIcon(notification.data.status);
+    }
+    
+    // أيقونات حسب نوع الإشعار
+    const typeIcons = {
       new_order: '🛒',
       order_update: '📝',
       success: '✅',
@@ -90,7 +97,7 @@ const SmartNotificationSystem: React.FC<SmartNotificationSystemProps> = ({
       stock_alert: '📦',
       system: '⚙️'
     };
-    return icons[type as keyof typeof icons] || '📢';
+    return typeIcons[notification.type as keyof typeof typeIcons] || '📢';
   };
 
   // الحصول على لون حسب الأولوية
@@ -246,7 +253,7 @@ const SmartNotificationSystem: React.FC<SmartNotificationSystemProps> = ({
                     >
                       <div className="flex items-start gap-3">
                         <div className="text-2xl flex-shrink-0">
-                          {getTypeIcon(notification.type)}
+                          {getNotificationIcon(notification)}
                         </div>
                         
                         <div className="flex-1 min-w-0">
@@ -345,7 +352,7 @@ const SmartNotificationSystem: React.FC<SmartNotificationSystemProps> = ({
             {groupedNotifications.modal.slice(0, 1).map(notification => (
               <div key={notification.id}>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="text-3xl">{getTypeIcon(notification.type)}</div>
+                  <div className="text-3xl">{getNotificationIcon(notification)}</div>
                   <div>
                     <h3 className="font-bold text-lg text-gray-800">
                       {notification.title}

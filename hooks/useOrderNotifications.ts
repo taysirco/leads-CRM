@@ -3,7 +3,7 @@ import { useSmartNotifications, SmartNotification, NotificationType } from './us
 
 interface Order {
   id: number;
-  customerName: string;
+  name: string; // الاسم الصحيح للعميل
   productName: string;
   status: string;
   source: string;
@@ -59,7 +59,7 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
       return (
         previousOrder.status !== order.status ||
         previousOrder.assignee !== order.assignee ||
-        previousOrder.customerName !== order.customerName ||
+        previousOrder.name !== order.name ||
         previousOrder.productName !== order.productName
       );
     });
@@ -73,7 +73,7 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
         type: 'new_order',
         priority,
         title: '🛒 طلب جديد',
-        message: `طلب جديد من ${order.customerName} - ${order.productName}`,
+        message: `طلب جديد من ${order.name} - ${order.productName}`,
         displayModes,
         duration: priority === 'critical' ? 0 : 8000, // الحرج لا ينتهي
         persistent: priority === 'critical',
@@ -233,7 +233,7 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
       createdAt: order.createdAt,
       timePriority,
       finalPriority,
-      customerName: order.customerName
+      customerName: order.name
     });
     
     return finalPriority;
