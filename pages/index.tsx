@@ -10,7 +10,8 @@ import LiveStats from '../components/LiveStats';
 import SmartNotificationSystem from '../components/SmartNotificationSystem';
 import SmartNotificationSettings from '../components/SmartNotificationSettings';
 import NotificationTester from '../components/NotificationTester';
-import { useOrderNotifications } from '../hooks/useOrderNotifications';
+import RealTimeStatusTracker from '../components/RealTimeStatusTracker';
+import { useRealTimeOrderTracking } from '../hooks/useRealTimeOrderTracking';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 
 interface Lead {
@@ -64,7 +65,12 @@ export default function Home() {
   const { data, error, mutate } = useSWR(
     '/api/orders', 
     fetcher, 
-    { refreshInterval: notificationSettings.autoRefresh ? notificationSettings.refreshInterval * 1000 : 0 }
+    { 
+      refreshInterval: notificationSettings.autoRefresh ? Math.min(notificationSettings.refreshInterval * 1000, 10000) : 0, // حد أقصى 10 ثوان
+      revalidateOnFocus: true, // إعادة تحديث عند التركيز على الصفحة
+      revalidateOnReconnect: true, // إعادة تحديث عند إعادة الاتصال
+      dedupingInterval: 5000 // منع التكرار لمدة 5 ثوان
+    }
   );
   
   const orders = data?.data || [];
@@ -81,8 +87,12 @@ export default function Home() {
     updateSettings: updateNotificationSettings,
     newOrdersCount,
     criticalCount,
-    hasUserInteracted: smartHasInteracted
-  } = useOrderNotifications(orders, hasInteracted);
+    hasUserInteracted: smartHasInteracted,
+    orderStats,
+    statusStats,
+    criticalOrders,
+    statusChangeHistory
+  } = useRealTimeOrderTracking(orders, hasInteracted);
 
   const handleUpdateOrder = async (orderId: number, updates: any): Promise<void> => {
     try {
@@ -354,6 +364,13 @@ export default function Home() {
       />
       
       <NotificationTester />
+      
+      <RealTimeStatusTracker
+        statusStats={statusStats}
+        criticalOrders={criticalOrders}
+        statusChangeHistory={statusChangeHistory}
+        totalOrders={orders.length}
+      />
 
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto p-2 sm:p-4">
