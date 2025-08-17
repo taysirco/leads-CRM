@@ -135,10 +135,26 @@ export const useSmartNotifications = (initialUserInteraction: boolean = false) =
   
   // تشغيل الصوت
   const playNotificationSound = useCallback((priority: NotificationPriority = 'normal') => {
-    if (!settings.soundEnabled || !hasUserInteracted) return;
+    console.log(`🎵 محاولة تشغيل صوت - الأولوية: ${priority}`);
+    console.log(`🔧 الإعدادات: soundEnabled=${settings.soundEnabled}, hasUserInteracted=${hasUserInteracted}`);
+    
+    if (!settings.soundEnabled) {
+      console.log('❌ الأصوات معطلة في الإعدادات');
+      return;
+    }
+    
+    if (!hasUserInteracted) {
+      console.log('❌ لم يتفاعل المستخدم مع الصفحة بعد');
+      return;
+    }
     
     const prioritySettings = settings.prioritySettings[priority];
-    if (!prioritySettings.sound) return;
+    console.log(`🔧 إعدادات الأولوية ${priority}:`, prioritySettings);
+    
+    if (!prioritySettings.sound) {
+      console.log(`❌ الصوت معطل لأولوية ${priority}`);
+      return;
+    }
     
     try {
       // إنشاء صوت مخصص حسب الأولوية
@@ -172,7 +188,10 @@ export const useSmartNotifications = (initialUserInteraction: boolean = false) =
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + config.duration);
       
+      console.log(`✅ تم تشغيل الصوت بنجاح - ${priority}: ${config.freq.join(',')}Hz لمدة ${config.duration}s`);
+      
     } catch (error) {
+      console.error('❌ خطأ في تشغيل الصوت:', error);
       console.warn('Audio notification not supported:', error);
     }
   }, [settings.soundEnabled, hasUserInteracted, settings.prioritySettings]);
@@ -271,6 +290,7 @@ export const useSmartNotifications = (initialUserInteraction: boolean = false) =
     
     // تشغيل الأصوات والتأثيرات
     if (notification.displayModes.includes('sound') || prioritySettings.sound) {
+      console.log(`🔊 تشغيل صوت للإشعار: ${notification.type} - ${notification.priority}`);
       playNotificationSound(notification.priority);
     }
     

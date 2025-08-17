@@ -9,6 +9,7 @@ import StockManagement from '../components/StockManagement';
 import LiveStats from '../components/LiveStats';
 import SmartNotificationSystem from '../components/SmartNotificationSystem';
 import SmartNotificationSettings from '../components/SmartNotificationSettings';
+import NotificationTester from '../components/NotificationTester';
 import { useOrderNotifications } from '../hooks/useOrderNotifications';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 
@@ -351,6 +352,8 @@ export default function Home() {
         isOpen={showNotificationSettings}
         onClose={() => setShowNotificationSettings(false)}
       />
+      
+      <NotificationTester />
 
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto p-2 sm:p-4">
