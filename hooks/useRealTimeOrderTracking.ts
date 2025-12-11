@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { useOrderNotifications } from './useOrderNotifications';
 
 interface Order {
@@ -42,6 +42,15 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
   const [statusChangeHistory, setStatusChangeHistory] = useState<StatusChangeEvent[]>([]);
   const previousOrdersMapRef = useRef<Map<number, Order>>(new Map());
   const isFirstLoadRef = useRef(true);
+
+  // Refs for stable callback references (to avoid infinite loops)
+  const notifySuccessRef = useRef<typeof notifySuccess | null>(null);
+  const notifyErrorRef = useRef<typeof notifyError | null>(null);
+  const notifyWarningRef = useRef<typeof notifyWarning | null>(null);
+  const notifyInfoRef = useRef<typeof notifyInfo | null>(null);
+  const detectOrderChangesRef = useRef<typeof detectOrderChanges | null>(null);
+  const handleNewOrdersRef = useRef<typeof handleNewOrders | null>(null);
+  const handleStatusChangesRef = useRef<typeof handleStatusChanges | null>(null);
 
   // استخدام نظام الإشعارات المحسن
   const {
@@ -265,11 +274,22 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
       }
     });
 
-    // تحديث تاريخ التغييرات
-    setStatusChangeHistory(prev => [...prev, ...statusChanges].slice(-50)); // الاحتفاظ بآخر 50 تغيير
+    // تحديث تاريخ التغييرات - باستخدام refs لتجنب الحلقة
+    // لا نستخدم setStatusChangeHistory هنا لتجنب re-render
   }, [notifySuccess, notifyWarning, notifyError, notifyInfo]);
 
-  // مراقبة التغييرات في الطلبات
+  // تحديث الـ refs عند تغيير الـ callbacks (يعمل بشكل متزامن قبل الـ effects)
+  useLayoutEffect(() => {
+    notifySuccessRef.current = notifySuccess;
+    notifyErrorRef.current = notifyError;
+    notifyWarningRef.current = notifyWarning;
+    notifyInfoRef.current = notifyInfo;
+    detectOrderChangesRef.current = detectOrderChanges;
+    handleNewOrdersRef.current = handleNewOrders;
+    handleStatusChangesRef.current = handleStatusChanges;
+  });
+
+  // مراقبة التغييرات في الطلبات - effect للإحصائيات فقط
   useEffect(() => {
     if (!orders || orders.length === 0) return;
 
@@ -292,10 +312,62 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
       return;
     }
 
-    // حذف جميع استدعاءات الـ callbacks لمنع الحلقة اللانهائية
-    // الإشعارات يمكن تفعيلها لاحقاً بطريقة مختلفة
+    // اكتشاف التغييرات باستخدام ref
+    const detectChanges = detectOrderChangesRef.current;
+    if (detectChanges) {
+      const { newOrders, updatedOrders, statusChanges } = detectChanges(orders);
 
-    // تحديث المراجع والإحصائيات فقط
+      // إرسال الإشعارات باستخدام refs (لا تسبب re-render)
+      if (newOrders.length > 0 && handleNewOrdersRef.current) {
+        // debounce بسيط - تأخير قصير لمنع الإشعارات المتكررة
+        setTimeout(() => {
+          if (handleNewOrdersRef.current) {
+            // إشعار بسيط للطلبات الجديدة بدون استخدام الـ callback المعقد
+            newOrders.forEach(order => {
+              if (notifySuccessRef.current) {
+                notifySuccessRef.current(`🛒 طلب جديد من ${order.name}`, {
+                  orderId: order.id,
+                  productName: order.productName,
+                  totalPrice: order.totalPrice,
+                  source: order.source,
+                  priority: 'normal'
+                });
+              }
+            });
+          }
+        }, 100);
+      }
+
+      // إشعارات تغيير الحالة
+      if (statusChanges.length > 0) {
+        setTimeout(() => {
+          statusChanges.forEach(change => {
+            const { newStatus, customerName } = change;
+            if (notifyInfoRef.current) {
+              const emoji = newStatus === 'تم التأكيد' ? '✅' :
+                newStatus === 'تم الشحن' ? '🚚' :
+                  newStatus === 'عودة اتصال' ? '📞' :
+                    newStatus === 'اعتراض' ? '⚠️' :
+                      newStatus === 'مرفوض' ? '❌' : '📝';
+              notifyInfoRef.current(`${emoji} تغيير حالة ${customerName} إلى ${newStatus}`, change);
+            }
+          });
+        }, 150);
+      }
+
+      // إشعارات التعيين
+      updatedOrders.forEach(({ previous, current }) => {
+        if (previous.assignee !== current.assignee && current.assignee) {
+          setTimeout(() => {
+            if (notifyInfoRef.current) {
+              notifyInfoRef.current(`📋 تم تعيين طلب ${current.name} إلى ${current.assignee}`);
+            }
+          }, 200);
+        }
+      });
+    }
+
+    // تحديث المراجع والإحصائيات
     previousOrdersMapRef.current = new Map(orders.map(order => [order.id, order]));
 
     // حساب الإحصائيات مباشرة
