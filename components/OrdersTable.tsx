@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import StatusBadge from './StatusBadge';
 import WhatsAppTemplates from './WhatsAppTemplates';
-import { testPhoneFormatter, formatPhoneForDisplay, formatEgyptianPhone } from '../lib/phoneFormatter';
-import { cleanText, getUniqueProducts, compareCleanText, testProductCleaning, analyzeOrderStatuses, testStatusFilter } from '../lib/textCleaner';
+import { formatPhoneForDisplay, formatEgyptianPhone } from '../lib/phoneFormatter';
+import { cleanText, getUniqueProducts } from '../lib/textCleaner';
 
 interface Order {
   id: number;
@@ -57,16 +57,12 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   const [optimisticUpdates, setOptimisticUpdates] = useState<Map<number, Partial<Order>>>(new Map());
   const [showSuccessMessage, setShowSuccessMessage] = useState<number | null>(null);
   const [copySuccess, setCopySuccess] = useState('');
-  
+
   // حالات التحديد الجماعي
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
   const [bulkStatusModalOpen, setBulkStatusModalOpen] = useState(false);
   const [isBulkLoading, setIsBulkLoading] = useState(false);
   const [bulkSuccessMessage, setBulkSuccessMessage] = useState('');
-  
-  // للتحكم في تشغيل التحليل مرة واحدة فقط
-  const statusAnalysisDone = React.useRef(false);
-  const productAnalysisDone = React.useRef(false);
 
   // إعادة تعيين التحديدات عند تغيير الفلاتر
   React.useEffect(() => {
@@ -120,19 +116,19 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
 
     try {
       // تحديث جميع الطلبات المحددة
-      const updatePromises = Array.from(selectedOrders).map(orderId => 
+      const updatePromises = Array.from(selectedOrders).map(orderId =>
         onUpdateOrder(orderId, { status: newStatus })
       );
 
       await Promise.all(updatePromises);
-      
+
       // إظهار رسالة نجاح
       setBulkSuccessMessage(`تم تحديث ${selectedOrders.size} طلب بنجاح إلى حالة "${newStatus}"`);
       setTimeout(() => setBulkSuccessMessage(''), 5000);
-      
+
       // إلغاء التحديد
       setSelectedOrders(new Set());
-      
+
     } catch (error) {
       console.error('Failed to update orders:', error);
       alert('فشل في تحديث بعض الطلبات. حاول مرة أخرى.');
@@ -142,86 +138,31 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   };
 
   const filteredOrders = useMemo(() => {
-    const results = orders.filter(order => {
-      // الحصول على الطلب مع التحديثات التفاؤلية
+    return orders.filter(order => {
       const orderWithUpdates = getOrderWithUpdates(order);
-      
-      const matchesSearch = !searchTerm || 
+
+      const matchesSearch = !searchTerm ||
         orderWithUpdates.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         orderWithUpdates.phone.includes(searchTerm) ||
         orderWithUpdates.whatsapp.includes(searchTerm);
-      
-      // تحسين فلتر الحالة للتعامل مع القيم الفارغة والمسافات
+
       const orderStatus = (orderWithUpdates.status || 'جديد').trim();
       const selectedStatus = statusFilter.trim();
-      
-      // معالجة خاصة للحالات الفارغة
+
       let matchesStatus = false;
       if (!selectedStatus) {
-        // إذا لم يكن هناك فلتر محدد، أظهر كل الطلبات
         matchesStatus = true;
       } else if (selectedStatus === 'جديد') {
-        // إذا كان الفلتر "جديد"، أظهر الطلبات الجديدة أو التي بدون حالة
         matchesStatus = orderStatus === 'جديد' || !orderWithUpdates.status;
       } else {
-        // للحالات الأخرى، طابق تماماً
         matchesStatus = orderStatus === selectedStatus;
       }
-      
+
       const matchesSource = !sourceFilter || orderWithUpdates.source === sourceFilter;
       const matchesProduct = !productFilter || cleanText(orderWithUpdates.productName) === productFilter;
-      
-      // Debug info for status filter
-      if (process.env.NODE_ENV === 'development' && statusFilter) {
-        let matchType = '';
-        if (!selectedStatus) {
-          matchType = 'no filter';
-        } else if (selectedStatus === 'جديد' && !orderWithUpdates.status) {
-          matchType = 'empty status treated as جديد';
-        } else if (orderStatus === selectedStatus) {
-          matchType = 'exact match';
-        } else {
-          matchType = 'no match';
-        }
-        
-        console.log('Status Filter Debug:', {
-          orderId: orderWithUpdates.id,
-          orderStatus: `"${orderStatus}"`,
-          selectedStatus: `"${selectedStatus}"`,
-          matchesStatus,
-          matchType,
-          originalStatus: `"${order.status}"`,
-          updatedStatus: `"${orderWithUpdates.status}"`,
-          isEmptyOriginal: !order.status,
-          isEmptyUpdated: !orderWithUpdates.status
-        });
-      }
-      
+
       return matchesSearch && matchesStatus && matchesSource && matchesProduct;
     });
-    
-    // معلومات إضافية عن نتائج الفلتر
-    if (process.env.NODE_ENV === 'development') {
-      console.log('\n🔢 نتائج الفلتر:');
-      console.log(`إجمالي الطلبات: ${orders.length}`);
-      console.log(`الطلبات المفلترة: ${results.length}`);
-      console.log(`فلاتر نشطة:`);
-      console.log(`  - البحث: ${searchTerm ? `"${searchTerm}"` : 'غير نشط'}`);
-      console.log(`  - الحالة: ${statusFilter ? `"${statusFilter}"` : 'غير نشط'}`);
-      console.log(`  - المصدر: ${sourceFilter ? `"${sourceFilter}"` : 'غير نشط'}`);
-      console.log(`  - المنتج: ${productFilter ? `"${productFilter}"` : 'غير نشط'}`);
-      
-      if (statusFilter && results.length === 0) {
-        console.log('⚠️ فلتر الحالة لا يُظهر أي نتائج!');
-        const statusMatches = orders.filter(order => {
-          const orderStatus = (order.status || 'جديد').trim();
-          return orderStatus === statusFilter.trim();
-        });
-        console.log(`طلبات تطابق الحالة بدون فلاتر أخرى: ${statusMatches.length}`);
-      }
-    }
-    
-    return results;
   }, [orders, searchTerm, statusFilter, sourceFilter, productFilter, optimisticUpdates]);
 
   // مفاتيح الاختصار للعمليات الجماعية
@@ -243,101 +184,18 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   }, [filteredOrders.length, selectedOrders.size]);
 
   const sources = [...new Set(orders.map(o => o.source).filter(Boolean))];
-  
+
   // استخدام الدالة المشتركة لإنشاء قائمة منتجات نظيفة ومرتبة
   const products = useMemo(() => {
-    const uniqueProducts = getUniqueProducts(orders);
-    
-    // Debug: إذا كان لا يزال هناك تكرار، سنطبع تفاصيل في الكونسول
-    if (process.env.NODE_ENV === 'development') {
-      // تحليل حالات الطلبات (فقط مرة واحدة عند التحميل)
-      if (!statusAnalysisDone.current) {
-        console.log('\n📊 تحليل شامل لحالات الطلبات:');
-        analyzeOrderStatuses(orders);
-        statusAnalysisDone.current = true;
-      }
-      
-      // اختبار فلتر الحالة إذا كان محدد
-      if (statusFilter) {
-        console.log(`\n🔍 اختبار فلتر الحالة: "${statusFilter}"`);
-        testStatusFilter(orders, statusFilter);
-      }
-      
-      // تشغيل اختبار تنظيف المنتجات (فقط مرة واحدة)
-      if (!productAnalysisDone.current) {
-        testProductCleaning();
-        productAnalysisDone.current = true;
-      }
-      
-      const originalProducts = orders.map(o => o.productName).filter(Boolean);
-      const originalUnique = [...new Set(originalProducts)];
-      
-      // فحص خاص للمنتج المذكور من المستخدم
-      const k19Products = originalProducts.filter(p => 
-        p.toLowerCase().includes('موبايل') && 
-        p.toLowerCase().includes('k19')
-      );
-      
-      if (k19Products.length > 0) {
-        console.log('\n🔍 تحليل خاص لمنتج "موبايل المهام الخاصة K19":');
-        console.log('الأشكال الموجودة:', k19Products);
-        k19Products.forEach((product, i) => {
-          console.log(`${i + 1}. "${product}" → "${cleanText(product)}"`);
-        });
-        
-        const cleanedK19 = [...new Set(k19Products.map(cleanText))];
-        console.log('الأشكال المنظفة الفريدة:', cleanedK19);
-        
-        if (cleanedK19.length > 1) {
-          console.log('❌ لا يزال هناك تكرار في هذا المنتج!');
-        } else {
-          console.log('✅ تم توحيد المنتج بنجاح');
-        }
-      }
-      
-      if (originalUnique.length !== uniqueProducts.length) {
-        console.log('🚨 تم اكتشاف تكرار في أسماء المنتجات!');
-        console.log('عدد المنتجات الأصلية الفريدة:', originalUnique.length);
-        console.log('عدد المنتجات المنظفة الفريدة:', uniqueProducts.length);
-        console.log('المنتجات الأصلية:', originalUnique);
-        console.log('المنتجات المنظفة:', uniqueProducts);
-        
-        // تحليل مفصل
-        const duplicateAnalysis = new Map<string, string[]>();
-        orders.forEach(order => {
-          const original = order.productName || '';
-          const cleaned = cleanText(original);
-          
-          if (!duplicateAnalysis.has(cleaned)) {
-            duplicateAnalysis.set(cleaned, []);
-          }
-          if (!duplicateAnalysis.get(cleaned)!.includes(original)) {
-            duplicateAnalysis.get(cleaned)!.push(original);
-          }
-        });
-        
-        duplicateAnalysis.forEach((originals, cleaned) => {
-          if (originals.length > 1) {
-            console.log(`\n�� المنتج المنظف: "${cleaned}"`);
-            console.log('الأشكال المختلفة:');
-            originals.forEach((original, i) => {
-              console.log(`  ${i + 1}. "${original}" (طول: ${original.length})`);
-              console.log(`     رموز: ${original.split('').map(c => c.charCodeAt(0)).join(', ')}`);
-            });
-          }
-        });
-      }
-    }
-    
-    return uniqueProducts;
+    return getUniqueProducts(orders);
   }, [orders]);
 
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return '';
-    
+
     // استخدام formatEgyptianPhone لتنسيق الرقم بشكل صحيح
     const formatted = formatEgyptianPhone(phone);
-    
+
     // إزالة علامة + للاستخدام مع WhatsApp
     return formatted.startsWith('+') ? formatted.substring(1) : formatted;
   };
@@ -348,13 +206,12 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
     setLoadingOrders(prev => new Set(prev.add(orderId)));
 
     try {
-      console.log(`Updating order ID ${orderId} to status: ${newStatus}`);
       await onUpdateOrder(orderId, { status: newStatus });
-      
+
       // Show success feedback
       setShowSuccessMessage(orderId);
       setTimeout(() => setShowSuccessMessage(null), 2000);
-      
+
       // Clear optimistic update after successful save
       setOptimisticUpdates(prev => {
         const newMap = new Map(prev);
@@ -363,14 +220,14 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
       });
     } catch (error: any) {
       console.error(`Failed to update order ${orderId}:`, error);
-      
+
       // Revert optimistic update on error
       setOptimisticUpdates(prev => {
         const newMap = new Map(prev);
         newMap.delete(orderId);
         return newMap;
       });
-      
+
       // معالجة خاصة لأخطاء المخزون
       if (error.message && (error.message.includes('المخزون غير كافي') || error.message.includes('نفاد المخزون'))) {
         // رسالة خطأ مفصلة للمخزون
@@ -390,12 +247,12 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
 
   const handleNotesUpdate = async (orderId: number) => {
     setLoadingOrders(prev => new Set(prev.add(orderId)));
-    
+
     try {
       await onUpdateOrder(orderId, { notes: editingNotes });
       setEditingId(null);
       setEditingNotes('');
-      
+
       setShowSuccessMessage(orderId);
       setTimeout(() => setShowSuccessMessage(null), 2000);
     } catch (error) {
@@ -410,13 +267,12 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   };
 
   const openEditModal = (order: Order) => {
-    console.log('🔓 فتح نافذة التعديل للطلب:', order.id);
     const orderCopy = { ...order };
     setEditingOrder(orderCopy);
     setOriginalOrder({ ...order }); // حفظ نسخة من البيانات الأصلية
     setHasUnsavedChanges(false); // إعادة تعيين حالة التغييرات
     setEditModalOpen(true);
-    
+
     // إلغاء أي timer سابق
     if (autoSaveTimer) {
       clearTimeout(autoSaveTimer);
@@ -427,15 +283,11 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   // دالة للحفظ التلقائي الذكي
   const autoSaveChanges = async () => {
     if (!editingOrder || !hasUnsavedChanges) {
-      console.log('⏭️ تخطي الحفظ التلقائي - لا توجد تغييرات');
       return;
     }
-    
-    console.log('🔄 بدء الحفظ التلقائي للطلب:', editingOrder.id);
-    
+
     try {
-      await saveOrderInternal(false); // حفظ بدون إغلاق النافذة
-      console.log('✅ تم الحفظ التلقائي بنجاح');
+      await saveOrderInternal(false);
     } catch (error) {
       console.error('❌ فشل في الحفظ التلقائي:', error);
       // لا نعرض رسالة خطأ للمستخدم في الحفظ التلقائي
@@ -444,33 +296,29 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
 
   const handleUpdateField = (field: keyof Order, value: string) => {
     if (!editingOrder || !originalOrder) return;
-    
-    console.log(`🔄 تعديل الحقل ${field}:`, value);
-    
+
     const updatedOrder = { ...editingOrder, [field]: value };
     setEditingOrder(updatedOrder);
-    
+
     // فحص إذا كان هناك تغييرات عن البيانات الأصلية
     const hasChanges = Object.keys(updatedOrder).some(key => {
       const orderKey = key as keyof Order;
       return updatedOrder[orderKey] !== originalOrder[orderKey];
     });
-    
-    console.log(`📊 هل توجد تغييرات؟`, hasChanges);
+
     setHasUnsavedChanges(hasChanges);
-    
+
     // إلغاء أي timer سابق
     if (autoSaveTimer) {
       clearTimeout(autoSaveTimer);
     }
-    
+
     // إعداد حفظ تلقائي بعد 3 ثواني من آخر تعديل
     if (hasChanges) {
       const newTimer = setTimeout(() => {
-        console.log('💾 بدء الحفظ التلقائي...');
         autoSaveChanges();
       }, 3000);
-      
+
       setAutoSaveTimer(newTimer);
     }
   };
@@ -478,11 +326,9 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   // دالة الحفظ الداخلية المرنة
   const saveOrderInternal = async (closeModal = true) => {
     if (!editingOrder) return;
-    
-    console.log('💾 حفظ تعديلات الطلب:', editingOrder);
-    
+
     setLoadingOrders(prev => new Set(prev.add(editingOrder.id)));
-    
+
     try {
       // إرسال فقط الحقول القابلة للتحديث (بدون id و rowIndex)
       const updatesToSend = {
@@ -503,35 +349,33 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
         whatsappSent: editingOrder.whatsappSent,
         assignee: editingOrder.assignee
       };
-      
-      console.log('📤 البيانات المرسلة للتحديث:', updatesToSend);
-      
+
       await onUpdateOrder(editingOrder.id, updatesToSend);
-      
+
       // تحديث البيانات الأصلية بعد الحفظ الناجح
       setOriginalOrder({ ...editingOrder });
       setHasUnsavedChanges(false);
-      
+
       // إلغاء أي timer للحفظ التلقائي
       if (autoSaveTimer) {
         clearTimeout(autoSaveTimer);
         setAutoSaveTimer(null);
       }
-      
+
       if (closeModal) {
-      setEditModalOpen(false);
-      setEditingOrder(null);
+        setEditModalOpen(false);
+        setEditingOrder(null);
         setOriginalOrder(null);
       }
-      
+
       setShowSuccessMessage(editingOrder.id);
       setTimeout(() => setShowSuccessMessage(null), 2000);
-      
+
       return true;
     } catch (error) {
       console.error('❌ خطأ في حفظ التغييرات:', error);
       if (closeModal) {
-      alert('فشل في حفظ التغييرات. حاول مرة أخرى.');
+        alert('فشل في حفظ التغييرات. حاول مرة أخرى.');
       }
       throw error;
     } finally {
@@ -685,14 +529,14 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     تحديد الكل ({filteredOrders.length})
                   </label>
                 </div>
-                
+
                 {selectedOrders.size > 0 && (
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <span className="text-xs sm:text-sm text-blue-600 font-medium">
                       تم تحديد {selectedOrders.size} طلب
                     </span>
                     <div className="w-full sm:w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className="h-full bg-blue-500 transition-all duration-300"
                         style={{ width: `${(selectedOrders.size / filteredOrders.length) * 100}%` }}
                       ></div>
@@ -758,7 +602,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 const order = getOrderWithUpdates(originalOrder);
                 const isLoading = loadingOrders.has(order.id);
                 const showSuccess = showSuccessMessage === order.id;
-                
+
                 return (
                   <React.Fragment key={order.id}>
                     <tr className={`hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 ${isLoading ? 'opacity-75' : ''} ${expandedRow === order.id ? 'bg-blue-50' : ''} ${selectedOrders.has(order.id) ? 'bg-blue-50 border-blue-200' : ''}`}>
@@ -807,7 +651,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                               <span className="text-gray-900 hidden sm:inline">{formatPhoneForDisplay(order.phone)}</span>
                             </button>
                           </div>
-                          
+
                           {/* عرض رقم الواتساب إذا كان موجود وغير فارغ */}
                           {order.whatsapp && order.whatsapp.trim() && order.whatsapp !== order.phone && (
                             <div className="flex items-center gap-3">
@@ -817,7 +661,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                                 title={`اضغط لنسخ الواتساب: ${formatPhoneForDisplay(order.whatsapp)}`}
                               >
                                 <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
                                 </svg>
                                 <span className="text-gray-900 text-xs font-mono">
                                   واتساب: {formatPhoneForDisplay(order.whatsapp)}
@@ -825,7 +669,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                               </button>
                             </div>
                           )}
-                          
+
                           {/* أزرار WhatsApp */}
                           <div className="flex items-center gap-2">
                             {/* WhatsApp للرقم الأساسي */}
@@ -838,11 +682,11 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                                 title={`WhatsApp الرقم الأساسي: ${order.phone}`}
                               >
                                 <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
                                 </svg>
                               </a>
                             )}
-                            
+
                             {/* WhatsApp لرقم الواتساب المنفصل */}
                             {order.whatsapp && order.whatsapp.trim() && order.whatsapp !== order.phone && (
                               <a
@@ -853,11 +697,11 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                                 title={`WhatsApp المنفصل: ${order.whatsapp}`}
                               >
                                 <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
                                 </svg>
                               </a>
                             )}
-                            
+
                             {/* رسائل WhatsApp الجاهزة */}
                             <WhatsAppTemplates
                               customer={{
@@ -869,7 +713,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                               orderStatus={order.status || 'جديد'}
                             />
                           </div>
-                          
+
                         </div>
                       </td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4 hidden md:table-cell">
@@ -892,9 +736,8 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                             value={order.status || 'جديد'}
                             onChange={(e) => handleStatusChange(order.id, e.target.value)}
                             disabled={isLoading}
-                            className={`text-xs sm:text-sm border border-gray-300 rounded-lg px-2 sm:px-3 py-1 sm:py-2 focus:ring-2 focus:ring-blue-500 transition-all text-gray-900 bg-white ${
-                              isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-400 shadow-sm'
-                            }`}
+                            className={`text-xs sm:text-sm border border-gray-300 rounded-lg px-2 sm:px-3 py-1 sm:py-2 focus:ring-2 focus:ring-blue-500 transition-all text-gray-900 bg-white ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-400 shadow-sm'
+                              }`}
                           >
                             {statuses.map(status => (
                               <option key={status} value={status} className="text-gray-900 bg-white">{status}</option>
@@ -948,7 +791,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                                 title={`WhatsApp: ${order.phone}`}
                               >
                                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
                                 </svg>
                               </a>
                             )}
@@ -976,22 +819,22 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                                   {order.phone && (
                                     <p className="text-xs text-gray-500 mt-1">محلي: {order.phone}</p>
                                   )}
+                                </div>
                               </div>
-                              </div>
-                              
+
                               {/* عرض الواتساب فقط إذا كان مختلف */}
                               {order.whatsapp && order.whatsapp.trim() && order.whatsapp !== order.phone && (
-                              <div className="space-y-2">
-                                <span className="font-medium text-gray-700 text-sm">💬 رقم الواتساب</span>
+                                <div className="space-y-2">
+                                  <span className="font-medium text-gray-700 text-sm">💬 رقم الواتساب</span>
                                   <div className="bg-green-50 px-3 py-2 rounded-lg border border-green-200">
                                     <p className="text-gray-900 font-mono text-sm">
                                       +20{order.whatsapp}
                                     </p>
                                     <p className="text-xs text-green-600 mt-1">محلي: {order.whatsapp}</p>
-                              </div>
+                                  </div>
                                 </div>
                               )}
-                              
+
                               <div className="space-y-2">
                                 <span className="font-medium text-gray-700 text-sm">📍 المنطقة</span>
                                 <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">{order.area || '-'}</p>
@@ -1047,7 +890,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                   </svg>
                   <span className="hidden sm:inline">تعديل تفاصيل الطلب #{editingOrder.id}</span>
                   <span className="sm:hidden">تعديل #{editingOrder.id}</span>
-                  
+
                   {/* مؤشر التغييرات غير المحفوظة */}
                   {hasUnsavedChanges && (
                     <div className="flex items-center gap-1 sm:gap-2">
@@ -1057,7 +900,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       </span>
                     </div>
                   )}
-                  
+
                   {/* مؤشر الحفظ التلقائي */}
                   {autoSaveTimer && (
                     <div className="flex items-center gap-1 sm:gap-2">
@@ -1078,7 +921,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 </button>
               </div>
             </div>
-            
+
             <div className="p-3 sm:p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
                 <div className="space-y-1 sm:space-y-2">
@@ -1090,26 +933,26 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
                   />
                 </div>
-                
+
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">📞 رقم الهاتف</label>
                   <div className="relative">
                     <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                       <span className="text-gray-500 text-sm font-mono">+20</span>
                     </div>
-                  <input
-                    type="text"
-                    value={editingOrder.phone}
-                    onChange={(e) => handleUpdateField('phone', e.target.value)}
+                    <input
+                      type="text"
+                      value={editingOrder.phone}
+                      onChange={(e) => handleUpdateField('phone', e.target.value)}
                       placeholder="01XXXXXXXXX"
                       className="w-full pr-12 pl-3 sm:pl-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base"
-                  />
+                    />
                   </div>
                   <div className="text-xs text-gray-500">
                     الرقم الكامل: +20{editingOrder.phone || 'XXXXXXXXXXX'}
                   </div>
                 </div>
-                
+
                 {/* عرض حقل الواتساب فقط إذا كان مختلف عن الهاتف */}
                 {(editingOrder.whatsapp && editingOrder.whatsapp.trim() && editingOrder.whatsapp !== editingOrder.phone) && (
                   <div className="space-y-1 sm:space-y-2">
@@ -1118,20 +961,20 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                         <span className="text-green-600 text-sm font-mono">+20</span>
                       </div>
-                  <input
-                    type="text"
-                    value={editingOrder.whatsapp}
-                    onChange={(e) => handleUpdateField('whatsapp', e.target.value)}
+                      <input
+                        type="text"
+                        value={editingOrder.whatsapp}
+                        onChange={(e) => handleUpdateField('whatsapp', e.target.value)}
                         placeholder="01XXXXXXXXX"
                         className="w-full pr-12 pl-3 sm:pl-4 py-2 sm:py-3 border border-green-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base bg-green-50"
-                  />
-                </div>
+                      />
+                    </div>
                     <div className="text-xs text-green-600">
                       الرقم الكامل: +20{editingOrder.whatsapp || 'XXXXXXXXXXX'}
                     </div>
                   </div>
                 )}
-                
+
                 {/* خيار إضافة رقم واتساب منفصل إذا لم يكن موجود */}
                 {(!editingOrder.whatsapp || !editingOrder.whatsapp.trim() || editingOrder.whatsapp === editingOrder.phone) && (
                   <div className="space-y-1 sm:space-y-2">
@@ -1157,7 +1000,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     </div>
                   </div>
                 )}
-                
+
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">🏙️ المحافظة</label>
                   <input
@@ -1167,7 +1010,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
                   />
                 </div>
-                
+
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">📍 المنطقة</label>
                   <input
@@ -1177,7 +1020,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
                   />
                 </div>
-                
+
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">📦 اسم المنتج</label>
                   <input
@@ -1187,7 +1030,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
                   />
                 </div>
-                
+
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">📊 الكمية</label>
                   <input
@@ -1197,7 +1040,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
                   />
                 </div>
-                
+
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">💰 السعر الإجمالي</label>
                   <input
@@ -1207,7 +1050,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
                   />
                 </div>
-                
+
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">🔗 المصدر</label>
                   <input
@@ -1217,7 +1060,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
                   />
                 </div>
-                
+
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">📋 الحالة</label>
                   <select
@@ -1230,7 +1073,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     ))}
                   </select>
                 </div>
-                
+
                 <div className="space-y-1 sm:space-y-2 md:col-span-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">🏠 العنوان الكامل</label>
                   <textarea
@@ -1240,7 +1083,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
                   />
                 </div>
-                
+
                 <div className="space-y-1 sm:space-y-2 md:col-span-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">📋 تفاصيل الطلب</label>
                   <textarea
@@ -1250,7 +1093,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
                   />
                 </div>
-                
+
                 <div className="space-y-1 sm:space-y-2 md:col-span-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">📝 الملاحظات</label>
                   <textarea
@@ -1261,7 +1104,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                   />
                 </div>
               </div>
-              
+
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-200">
                 {/* مؤشر حالة التغييرات */}
                 <div className="flex items-center gap-2 text-sm">
@@ -1282,9 +1125,9 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                <button
+                  <button
                     onClick={() => {
                       if (hasUnsavedChanges) {
                         const confirmClose = confirm('يوجد تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟');
@@ -1300,36 +1143,35 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       setOriginalOrder(null);
                       setHasUnsavedChanges(false);
                     }}
-                  disabled={loadingOrders.has(editingOrder.id)}
+                    disabled={loadingOrders.has(editingOrder.id)}
                     className="px-4 sm:px-6 py-2 sm:py-3 text-gray-600 border border-gray-300 rounded-lg sm:rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-all duration-200 font-medium text-sm sm:text-base order-2 sm:order-1"
-                >
+                  >
                     {hasUnsavedChanges ? 'إلغاء (بدون حفظ)' : 'إغلاق'}
-                </button>
-                  
-                <button
-                  onClick={saveOrder}
-                  disabled={loadingOrders.has(editingOrder.id)}
-                    className={`px-6 sm:px-8 py-2 sm:py-3 rounded-lg sm:rounded-xl flex items-center justify-center gap-2 sm:gap-3 transition-all duration-200 font-bold shadow-lg text-sm sm:text-base order-1 sm:order-2 ${
-                      hasUnsavedChanges 
-                        ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:from-yellow-600 hover:to-orange-600' 
-                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700'
-                    } disabled:opacity-50`}
-                >
-                  {loadingOrders.has(editingOrder.id) && (
+                  </button>
+
+                  <button
+                    onClick={saveOrder}
+                    disabled={loadingOrders.has(editingOrder.id)}
+                    className={`px-6 sm:px-8 py-2 sm:py-3 rounded-lg sm:rounded-xl flex items-center justify-center gap-2 sm:gap-3 transition-all duration-200 font-bold shadow-lg text-sm sm:text-base order-1 sm:order-2 ${hasUnsavedChanges
+                      ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:from-yellow-600 hover:to-orange-600'
+                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700'
+                      } disabled:opacity-50`}
+                  >
+                    {loadingOrders.has(editingOrder.id) && (
                       <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
-                  )}
+                    )}
                     <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
                     {hasUnsavedChanges ? 'حفظ التغييرات الآن' : 'حفظ'}
-                </button>
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         </div>
       )}
-      
+
       {/* نافذة تغيير الحالة الجماعية */}
       {bulkStatusModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-3 sm:p-4">
@@ -1353,7 +1195,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 </button>
               </div>
             </div>
-            
+
             <div className="p-4 sm:p-6">
               <div className="mb-4 sm:mb-6">
                 <p className="text-gray-700 mb-2 text-sm sm:text-base">
@@ -1363,7 +1205,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                   اختر الحالة الجديدة من القائمة أدناه
                 </p>
               </div>
-              
+
               <div className="space-y-2 sm:space-y-3 max-h-60 sm:max-h-80 overflow-y-auto">
                 {statuses.map(status => (
                   <button
@@ -1378,7 +1220,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                   </button>
                 ))}
               </div>
-              
+
               <div className="flex justify-end gap-3 sm:gap-4 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-200">
                 <button
                   onClick={() => setBulkStatusModalOpen(false)}

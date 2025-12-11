@@ -269,30 +269,24 @@ export const useSmartNotifications = (initialUserInteraction: boolean = false) =
     type: NotificationType,
     priority: NotificationPriority
   ) => {
-    console.log(`🎵 محاولة تشغيل صوت - النوع: ${type}, الأولوية: ${priority}`);
-
     // التحقق من الإعدادات
     if (!settings.soundEnabled) {
-      console.log('❌ الأصوات معطلة في الإعدادات');
       return;
     }
 
     if (!hasUserInteracted) {
-      console.log('❌ لم يتفاعل المستخدم مع الصفحة بعد');
       return;
     }
 
     // التحقق من وضع عدم الإزعاج
     if (isDNDActive() && priority !== 'critical') {
       if (!settings.doNotDisturb.silentMode) {
-        console.log('🌙 وضع عدم الإزعاج مفعّل');
         return;
       }
     }
 
     const prioritySettings = settings.prioritySettings[priority];
     if (!prioritySettings.sound) {
-      console.log(`❌ الصوت معطل لأولوية ${priority}`);
       return;
     }
 
@@ -393,7 +387,7 @@ export const useSmartNotifications = (initialUserInteraction: boolean = false) =
       const firstNotification = pendingNotifications[0];
       const groupedNotification: SmartNotification = {
         ...firstNotification,
-        id: `group-${Date.now()}`,
+        id: `group-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         isGrouped: true,
         groupId,
         groupCount: pendingNotifications.length,

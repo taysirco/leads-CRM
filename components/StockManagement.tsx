@@ -35,7 +35,7 @@ export default function StockManagement() {
   const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'returns' | 'reports' | 'movements'>('overview');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  
+
   // حالات النماذج
   const [showAddModal, setShowAddModal] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
@@ -78,75 +78,48 @@ export default function StockManagement() {
   const safeStockItems: StockItem[] = Array.isArray(stockItems) ? stockItems : [];
   const safeAlerts: StockItem[] = Array.isArray(alerts) ? alerts : [];
 
-  console.log('📦 Stock data structure:', stockData);
-  console.log('📊 Stock items array:', stockItems);
-  console.log('✅ Safe stock items:', safeStockItems);
-  console.log('🚨 Alerts data:', alertsData);
-  console.log('⚠️ Alerts array:', alerts);
-  console.log('🔍 Safe alerts:', safeAlerts);
-
   // دالة تحديث محسنة - مزامنة شاملة مع Google Sheets
   const forceRefreshAll = async () => {
-    console.log('🔄 بدء المزامنة الشاملة مع Google Sheets...');
     try {
-      // إظهار رسالة تحميل
       setMessage({ type: 'success', text: '🔄 جاري المزامنة مع Google Sheets...' });
-      
-      // مسح الكاش أولاً لضمان جلب البيانات الطازجة
-      console.log('🗑️ مسح الذاكرة المؤقتة...');
-      
-      // إعادة تحديث البيانات مع إجبار جلب البيانات الطازجة
+
       const promises = [
-        // تحديث بيانات المخزون مع مسح الكاش
         fetch('/api/stock?action=items&force=true').then(res => res.json()),
-        // تحديث التقارير مع مسح الكاش  
         fetch('/api/stock?action=reports&force=true').then(res => res.json()),
-        // تحديث التنبيهات مع مسح الكاش
         fetch('/api/stock?action=alerts&force=true').then(res => res.json())
       ];
-      
-      console.log('📡 جاري جلب البيانات الطازجة من Google Sheets...');
+
       const [stockResult, reportsResult, alertsResult] = await Promise.all(promises);
-      
-      // التحقق من نجاح العمليات
+
       if (stockResult.error) {
         throw new Error(`خطأ في جلب بيانات المخزون: ${stockResult.error}`);
       }
-      
+
       if (reportsResult.error) {
         throw new Error(`خطأ في جلب التقارير: ${reportsResult.error}`);
       }
-      
+
       if (alertsResult.error) {
         throw new Error(`خطأ في جلب التنبيهات: ${alertsResult.error}`);
       }
-      
-      // تحديث SWR بالبيانات الجديدة
-      console.log('🔄 تحديث البيانات المحلية...');
+
       await Promise.all([
         refreshStock(),
-        refreshReports(), 
+        refreshReports(),
         refreshAlerts()
       ]);
-      
-      console.log('✅ تمت المزامنة بنجاح مع Google Sheets');
-      console.log('📊 البيانات المحدثة:', {
-        stockItems: stockResult.stockItems?.length || 0,
-        reports: !!reportsResult.reports,
-        alerts: alertsResult.alerts?.length || 0
+
+      setMessage({
+        type: 'success',
+        text: `✅ تمت المزامنة بنجاح! تم تحديث ${stockResult.stockItems?.length || 0} منتج مع ${alertsResult.alerts?.length || 0} تنبيه جديد`
       });
-      
-      setMessage({ 
-        type: 'success', 
-        text: `✅ تمت المزامنة بنجاح! تم تحديث ${stockResult.stockItems?.length || 0} منتج مع ${alertsResult.alerts?.length || 0} تنبيه جديد` 
-      });
-      
+
       return true;
     } catch (error: any) {
       console.error('❌ خطأ في المزامنة:', error);
-      setMessage({ 
-        type: 'error', 
-        text: `❌ فشل في المزامنة: ${error.message || 'خطأ غير معروف'}` 
+      setMessage({
+        type: 'error',
+        text: `❌ فشل في المزامنة: ${error.message || 'خطأ غير معروف'}`
       });
       return false;
     }
@@ -169,26 +142,26 @@ export default function StockManagement() {
     setIsLoading(true);
     try {
       console.log('📦 بدء إضافة منتج جديد:', formData);
-      
+
       // التحقق من صحة البيانات
       const initialQuantity = parseInt(formData.initialQuantity);
       const minThreshold = parseInt(formData.minThreshold) || 10;
-      
+
       if (initialQuantity < 0) {
         showMessage('error', 'الكمية الأولية لا يمكن أن تكون سالبة');
         return;
       }
-      
+
       if (minThreshold < 0) {
         showMessage('error', 'الحد الأدنى لا يمكن أن يكون سالباً');
         return;
       }
-      
+
       if (minThreshold > initialQuantity) {
         showMessage('error', 'الحد الأدنى لا يمكن أن يكون أكبر من الكمية الأولية');
         return;
       }
-      
+
       const response = await fetch('/api/stock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -203,16 +176,16 @@ export default function StockManagement() {
       });
 
       const result = await response.json();
-      
+
       if (response.ok) {
         showMessage('success', result.message);
         setShowAddModal(false);
-        
+
         // تحديث واحد فقط بعد النجاح
         setTimeout(async () => {
           await forceRefreshAll();
         }, 1000);
-        
+
       } else {
         console.error('❌ خطأ في إضافة المنتج:', result.error);
         showMessage('error', result.error);
@@ -231,27 +204,27 @@ export default function StockManagement() {
     try {
       // التحقق من صحة البيانات
       const quantity = parseInt(returnData.quantity);
-      
+
       if (quantity <= 0) {
         showMessage('error', 'كمية المرتجع يجب أن تكون أكبر من صفر');
         return;
       }
-      
+
       if (!returnData.productName || returnData.productName.trim() === '') {
         showMessage('error', 'يجب اختيار المنتج');
         return;
       }
-      
+
       // العثور على المنتج للتحقق من وجوده
       const selectedProduct = safeStockItems.find(item => item.productName === returnData.productName);
       if (!selectedProduct) {
         showMessage('error', 'المنتج المحدد غير موجود في المخزون');
         return;
       }
-      
+
       console.log(`📦 تسجيل مرتجع: ${quantity} من ${returnData.productName}`);
       console.log(`📊 المخزون الحالي قبل المرتجع: ${selectedProduct.currentQuantity}`);
-      
+
       const response = await fetch('/api/stock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -268,7 +241,7 @@ export default function StockManagement() {
       });
 
       const result = await response.json();
-      
+
       if (response.ok) {
         const newQuantity = selectedProduct.currentQuantity + quantity;
         showMessage('success', `${result.message}. المخزون الجديد: ${newQuantity}`);
@@ -291,32 +264,32 @@ export default function StockManagement() {
     try {
       // التحقق من صحة البيانات
       const quantity = parseInt(damageData.quantity);
-      
+
       if (quantity <= 0) {
         showMessage('error', 'كمية التالف يجب أن تكون أكبر من صفر');
         return;
       }
-      
+
       if (!damageData.productName || damageData.productName.trim() === '') {
         showMessage('error', 'يجب اختيار المنتج');
         return;
       }
-      
+
       // العثور على المنتج للتحقق من كفاية المخزون
       const selectedProduct = safeStockItems.find(item => item.productName === damageData.productName);
       if (!selectedProduct) {
         showMessage('error', 'المنتج المحدد غير موجود في المخزون');
         return;
       }
-      
+
       if (selectedProduct.currentQuantity < quantity) {
         showMessage('error', `المخزون غير كافي. المتوفر: ${selectedProduct.currentQuantity}, المطلوب: ${quantity}`);
         return;
       }
-      
+
       console.log(`💥 تسجيل تالف: ${quantity} من ${damageData.productName}`);
       console.log(`📊 المخزون الحالي قبل التالف: ${selectedProduct.currentQuantity}`);
-      
+
       const response = await fetch('/api/stock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -334,7 +307,7 @@ export default function StockManagement() {
       });
 
       const result = await response.json();
-      
+
       if (response.ok) {
         const newQuantity = Math.max(0, selectedProduct.currentQuantity - quantity);
         showMessage('success', `${result.message}. المخزون الجديد: ${newQuantity}`);
@@ -357,7 +330,7 @@ export default function StockManagement() {
     try {
       // العثور على البيانات الأصلية للمقارنة
       const originalItem = safeStockItems.find(i => i.id === item.id);
-      
+
       if (!originalItem) {
         showMessage('error', 'لم يتم العثور على البيانات الأصلية للمنتج');
         return;
@@ -366,13 +339,13 @@ export default function StockManagement() {
       const initialQuantity = item.initialQuantity;
       const currentQuantity = item.currentQuantity;
       const minThreshold = item.minThreshold || 10;
-      
+
       // التحقق من صحة البيانات
       if (initialQuantity < 0 || currentQuantity < 0) {
         showMessage('error', 'الكميات لا يمكن أن تكون سالبة');
         return;
       }
-      
+
       if (minThreshold < 0) {
         showMessage('error', 'الحد الأدنى لا يمكن أن يكون سالباً');
         return;
@@ -381,16 +354,16 @@ export default function StockManagement() {
       // حساب التعزيز إن وُجد
       const initialBoost = initialQuantity - originalItem.initialQuantity;
       const currentBoost = currentQuantity - originalItem.currentQuantity;
-      
+
       // التحقق من منطقية التعزيز
       if (initialBoost > 0 && currentBoost > 0 && initialBoost === currentBoost) {
         console.log(`🚀 تعزيز المخزون بـ ${initialBoost} قطعة للمنتج: ${item.productName}`);
       }
-      
+
       console.log(`✏️ تحديث منتج: ${item.productName}`);
       console.log(`📊 الأصلي - أولي: ${originalItem.initialQuantity}, حالي: ${originalItem.currentQuantity}`);
       console.log(`📊 الجديد - أولي: ${initialQuantity}, حالي: ${currentQuantity}`);
-      
+
       const response = await fetch('/api/stock', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -412,14 +385,14 @@ export default function StockManagement() {
       });
 
       const result = await response.json();
-      
+
       if (response.ok) {
         // رسالة نجاح مفصلة
         let successMessage = result.message;
         if (initialBoost > 0 && currentBoost > 0 && initialBoost === currentBoost) {
           successMessage += `\n🚀 تم تسجيل تعزيز المخزون بـ ${initialBoost} قطعة`;
         }
-        
+
         showMessage('success', successMessage);
         setEditingItem(null);
         await forceRefreshAll();
@@ -440,27 +413,27 @@ export default function StockManagement() {
     try {
       // التحقق من صحة البيانات
       const quantity = parseInt(stockData.quantity);
-      
+
       if (quantity <= 0) {
         showMessage('error', 'كمية المخزون الإضافية يجب أن تكون أكبر من صفر');
         return;
       }
-      
+
       if (!stockData.productName || stockData.productName.trim() === '') {
         showMessage('error', 'يجب اختيار المنتج');
         return;
       }
-      
+
       // العثور على المنتج للتحقق من وجوده
       const selectedProduct = safeStockItems.find(item => item.productName === stockData.productName);
       if (!selectedProduct) {
         showMessage('error', 'المنتج المحدد غير موجود في المخزون');
         return;
       }
-      
+
       console.log(`📦 إضافة مخزون: ${quantity} إلى ${stockData.productName}`);
       console.log(`📊 المخزون الحالي قبل الإضافة: ${selectedProduct.currentQuantity}`);
-      
+
       const response = await fetch('/api/stock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -479,7 +452,7 @@ export default function StockManagement() {
       });
 
       const result = await response.json();
-      
+
       if (response.ok) {
         const newQuantity = selectedProduct.currentQuantity + quantity;
         showMessage('success', `${result.message}. المخزون الجديد: ${newQuantity}`);
@@ -524,14 +497,13 @@ export default function StockManagement() {
       <div className="max-w-7xl mx-auto space-y-4 sm:space-y-8">
         {/* رسائل النجاح والخطأ */}
         {message && (
-          <div className={`p-3 sm:p-4 rounded-lg border ${
-            message.type === 'error' 
-              ? 'bg-red-50 border-red-200 text-red-800' 
-              : 'bg-green-50 border-green-200 text-green-800'
-          }`}>
+          <div className={`p-3 sm:p-4 rounded-lg border ${message.type === 'error'
+            ? 'bg-red-50 border-red-200 text-red-800'
+            : 'bg-green-50 border-green-200 text-green-800'
+            }`}>
             <div className="flex items-center justify-between">
               <span className="text-sm sm:text-base">{message.text}</span>
-              <button 
+              <button
                 onClick={() => setMessage(null)}
                 className="text-gray-400 hover:text-gray-600 ml-2 text-lg sm:text-xl"
               >
@@ -554,14 +526,14 @@ export default function StockManagement() {
                   try {
                     setIsLoading(true);
                     showMessage('success', 'جاري تشخيص Google Sheets...');
-                    
+
                     console.log('🩺 بدء التشخيص الشامل...');
-                    
+
                     const response = await fetch('/api/stock?action=diagnose');
                     const result = await response.json();
-                    
+
                     console.log('🩺 نتيجة التشخيص:', result);
-                    
+
                     if (result.diagnoseResult?.success) {
                       showMessage('success', `✅ ${result.diagnoseResult.message}`);
                       await forceRefreshAll();
@@ -586,10 +558,10 @@ export default function StockManagement() {
                   try {
                     setIsLoading(true);
                     showMessage('success', 'جاري اختبار التزامن...');
-                    
+
                     const response = await fetch('/api/stock?action=test');
                     const result = await response.json();
-                    
+
                     if (result.testResult?.success) {
                       showMessage('success', `✅ ${result.testResult.message}`);
                       await forceRefreshAll();
@@ -607,16 +579,16 @@ export default function StockManagement() {
               >
                 🧪 <span className="hidden sm:inline">اختبار</span><span className="sm:hidden">اختبار</span>
               </button>
-              
+
               <button
                 onClick={async () => {
                   try {
                     setIsLoading(true);
                     console.log('👤 المستخدم طلب مزامنة شاملة مع Google Sheets');
-                    
+
                     // تنفيذ المزامنة الشاملة
                     const success = await forceRefreshAll();
-                    
+
                     if (success) {
                       console.log('🎉 المزامنة اكتملت بنجاح');
                     } else {
@@ -624,9 +596,9 @@ export default function StockManagement() {
                     }
                   } catch (error) {
                     console.error('❌ خطأ في تنفيذ المزامنة:', error);
-                    setMessage({ 
-                      type: 'error', 
-                      text: 'فشل في المزامنة - تحقق من الاتصال بالإنترنت' 
+                    setMessage({
+                      type: 'error',
+                      text: 'فشل في المزامنة - تحقق من الاتصال بالإنترنت'
                     });
                   } finally {
                     setIsLoading(false);
@@ -667,7 +639,7 @@ export default function StockManagement() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -681,7 +653,7 @@ export default function StockManagement() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -695,7 +667,7 @@ export default function StockManagement() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -726,27 +698,25 @@ export default function StockManagement() {
                 <p className="text-sm text-red-700">يوجد {safeAlerts.length} منتج يحتاج إعادة تموين</p>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {safeAlerts.map((item) => (
                 <div key={item.id} className="bg-white border border-red-200 rounded-lg p-3 sm:p-4 shadow-sm">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-bold text-gray-900 text-sm sm:text-base truncate">{item.productName}</h4>
-                    <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                      item.currentQuantity <= 0 
-                        ? 'bg-red-100 text-red-800' 
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
+                    <span className={`px-2 py-1 text-xs font-bold rounded-full ${item.currentQuantity <= 0
+                      ? 'bg-red-100 text-red-800'
+                      : 'bg-yellow-100 text-yellow-800'
+                      }`}>
                       {item.currentQuantity <= 0 ? 'نفد' : 'منخفض'}
                     </span>
                   </div>
-                  
+
                   <div className="space-y-1 text-xs sm:text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-600">الكمية الحالية:</span>
-                      <span className={`font-bold ${
-                        item.currentQuantity <= 0 ? 'text-red-600' : 'text-yellow-600'
-                      }`}>
+                      <span className={`font-bold ${item.currentQuantity <= 0 ? 'text-red-600' : 'text-yellow-600'
+                        }`}>
                         {item.currentQuantity}
                       </span>
                     </div>
@@ -759,7 +729,7 @@ export default function StockManagement() {
                       <span className="text-gray-500">{item.lastUpdate}</span>
                     </div>
                   </div>
-                  
+
                   <div className="mt-3 pt-3 border-t border-gray-200">
                     <button
                       onClick={() => setEditingItem(item)}
@@ -791,11 +761,10 @@ export default function StockManagement() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`py-3 sm:py-4 px-2 sm:px-4 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                  className={`py-3 sm:py-4 px-2 sm:px-4 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
                 >
                   <span className="sm:hidden">{tab.icon} {tab.shortLabel}</span>
                   <span className="hidden sm:inline">{tab.label}</span>
@@ -806,38 +775,38 @@ export default function StockManagement() {
 
           <div className="p-6">
             {activeTab === 'overview' && (
-              <StockOverview 
+              <StockOverview
                 stockItems={safeStockItems}
                 onEdit={setEditingItem}
                 onAdd={() => setShowAddModal(true)}
                 isLoading={stockError}
               />
             )}
-            
+
             {activeTab === 'add' && (
-              <AddProductForm 
+              <AddProductForm
                 onSubmit={handleAddProduct}
                 isLoading={isLoading}
               />
             )}
-            
+
             {activeTab === 'returns' && (
-              <ReturnsAndDamage 
+              <ReturnsAndDamage
                 stockItems={safeStockItems}
                 onAddReturn={() => setShowReturnModal(true)}
                 onAddDamage={() => setShowDamageModal(true)}
               />
             )}
-            
+
             {activeTab === 'reports' && (
-              <StockReports 
+              <StockReports
                 reports={reports}
                 stockItems={safeStockItems}
               />
             )}
-            
+
             {activeTab === 'movements' && (
-              <StockMovements 
+              <StockMovements
                 stockItems={safeStockItems}
                 onAddStock={() => setShowAddStockModal(true)}
                 isLoading={isLoading}
@@ -848,7 +817,7 @@ export default function StockManagement() {
 
         {/* النوافذ المنبثقة */}
         {showAddModal && (
-          <AddProductModal 
+          <AddProductModal
             onClose={() => setShowAddModal(false)}
             onSubmit={handleAddProduct}
             isLoading={isLoading}
@@ -856,7 +825,7 @@ export default function StockManagement() {
         )}
 
         {showReturnModal && (
-          <ReturnModal 
+          <ReturnModal
             stockItems={safeStockItems}
             onClose={() => setShowReturnModal(false)}
             onSubmit={handleAddReturn}
@@ -865,7 +834,7 @@ export default function StockManagement() {
         )}
 
         {showDamageModal && (
-          <DamageModal 
+          <DamageModal
             stockItems={safeStockItems}
             onClose={() => setShowDamageModal(false)}
             onSubmit={handleAddDamage}
@@ -874,7 +843,7 @@ export default function StockManagement() {
         )}
 
         {showAddStockModal && (
-          <AddStockModal 
+          <AddStockModal
             stockItems={safeStockItems}
             onClose={() => setShowAddStockModal(false)}
             onSubmit={handleAddStock}
@@ -883,7 +852,7 @@ export default function StockManagement() {
         )}
 
         {editingItem && (
-          <EditItemModal 
+          <EditItemModal
             item={editingItem}
             onClose={() => setEditingItem(null)}
             onSubmit={handleUpdateItem}
@@ -899,7 +868,7 @@ export default function StockManagement() {
 function StockOverview({ stockItems, onEdit, onAdd, isLoading }: any) {
   // التأكد من أن stockItems هو array
   const safeItems = Array.isArray(stockItems) ? stockItems : [];
-  
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-32 sm:h-64">
@@ -955,11 +924,10 @@ function StockOverview({ stockItems, onEdit, onAdd, isLoading }: any) {
                     </td>
                     <td className="px-2 sm:px-3 py-3 sm:py-4 text-gray-900 text-sm sm:text-base">{item.initialQuantity}</td>
                     <td className="px-2 sm:px-3 py-3 sm:py-4">
-                      <span className={`font-bold text-sm sm:text-base ${
-                        item.currentQuantity <= 0 ? 'text-red-600' :
+                      <span className={`font-bold text-sm sm:text-base ${item.currentQuantity <= 0 ? 'text-red-600' :
                         item.currentQuantity <= (item.minThreshold || 10) ? 'text-yellow-600' :
-                        'text-green-600'
-                      }`}>
+                          'text-green-600'
+                        }`}>
                         {item.currentQuantity}
                       </span>
                     </td>
@@ -1034,38 +1002,38 @@ function AddProductForm({ onSubmit, isLoading }: any) {
   const validateAndWarn = (newFormData: any) => {
     const newWarnings: string[] = [];
     const newErrors: string[] = [];
-    
+
     const initial = parseInt(newFormData.initialQuantity) || 0;
     const threshold = parseInt(newFormData.minThreshold) || 10;
-    
+
     // التحقق من الأخطاء
     if (initial < 0) {
       newErrors.push('❌ الكمية الأولية لا يمكن أن تكون سالبة');
     }
-    
+
     if (threshold < 0) {
       newErrors.push('❌ الحد الأدنى لا يمكن أن يكون سالباً');
     }
-    
+
     if (threshold > initial && initial > 0) {
       newErrors.push('❌ الحد الأدنى لا يمكن أن يكون أكبر من الكمية الأولية');
     }
-    
+
     // التحذيرات الذكية
     if (initial === 0) {
       newWarnings.push('⚠️ ستقوم بإضافة منتج بمخزون صفر');
     } else if (initial <= threshold) {
       newWarnings.push('🟡 المنتج سيبدأ بمخزون منخفض (أقل من أو يساوي الحد الأدنى)');
     }
-    
+
     if (initial > 1000) {
       newWarnings.push('💡 كمية كبيرة - تأكد من صحة الرقم');
     }
-    
+
     if (threshold === 0) {
       newWarnings.push('💡 الحد الأدنى صفر - لن تحصل على تنبيهات نفاد المخزون');
     }
-    
+
     setWarnings(newWarnings);
     setErrors(newErrors);
   };
@@ -1078,31 +1046,31 @@ function AddProductForm({ onSubmit, isLoading }: any) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // التحقق النهائي
     if (errors.length > 0) {
       alert('يرجى إصلاح الأخطاء قبل المتابعة');
       return;
     }
-    
+
     if (!formData.productName.trim()) {
       alert('اسم المنتج مطلوب');
       return;
     }
-    
+
     const initial = parseInt(formData.initialQuantity) || 0;
     const threshold = parseInt(formData.minThreshold) || 10;
-    
+
     if (initial < 0 || threshold < 0) {
       alert('لا يمكن أن تكون الكميات سالبة');
       return;
     }
-    
+
     if (threshold > initial && initial > 0) {
       alert('الحد الأدنى لا يمكن أن يكون أكبر من الكمية الأولية');
       return;
     }
-    
+
     // تأكيد العملية إذا كان هناك تحذيرات
     if (warnings.length > 0) {
       const confirmMessage = `هناك بعض التحذيرات:\n${warnings.join('\n')}\n\nهل تريد المتابعة؟`;
@@ -1110,14 +1078,14 @@ function AddProductForm({ onSubmit, isLoading }: any) {
         return;
       }
     }
-    
+
     onSubmit({
       productName: formData.productName.trim(),
       initialQuantity: initial.toString(),
       synonyms: formData.synonyms.trim(),
       minThreshold: threshold.toString()
     });
-    
+
     setFormData({ productName: '', initialQuantity: '', synonyms: '', minThreshold: '10' });
     setWarnings([]);
     setErrors([]);
@@ -1128,7 +1096,7 @@ function AddProductForm({ onSubmit, isLoading }: any) {
   return (
     <div className="max-w-full sm:max-w-2xl mx-auto px-2 sm:px-0">
       <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 sm:mb-6">إضافة منتج جديد</h2>
-      
+
       {/* عرض الأخطاء */}
       {errors.length > 0 && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -1138,7 +1106,7 @@ function AddProductForm({ onSubmit, isLoading }: any) {
           ))}
         </div>
       )}
-      
+
       {/* عرض التحذيرات */}
       {warnings.length > 0 && errors.length === 0 && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -1148,7 +1116,7 @@ function AddProductForm({ onSubmit, isLoading }: any) {
           ))}
         </div>
       )}
-      
+
       <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1175,9 +1143,8 @@ function AddProductForm({ onSubmit, isLoading }: any) {
               type="number"
               value={formData.initialQuantity}
               onChange={(e) => handleChange('initialQuantity', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm sm:text-base ${
-                errors.some(e => e.includes('الكمية الأولية')) ? 'border-red-300 bg-red-50' : 'border-gray-300'
-              }`}
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm sm:text-base ${errors.some(e => e.includes('الكمية الأولية')) ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                }`}
               min="0"
               placeholder="0"
               required
@@ -1193,9 +1160,8 @@ function AddProductForm({ onSubmit, isLoading }: any) {
               type="number"
               value={formData.minThreshold}
               onChange={(e) => handleChange('minThreshold', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm sm:text-base ${
-                errors.some(e => e.includes('الحد الأدنى')) ? 'border-red-300 bg-red-50' : 'border-gray-300'
-              }`}
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm sm:text-base ${errors.some(e => e.includes('الحد الأدنى')) ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                }`}
               min="0"
               placeholder="10"
             />
@@ -1267,7 +1233,7 @@ function ReturnsAndDamage({ stockItems, onAddReturn, onAddDamage }: any) {
   return (
     <div className="space-y-4 sm:space-y-6">
       <h2 className="text-lg sm:text-xl font-bold text-gray-900">إدارة المرتجعات والتوالف</h2>
-      
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="bg-blue-50 p-4 sm:p-6 rounded-lg border border-blue-200">
           <div className="flex items-center gap-3 mb-4">
@@ -1312,7 +1278,7 @@ function ReturnsAndDamage({ stockItems, onAddReturn, onAddDamage }: any) {
 function StockReports({ reports, stockItems }: any) {
   // التأكد من أن stockItems هو array
   const safeItems = Array.isArray(stockItems) ? stockItems : [];
-  
+
   if (!reports) {
     return (
       <div className="flex items-center justify-center h-32 sm:h-64">
@@ -1324,7 +1290,7 @@ function StockReports({ reports, stockItems }: any) {
   return (
     <div className="space-y-4 sm:space-y-6">
       <h2 className="text-lg sm:text-xl font-bold text-gray-900">تقارير المخزون</h2>
-      
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         <div className="bg-green-50 p-4 sm:p-6 rounded-lg border border-green-200">
           <h3 className="font-bold text-green-900 mb-2 text-sm sm:text-base">منتجات متوفرة</h3>
@@ -1364,7 +1330,7 @@ function StockReports({ reports, stockItems }: any) {
               {safeItems.map((item: StockItem) => {
                 const sold = item.initialQuantity - item.currentQuantity;
                 const turnoverRate = item.initialQuantity > 0 ? ((sold / item.initialQuantity) * 100).toFixed(1) : '0';
-                
+
                 return (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="px-2 sm:px-3 py-3 sm:py-4 font-medium text-gray-900 text-sm">{item.productName}</td>
@@ -1402,7 +1368,7 @@ function StockReports({ reports, stockItems }: any) {
 }
 
 // النوافذ المنبثقة المحسنة
-function AddProductModal({ onClose, onSubmit, isLoading }: any) { 
+function AddProductModal({ onClose, onSubmit, isLoading }: any) {
   const [formData, setFormData] = useState({
     productName: '',
     initialQuantity: '',
@@ -1423,14 +1389,14 @@ function AddProductModal({ onClose, onSubmit, isLoading }: any) {
           <h3 className="text-xl font-bold text-gray-900">إضافة منتج جديد</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">اسم المنتج</label>
             <input
               type="text"
               value={formData.productName}
-              onChange={(e) => setFormData({...formData, productName: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
               required
             />
@@ -1442,7 +1408,7 @@ function AddProductModal({ onClose, onSubmit, isLoading }: any) {
               <input
                 type="number"
                 value={formData.initialQuantity}
-                onChange={(e) => setFormData({...formData, initialQuantity: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, initialQuantity: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                 min="0"
                 required
@@ -1454,7 +1420,7 @@ function AddProductModal({ onClose, onSubmit, isLoading }: any) {
               <input
                 type="number"
                 value={formData.minThreshold}
-                onChange={(e) => setFormData({...formData, minThreshold: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, minThreshold: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                 min="0"
               />
@@ -1466,7 +1432,7 @@ function AddProductModal({ onClose, onSubmit, isLoading }: any) {
             <input
               type="text"
               value={formData.synonyms}
-              onChange={(e) => setFormData({...formData, synonyms: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, synonyms: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
               placeholder="مثال: جوال، هاتف، موبايل"
             />
@@ -1491,7 +1457,7 @@ function AddProductModal({ onClose, onSubmit, isLoading }: any) {
   );
 }
 
-function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) { 
+function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
   const [formData, setFormData] = useState({
     productName: '',
     quantity: '',
@@ -1505,12 +1471,12 @@ function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
   const handleProductChange = (productName: string) => {
     const product = stockItems.find((item: any) => item.productName === productName);
     setSelectedProduct(product);
-    setFormData({...formData, productName});
+    setFormData({ ...formData, productName });
     updatePreview(formData.quantity, product);
   };
 
   const handleQuantityChange = (quantity: string) => {
-    setFormData({...formData, quantity});
+    setFormData({ ...formData, quantity });
     updatePreview(quantity, selectedProduct);
   };
 
@@ -1525,22 +1491,22 @@ function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const quantity = parseInt(formData.quantity) || 0;
-    
+
     if (quantity <= 0) {
       alert('كمية المرتجع يجب أن تكون أكبر من صفر');
       return;
     }
-    
+
     if (!selectedProduct) {
       alert('يجب اختيار المنتج');
       return;
     }
-    
+
     // تأكيد العملية
     const confirmMessage = `هل تريد تسجيل مرتجع ${quantity} قطعة من ${selectedProduct.productName}؟\n\nالمخزون الحالي: ${selectedProduct.currentQuantity}\nبعد المرتجع: ${previewQuantity}`;
-    
+
     if (window.confirm(confirmMessage)) {
       onSubmit(formData);
     }
@@ -1553,7 +1519,7 @@ function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
           <h3 className="text-lg sm:text-xl font-bold text-gray-900">تسجيل مرتجع</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl font-bold">×</button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">اسم المنتج</label>
@@ -1611,7 +1577,7 @@ function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <label className="block text-sm font-medium text-gray-700 mb-1">سبب المرتجع</label>
             <select
               value={formData.reason}
-              onChange={(e) => setFormData({...formData, reason: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 text-sm"
             >
               <option value="damaged_shipping" className="text-gray-900 bg-white">تلف أثناء الشحن</option>
@@ -1624,7 +1590,7 @@ function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
             <textarea
               value={formData.notes}
-              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
               rows={3}
               placeholder="تفاصيل إضافية عن سبب المرتجع..."
@@ -1650,7 +1616,7 @@ function ReturnModal({ stockItems, onClose, onSubmit, isLoading }: any) {
   );
 }
 
-function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) { 
+function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
   const [formData, setFormData] = useState({
     productName: '',
     quantity: '',
@@ -1666,13 +1632,13 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
   const handleProductChange = (productName: string) => {
     const product = stockItems.find((item: any) => item.productName === productName);
     setSelectedProduct(product);
-    setFormData({...formData, productName});
+    setFormData({ ...formData, productName });
     updatePreview(formData.quantity, product);
     setError('');
   };
 
   const handleQuantityChange = (quantity: string) => {
-    setFormData({...formData, quantity});
+    setFormData({ ...formData, quantity });
     updatePreview(quantity, selectedProduct);
   };
 
@@ -1681,7 +1647,7 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
       const qty = parseInt(quantity) || 0;
       const newQty = Math.max(0, product.currentQuantity - qty);
       setPreviewQuantity(newQty);
-      
+
       // التحقق من كفاية المخزون
       if (qty > product.currentQuantity) {
         setError(`المخزون غير كافي! المتوفر: ${product.currentQuantity}, المطلوب: ${qty}`);
@@ -1696,27 +1662,27 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const quantity = parseInt(formData.quantity) || 0;
-    
+
     if (quantity <= 0) {
       alert('كمية التالف يجب أن تكون أكبر من صفر');
       return;
     }
-    
+
     if (!selectedProduct) {
       alert('يجب اختيار المنتج');
       return;
     }
-    
+
     if (quantity > selectedProduct.currentQuantity) {
       alert(`المخزون غير كافي! المتوفر: ${selectedProduct.currentQuantity}`);
       return;
     }
-    
+
     // تأكيد العملية
     const confirmMessage = `⚠️ تحذير: هل تريد تسجيل تالف ${quantity} قطعة من ${selectedProduct.productName}؟\n\nسيتم خصم هذه الكمية من المخزون نهائياً.\n\nالمخزون الحالي: ${selectedProduct.currentQuantity}\nبعد التالف: ${previewQuantity}`;
-    
+
     if (window.confirm(confirmMessage)) {
       onSubmit(formData);
     }
@@ -1729,7 +1695,7 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
           <h3 className="text-lg sm:text-xl font-bold text-gray-900">تسجيل تالف/مفقود</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl font-bold">×</button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">اسم المنتج</label>
@@ -1754,9 +1720,8 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
               type="number"
               value={formData.quantity}
               onChange={(e) => handleQuantityChange(e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm ${
-                error ? 'border-red-300 bg-red-50' : 'border-gray-300'
-              }`}
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm ${error ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                }`}
               min="1"
               max={selectedProduct?.currentQuantity || 0}
               placeholder="أدخل الكمية التالفة"
@@ -1798,7 +1763,7 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <label className="block text-sm font-medium text-gray-700 mb-1">نوع التلف</label>
             <select
               value={formData.reason}
-              onChange={(e) => setFormData({...formData, reason: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900 text-sm"
             >
               <option value="تلف أثناء الشحن" className="text-gray-900 bg-white">تلف أثناء الشحن</option>
@@ -1814,7 +1779,7 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
             <textarea
               value={formData.notes}
-              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
               rows={3}
               placeholder="تفاصيل إضافية عن سبب التلف أو الفقدان..."
@@ -1840,7 +1805,7 @@ function DamageModal({ stockItems, onClose, onSubmit, isLoading }: any) {
   );
 }
 
-function EditItemModal({ item, onClose, onSubmit, isLoading }: any) { 
+function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
   const [formData, setFormData] = useState({
     id: item?.id || '',
     productName: item?.productName || '',
@@ -1851,7 +1816,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
   });
 
   const [warnings, setWarnings] = useState<string[]>([]);
-  
+
   // حالات تعزيز المخزون
   const [showStockBoost, setShowStockBoost] = useState(false);
   const [boostData, setBoostData] = useState({
@@ -1872,7 +1837,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
     const boost = parseInt(boostQuantity) || 0;
     const currentQty = parseInt(formData.currentQuantity) || 0;
     const initialQty = parseInt(formData.initialQuantity) || 0;
-    
+
     if (boost > 0) {
       setBoostPreview({
         boostAmount: boost,
@@ -1891,7 +1856,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
   // معالجة تطبيق التعزيز
   const handleApplyBoost = () => {
     const boost = parseInt(boostData.quantity) || 0;
-    
+
     if (boost <= 0) {
       alert('كمية التعزيز يجب أن تكون أكبر من صفر');
       return;
@@ -1900,16 +1865,16 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
     // تطبيق التعزيز على البيانات
     const newCurrentQuantity = (parseInt(formData.currentQuantity) || 0) + boost;
     const newInitialQuantity = (parseInt(formData.initialQuantity) || 0) + boost;
-    
+
     const newFormData = {
       ...formData,
       currentQuantity: newCurrentQuantity.toString(),
       initialQuantity: newInitialQuantity.toString()
     };
-    
+
     setFormData(newFormData);
     updateWarnings(newFormData);
-    
+
     // إعادة تعيين بيانات التعزيز
     setBoostData({
       quantity: '',
@@ -1924,7 +1889,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
       boostAmount: 0
     });
     setShowStockBoost(false);
-    
+
     // إشارة للمستخدم
     alert(`✅ تم تطبيق تعزيز المخزون بنجاح!\n\n📦 تمت إضافة ${boost} قطعة\n💾 يرجى الضغط على "حفظ التعديل" لحفظ التغييرات`);
   };
@@ -1935,34 +1900,34 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
     const initial = parseInt(newFormData.initialQuantity) || 0;
     const current = parseInt(newFormData.currentQuantity) || 0;
     const threshold = parseInt(newFormData.minThreshold) || 10;
-    
+
     if (current > initial) {
       newWarnings.push('⚠️ الكمية الحالية أكبر من الأولية (ربما بسبب المرتجعات أو التعزيز)');
     }
-    
+
     if (current <= threshold && current > 0) {
       newWarnings.push('🟡 المخزون منخفض - أقل من الحد الأدنى');
     }
-    
+
     if (current === 0) {
       newWarnings.push('🔴 المخزون منتهي - الكمية صفر');
     }
-    
+
     if (threshold > initial) {
       newWarnings.push('⚠️ الحد الأدنى أكبر من الكمية الأولية');
     }
-    
+
     const sold = Math.max(0, initial - current);
     if (sold > 0) {
       newWarnings.push(`📊 تم بيع ${sold} قطعة من هذا المنتج`);
     }
-    
+
     // تحذيرات التعزيز
     if (current === initial && initial > (item?.initialQuantity || 0)) {
       const boosted = initial - (item?.initialQuantity || 0);
       newWarnings.push(`📈 تم تعزيز المخزون بـ ${boosted} قطعة`);
     }
-    
+
     setWarnings(newWarnings);
   };
 
@@ -1975,7 +1940,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
   const handleBoostChange = (field: string, value: string) => {
     const newBoostData = { ...boostData, [field]: value };
     setBoostData(newBoostData);
-    
+
     if (field === 'quantity') {
       updateBoostPreview(value);
     }
@@ -1983,17 +1948,17 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const initial = parseInt(formData.initialQuantity) || 0;
     const current = parseInt(formData.currentQuantity) || 0;
     const threshold = parseInt(formData.minThreshold) || 10;
-    
+
     // التحقق من صحة البيانات
     if (initial < 0 || current < 0 || threshold < 0) {
       alert('لا يمكن أن تكون أي من الكميات سالبة');
       return;
     }
-    
+
     // التحقق من منطقية البيانات
     if (current > initial && current !== initial) {
       const excess = current - initial;
@@ -2005,25 +1970,25 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
         `• تعديل يدوي\n\n` +
         `هل تريد المتابعة؟`
       );
-      
+
       if (!confirmed) {
         return;
       }
     }
-    
+
     // إذا تم تعزيز المخزون، نحتاج لتسجيل الحركة
     const originalInitial = item?.initialQuantity || 0;
     const originalCurrent = item?.currentQuantity || 0;
     const boostAmount = initial - originalInitial;
-    
+
     const updatedItem = {
       ...formData,
       initialQuantity: initial,
       currentQuantity: current,
       minThreshold: threshold
     };
-    
-    
+
+
     onSubmit(updatedItem);
   };
 
@@ -2037,7 +2002,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl font-bold hover:bg-gray-100 rounded-full p-2 transition-all">×</button>
         </div>
-        
+
         {/* عرض التحذيرات */}
         {warnings.length > 0 && (
           <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -2047,7 +2012,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
             ))}
           </div>
         )}
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">📦 اسم المنتج</label>
@@ -2106,7 +2071,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
                 {showStockBoost ? 'إخفاء' : 'إضافة مخزون'}
               </button>
             </div>
-            
+
             {showStockBoost && (
               <div className="space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2121,7 +2086,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
                       placeholder="عدد القطع المضافة"
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-xs font-medium text-blue-700 mb-1">💰 التكلفة (اختياري)</label>
                     <input
@@ -2135,7 +2100,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
                     />
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-blue-700 mb-1">📝 السبب</label>
@@ -2151,7 +2116,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
                       <option value="نقل من فرع آخر">نقل من فرع آخر</option>
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-xs font-medium text-blue-700 mb-1">🏢 المورد (اختياري)</label>
                     <input
@@ -2163,7 +2128,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
                     />
                   </div>
                 </div>
-                
+
                 <div>
                   <label className="block text-xs font-medium text-blue-700 mb-1">📋 ملاحظات (اختياري)</label>
                   <textarea
@@ -2174,7 +2139,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
                     placeholder="ملاحظات إضافية..."
                   />
                 </div>
-                
+
                 {/* معاينة التعزيز */}
                 {boostPreview.boostAmount > 0 && (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3">
@@ -2195,7 +2160,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
                     </div>
                   </div>
                 )}
-                
+
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -2260,7 +2225,7 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
               <div className="text-center">
                 <div className="text-gray-600">نسبة البيع</div>
                 <div className="text-lg font-bold text-blue-600">
-                  {parseInt(formData.initialQuantity || '0') > 0 
+                  {parseInt(formData.initialQuantity || '0') > 0
                     ? `${(((parseInt(formData.initialQuantity || '0') - parseInt(formData.currentQuantity || '0')) / parseInt(formData.initialQuantity || '1')) * 100).toFixed(1)}%`
                     : '0%'
                   }
@@ -2268,14 +2233,13 @@ function EditItemModal({ item, onClose, onSubmit, isLoading }: any) {
               </div>
               <div className="text-center">
                 <div className="text-gray-600">حالة المخزون</div>
-                <div className={`text-lg font-bold ${
-                  parseInt(formData.currentQuantity || '0') === 0 ? 'text-red-600' :
+                <div className={`text-lg font-bold ${parseInt(formData.currentQuantity || '0') === 0 ? 'text-red-600' :
                   parseInt(formData.currentQuantity || '0') <= parseInt(formData.minThreshold || '10') ? 'text-yellow-600' :
-                  'text-green-600'
-                }`}>
+                    'text-green-600'
+                  }`}>
                   {parseInt(formData.currentQuantity || '0') === 0 ? 'نفد' :
-                   parseInt(formData.currentQuantity || '0') <= parseInt(formData.minThreshold || '10') ? 'منخفض' :
-                   'جيد'
+                    parseInt(formData.currentQuantity || '0') <= parseInt(formData.minThreshold || '10') ? 'منخفض' :
+                      'جيد'
                   }
                 </div>
               </div>
@@ -2339,7 +2303,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
         const dateB = new Date(b.timestamp || b.date || '');
         return dateB.getTime() - dateA.getTime(); // الأحدث أولاً
       });
-      
+
       setMovements(sortedMovements);
       calculateStats(sortedMovements);
     }
@@ -2348,15 +2312,15 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
   // حساب الإحصائيات
   const calculateStats = (movementsData: any[]) => {
     const today = new Date().toISOString().split('T')[0];
-    
+
     const todayMovements = movementsData.filter(m => {
       try {
         const dateStr = m.timestamp || m.date || '';
         if (!dateStr) return false;
-        
+
         const date = new Date(dateStr);
         if (isNaN(date.getTime())) return false; // تحقق من صحة التاريخ
-        
+
         const moveDate = date.toISOString().split('T')[0];
         return moveDate === today;
       } catch (error) {
@@ -2390,7 +2354,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
 
     // فلتر المنتج
     if (filters.productName) {
-      filtered = filtered.filter((movement: any) => 
+      filtered = filtered.filter((movement: any) =>
         movement.productName.toLowerCase().includes(filters.productName.toLowerCase())
       );
     }
@@ -2398,7 +2362,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
     // فلتر البحث العام
     if (filters.searchTerm) {
       const searchTerm = filters.searchTerm.toLowerCase();
-      filtered = filtered.filter((movement: any) => 
+      filtered = filtered.filter((movement: any) =>
         movement.productName.toLowerCase().includes(searchTerm) ||
         movement.reason?.toLowerCase().includes(searchTerm) ||
         movement.notes?.toLowerCase().includes(searchTerm) ||
@@ -2413,10 +2377,10 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
         try {
           const dateStr = movement.timestamp || movement.date || '';
           if (!dateStr) return false;
-          
+
           const date = new Date(dateStr);
           if (isNaN(date.getTime())) return false;
-          
+
           const moveDate = date.toISOString().split('T')[0];
           return moveDate >= filters.dateFrom;
         } catch (error) {
@@ -2432,10 +2396,10 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
         try {
           const dateStr = movement.timestamp || movement.date || '';
           if (!dateStr) return false;
-          
+
           const date = new Date(dateStr);
           if (isNaN(date.getTime())) return false;
-          
+
           const moveDate = date.toISOString().split('T')[0];
           return moveDate <= filters.dateTo;
         } catch (error) {
@@ -2457,10 +2421,10 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
         try {
           const dateStr = movement.timestamp || movement.date || '';
           if (!dateStr) return false;
-          
+
           const date = new Date(dateStr);
           if (isNaN(date.getTime())) return false;
-          
+
           const moveDate = date.toISOString().split('T')[0];
           return moveDate === today;
         } catch (error) {
@@ -2476,11 +2440,11 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
         try {
           const dateA = new Date(a.timestamp || a.date || '');
           const dateB = new Date(b.timestamp || b.date || '');
-          
+
           if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) {
             return 0; // إذا كان أحد التواريخ غير صالح، لا نغير الترتيب
           }
-          
+
           return dateB.getTime() - dateA.getTime();
         } catch (error) {
           console.warn('خطأ في ترتيب التواريخ:', error);
@@ -2492,11 +2456,11 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
         try {
           const dateA = new Date(a.timestamp || a.date || '');
           const dateB = new Date(b.timestamp || b.date || '');
-          
+
           if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) {
             return 0;
           }
-          
+
           return dateA.getTime() - dateB.getTime();
         } catch (error) {
           console.warn('خطأ في ترتيب التواريخ:', error);
@@ -2547,10 +2511,10 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
   // دالة لتنسيق التاريخ والوقت المصري
   const formatEgyptianDateTime = (dateTimeString: string) => {
     if (!dateTimeString) return { date: '-', time: '' };
-    
+
     try {
       const date = new Date(dateTimeString);
-      
+
       // التاريخ بالعربية
       const dateOptions: Intl.DateTimeFormatOptions = {
         timeZone: 'Africa/Cairo',
@@ -2558,7 +2522,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
         month: '2-digit',
         day: '2-digit'
       };
-      
+
       // الوقت بالعربية
       const timeOptions: Intl.DateTimeFormatOptions = {
         timeZone: 'Africa/Cairo',
@@ -2570,7 +2534,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
 
       const formattedDate = date.toLocaleDateString('ar-EG-u-nu-latn', dateOptions);
       const formattedTime = date.toLocaleTimeString('ar-EG-u-nu-latn', timeOptions);
-      
+
       return { date: formattedDate, time: formattedTime };
     } catch (error) {
       return { date: dateTimeString, time: '' };
@@ -2588,7 +2552,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
               تتبع شامل لجميع عمليات المخزون بالتوقيت المصري الدقيق
             </p>
           </div>
-          
+
           <div className="flex flex-col sm:flex-row gap-2">
             <button
               onClick={() => refreshMovements()}
@@ -2599,7 +2563,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
               </svg>
               <span className="hidden sm:inline">تحديث</span>
             </button>
-            
+
             <button
               onClick={onAddStock}
               className="px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
@@ -2619,22 +2583,22 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             <div className="text-2xl font-bold text-blue-600">{stats.totalMovements}</div>
             <div className="text-sm text-gray-600">إجمالي الحركات</div>
           </div>
-          
+
           <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
             <div className="text-2xl font-bold text-green-600">{stats.todayMovements}</div>
             <div className="text-sm text-gray-600">حركات اليوم</div>
           </div>
-          
+
           <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
             <div className="text-2xl font-bold text-emerald-600">+{stats.totalAdditions}</div>
             <div className="text-sm text-gray-600">إجمالي الإضافات</div>
           </div>
-          
+
           <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
             <div className="text-2xl font-bold text-red-600">-{stats.totalDeductions}</div>
             <div className="text-sm text-gray-600">إجمالي الخصميات</div>
           </div>
-          
+
           <div className="bg-white p-4 rounded-lg border border-gray-200 text-center">
             <div className="text-2xl font-bold text-purple-600">{stats.uniqueProducts}</div>
             <div className="text-sm text-gray-600">المنتجات المتأثرة</div>
@@ -2651,14 +2615,14 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
               <input
                 type="checkbox"
                 checked={filters.showToday}
-                onChange={(e) => setFilters({...filters, showToday: e.target.checked})}
+                onChange={(e) => setFilters({ ...filters, showToday: e.target.checked })}
                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <span className="text-gray-700">اليوم فقط</span>
             </label>
           </div>
         </div>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {/* البحث العام */}
           <div className="xl:col-span-2">
@@ -2667,7 +2631,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
               type="text"
               placeholder="ابحث في المنتج، السبب، الملاحظات، رقم الطلب..."
               value={filters.searchTerm}
-              onChange={(e) => setFilters({...filters, searchTerm: e.target.value})}
+              onChange={(e) => setFilters({ ...filters, searchTerm: e.target.value })}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             />
           </div>
@@ -2677,7 +2641,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             <label className="block text-xs font-medium text-gray-600 mb-1">المنتج</label>
             <select
               value={filters.productName}
-              onChange={(e) => setFilters({...filters, productName: e.target.value})}
+              onChange={(e) => setFilters({ ...filters, productName: e.target.value })}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             >
               <option value="">جميع المنتجات</option>
@@ -2692,7 +2656,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             <label className="block text-xs font-medium text-gray-600 mb-1">نوع العملية</label>
             <select
               value={filters.type}
-              onChange={(e) => setFilters({...filters, type: e.target.value})}
+              onChange={(e) => setFilters({ ...filters, type: e.target.value })}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             >
               <option value="all">جميع العمليات</option>
@@ -2712,7 +2676,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             <input
               type="date"
               value={filters.dateFrom}
-              onChange={(e) => setFilters({...filters, dateFrom: e.target.value})}
+              onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             />
           </div>
@@ -2723,7 +2687,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             <input
               type="date"
               value={filters.dateTo}
-              onChange={(e) => setFilters({...filters, dateTo: e.target.value})}
+              onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             />
           </div>
@@ -2733,7 +2697,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             <label className="block text-xs font-medium text-gray-600 mb-1">ترتيب النتائج</label>
             <select
               value={filters.sortBy}
-              onChange={(e) => setFilters({...filters, sortBy: e.target.value})}
+              onChange={(e) => setFilters({ ...filters, sortBy: e.target.value })}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             >
               <option value="newest">الأحدث أولاً</option>
@@ -2775,7 +2739,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             </div>
           </div>
         </div>
-        
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -2812,7 +2776,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             <tbody className="divide-y divide-gray-100">
               {filteredMovements.map((movement: any, index: number) => {
                 const dateTime = formatEgyptianDateTime(movement.timestamp || movement.date);
-                
+
                 let isToday = false;
                 try {
                   const dateStr = movement.timestamp || movement.date || '';
@@ -2825,10 +2789,10 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
                 } catch (error) {
                   console.warn('خطأ في تحديد تاريخ اليوم:', movement.timestamp || movement.date, error);
                 }
-                
+
                 return (
-                  <tr 
-                    key={movement.id || index} 
+                  <tr
+                    key={movement.id || index}
                     className={`hover:bg-gray-50 transition-colors ${isToday ? 'bg-blue-50' : ''}`}
                   >
                     <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm">
@@ -2844,17 +2808,17 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
                         )}
                       </div>
                     </td>
-                    
+
                     <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm">
                       <div className="font-medium text-gray-900">{movement.productName}</div>
                     </td>
-                    
+
                     <td className="px-3 sm:px-4 py-3">
                       <span className={`px-2 py-1 text-xs font-medium rounded-lg border ${getOperationColor(movement.type, movement.quantity)}`}>
                         {getOperationLabel(movement.type)}
                       </span>
                     </td>
-                    
+
                     <td className="px-3 sm:px-4 py-3">
                       <div className="flex items-center gap-1">
                         <span className={`font-bold text-sm ${movement.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -2871,19 +2835,19 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
                         )}
                       </div>
                     </td>
-                    
+
                     <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-gray-600 hidden sm:table-cell">
                       <div className="max-w-32 truncate" title={movement.reason || '-'}>
                         {movement.reason || '-'}
                       </div>
                     </td>
-                    
+
                     <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-gray-600 hidden md:table-cell">
                       <div className="max-w-24 truncate" title={movement.supplier || '-'}>
                         {movement.supplier || '-'}
                       </div>
                     </td>
-                    
+
                     <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm hidden lg:table-cell">
                       {movement.cost && movement.cost > 0 ? (
                         <span className="font-medium text-gray-900">
@@ -2893,7 +2857,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
                         <span className="text-gray-400">-</span>
                       )}
                     </td>
-                    
+
                     <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm hidden lg:table-cell">
                       {movement.orderId ? (
                         <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-xs font-medium">
@@ -2903,7 +2867,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
                         <span className="text-gray-400">-</span>
                       )}
                     </td>
-                    
+
                     <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-gray-600 hidden xl:table-cell">
                       <div className="max-w-32 truncate" title={movement.notes || '-'}>
                         {movement.notes || '-'}
@@ -2926,7 +2890,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">لا توجد حركات مطابقة</h3>
             <p className="text-gray-500 mb-4">
-              {movements.length === 0 
+              {movements.length === 0
                 ? 'لم يتم تسجيل أي حركات مخزون بعد'
                 : 'لم يتم العثور على حركات مخزون بالفلاتر المحددة'
               }
@@ -2941,7 +2905,7 @@ function StockMovements({ stockItems, onAddStock, isLoading }: any) {
             )}
           </div>
         )}
-        
+
         {/* معلومات التصفح */}
         {filteredMovements.length > 0 && (
           <div className="px-4 sm:px-6 py-3 border-t border-gray-200 bg-gray-50 rounded-b-lg">
@@ -2981,12 +2945,12 @@ function AddStockModal({ stockItems, onClose, onSubmit, isLoading }: any) {
   const handleProductChange = (productName: string) => {
     const product = stockItems.find((item: any) => item.productName === productName);
     setSelectedProduct(product);
-    setFormData({...formData, productName});
+    setFormData({ ...formData, productName });
     updatePreview(formData.quantity, product);
   };
 
   const handleQuantityChange = (quantity: string) => {
-    setFormData({...formData, quantity});
+    setFormData({ ...formData, quantity });
     updatePreview(quantity, selectedProduct);
   };
 
@@ -3001,22 +2965,22 @@ function AddStockModal({ stockItems, onClose, onSubmit, isLoading }: any) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const quantity = parseInt(formData.quantity) || 0;
-    
+
     if (quantity <= 0) {
       alert('كمية المخزون يجب أن تكون أكبر من صفر');
       return;
     }
-    
+
     if (!selectedProduct) {
       alert('يجب اختيار المنتج');
       return;
     }
-    
+
     // تأكيد العملية
     const confirmMessage = `هل تريد إضافة ${quantity} قطعة إلى مخزون ${selectedProduct.productName}؟\n\nالمخزون الحالي: ${selectedProduct.currentQuantity}\nبعد الإضافة: ${previewQuantity}`;
-    
+
     if (window.confirm(confirmMessage)) {
       onSubmit(formData);
     }
@@ -3029,7 +2993,7 @@ function AddStockModal({ stockItems, onClose, onSubmit, isLoading }: any) {
           <h3 className="text-lg sm:text-xl font-bold text-gray-900">إضافة مخزون</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl font-bold">×</button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">اختر المنتج</label>
@@ -3067,7 +3031,7 @@ function AddStockModal({ stockItems, onClose, onSubmit, isLoading }: any) {
               <input
                 type="number"
                 value={formData.cost}
-                onChange={(e) => setFormData({...formData, cost: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
                 min="0"
                 step="0.01"
@@ -3102,7 +3066,7 @@ function AddStockModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <label className="block text-sm font-medium text-gray-700 mb-1">سبب الإضافة</label>
             <select
               value={formData.reason}
-              onChange={(e) => setFormData({...formData, reason: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900 text-sm"
             >
               <option value="إضافة مخزون جديد" className="text-gray-900 bg-white">إضافة مخزون جديد</option>
@@ -3119,7 +3083,7 @@ function AddStockModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <input
               type="text"
               value={formData.supplier}
-              onChange={(e) => setFormData({...formData, supplier: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
               placeholder="اسم المورد أو المصدر"
             />
@@ -3129,7 +3093,7 @@ function AddStockModal({ stockItems, onClose, onSubmit, isLoading }: any) {
             <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
             <textarea
               value={formData.notes}
-              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 text-sm"
               rows={3}
               placeholder="تفاصيل إضافية عن عملية الإضافة..."

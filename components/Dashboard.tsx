@@ -1,108 +1,150 @@
 import useSWR from 'swr';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useCurrentUser } from '../hooks/useCurrentUser';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
+// ألوان الرسوم البيانية
+const CHART_COLORS = {
+  confirmed: '#22c55e',  // أخضر
+  rejected: '#ef4444',   // أحمر
+  pending: '#eab308',    // أصفر
+  shipped: '#3b82f6',    // أزرق
+  new: '#8b5cf6'         // بنفسجي
+};
+
 interface StatCardProps {
   label: string;
-  value: number;
+  value: number | string;
   icon: string;
   bgColor?: string;
   textColor?: string;
+  suffix?: string;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ label, value, icon, bgColor = 'bg-white', textColor = 'text-gray-900' }) => (
+const StatCard: React.FC<StatCardProps> = ({ label, value, icon, bgColor = 'bg-white', textColor = 'text-gray-900', suffix = '' }) => (
   <div className={`${bgColor} rounded-lg shadow-sm border p-4 sm:p-6 text-center`}>
     <div className={`text-2xl sm:text-4xl mb-2`}>{icon}</div>
     <div className={`text-xs sm:text-sm font-medium text-gray-600 mb-1`}>{label}</div>
-    <div className={`text-lg sm:text-2xl font-bold ${textColor}`}>{value}</div>
+    <div className={`text-lg sm:text-2xl font-bold ${textColor}`}>{value}{suffix}</div>
   </div>
 );
 
-const ReportCard: React.FC<{ title: string; stats: any }> = ({ title, stats }) => {
-  // حساب الإحصائيات الصحيحة
-  const totalConfirmed = (stats.confirmed || 0) + (stats.shipped || 0); // المؤكد الإجمالي = تأكيد + شحن
-  const totalPending = (stats.new || 0) + (stats.noAnswer || 0) + (stats.pending || 0) + (stats.contacted || 0); // في الانتظار
-  const totalRejected = stats.rejected || 0; // المرفوض
+// بطاقة تقرير المنتج المحسنة - تعرض الصورة العامة بوضوح
+const ProductReportCard: React.FC<{ title: string; stats: any }> = ({ title, stats }) => {
+  const totalConfirmed = (stats.confirmed || 0) + (stats.shipped || 0);
+  const totalPending = (stats.new || 0) + (stats.noAnswer || 0) + (stats.pending || 0) + (stats.contacted || 0);
+  const totalRejected = stats.rejected || 0;
   const total = stats.total || 0;
-  
-  // معدل التحويل الصحيح = (المؤكد الإجمالي / إجمالي الطلبات) * 100
-  const conversionRate = total > 0 ? ((totalConfirmed / total) * 100).toFixed(1) : '0.0';
-  
-  // معدل الحسم = ((المؤكد + المرفوض) / إجمالي الطلبات) * 100
-  const decisionRate = total > 0 ? (((totalConfirmed + totalRejected) / total) * 100).toFixed(1) : '0.0';
-  
+
+  // النسب المئوية
+  const confirmRate = total > 0 ? ((totalConfirmed / total) * 100) : 0;
+  const rejectRate = total > 0 ? ((totalRejected / total) * 100) : 0;
+  const pendingRate = total > 0 ? ((totalPending / total) * 100) : 0;
+  const noAnswerRate = total > 0 ? (((stats.noAnswer || 0) / total) * 100) : 0;
+
+  // تحديد مستوى نجاح المنتج
+  const getSuccessLevel = () => {
+    if (confirmRate >= 60) return { label: 'ممتاز', color: 'text-green-700', bg: 'bg-green-100', icon: '🌟' };
+    if (confirmRate >= 50) return { label: 'جيد جداً', color: 'text-blue-700', bg: 'bg-blue-50', icon: '✅' };
+    if (confirmRate >= 40) return { label: 'جيد', color: 'text-yellow-700', bg: 'bg-yellow-50', icon: '👍' };
+    return { label: 'ضعيف', color: 'text-red-600', bg: 'bg-red-50', icon: '📉' };
+  };
+
+  const successLevel = getSuccessLevel();
+
   return (
-    <div className="bg-white border rounded-lg p-4 sm:p-6 shadow-sm">
-      <h3 className="font-semibold text-base sm:text-lg mb-4 text-gray-800">{title}</h3>
-      <div className="space-y-2 sm:space-y-3">
-        <div className="flex justify-between">
-          <span className="text-sm text-gray-600">إجمالي:</span>
-          <span className="font-semibold text-sm">{total}</span>
-        </div>
-        
-        <div className="flex justify-between">
-          <span className="text-sm text-gray-600">مؤكد (إجمالي):</span>
-          <span className="font-semibold text-sm text-green-600">{totalConfirmed}</span>
-        </div>
-        
-        <div className="flex justify-between text-xs text-gray-500 pl-4">
-          <span>• تم التأكيد:</span>
-          <span>{stats.confirmed || 0}</span>
-        </div>
-        
-        <div className="flex justify-between text-xs text-gray-500 pl-4">
-          <span>• تم الشحن:</span>
-          <span>{stats.shipped || 0}</span>
-        </div>
-        
-        <div className="flex justify-between">
-          <span className="text-sm text-gray-600">في الانتظار:</span>
-          <span className="font-semibold text-sm text-yellow-600">{totalPending}</span>
-        </div>
-        
-        <div className="flex justify-between text-xs text-gray-500 pl-4">
-          <span>• جديد:</span>
-          <span>{stats.new || 0}</span>
-        </div>
-        
-        <div className="flex justify-between text-xs text-gray-500 pl-4">
-          <span>• لم يرد:</span>
-          <span>{stats.noAnswer || 0}</span>
-        </div>
-        
-        <div className="flex justify-between text-xs text-gray-500 pl-4">
-          <span>• تواصل واتساب:</span>
-          <span>{stats.contacted || 0}</span>
-        </div>
-        
-        <div className="flex justify-between">
-          <span className="text-sm text-gray-600">مرفوض:</span>
-          <span className="font-semibold text-sm text-red-600">{totalRejected}</span>
-        </div>
-        
-        <hr className="my-3" />
-        
-        <div className="flex justify-between">
-          <span className="text-sm text-gray-600">معدل التحويل:</span>
-          <span className="font-semibold text-sm text-blue-600">{conversionRate}%</span>
-        </div>
-        
-        <div className="flex justify-between">
-          <span className="text-sm text-gray-600">معدل الحسم:</span>
-          <span className="font-semibold text-sm text-purple-600">{decisionRate}%</span>
-        </div>
-        
-        {/* التحقق من صحة البيانات */}
-        <div className="mt-3 pt-2 border-t border-gray-100">
-          <div className="flex justify-between text-xs text-gray-400">
-            <span>التحقق:</span>
-            <span className={totalConfirmed + totalPending + totalRejected === total ? 'text-green-500' : 'text-red-500'}>
-              {totalConfirmed + totalPending + totalRejected === total ? '✓ صحيح' : '⚠ خطأ'}
-            </span>
+    <div className={`border rounded-lg p-4 sm:p-5 shadow-sm ${successLevel.bg}`}>
+      {/* العنوان ومستوى النجاح */}
+      <div className="flex justify-between items-start mb-4">
+        <h3 className="font-bold text-base sm:text-lg text-gray-800">{title}</h3>
+        <span className={`text-xs px-2 py-1 rounded-full font-medium ${successLevel.color} ${successLevel.bg} border`}>
+          {successLevel.icon} {successLevel.label}
+        </span>
+      </div>
+
+      {/* الإجمالي */}
+      <div className="text-center mb-4 py-2 bg-white/60 rounded-lg">
+        <span className="text-2xl font-bold text-gray-800">{total}</span>
+        <span className="text-sm text-gray-600 mr-2">طلب إجمالي</span>
+      </div>
+
+      {/* النسب الرئيسية مع شريط التقدم */}
+      <div className="space-y-3">
+        {/* نسبة التأكيد */}
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm font-medium text-green-700">✅ مؤكد</span>
+            <span className="text-sm font-bold text-green-700">{totalConfirmed} ({confirmRate.toFixed(1)}%)</span>
+          </div>
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full bg-green-500 transition-all" style={{ width: `${confirmRate}%` }} />
           </div>
         </div>
+
+        {/* نسبة الرفض */}
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm font-medium text-red-700">❌ مرفوض</span>
+            <span className="text-sm font-bold text-red-700">{totalRejected} ({rejectRate.toFixed(1)}%)</span>
+          </div>
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full bg-red-500 transition-all" style={{ width: `${rejectRate}%` }} />
+          </div>
+        </div>
+
+        {/* نسبة الانتظار */}
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm font-medium text-yellow-700">⏳ انتظار</span>
+            <span className="text-sm font-bold text-yellow-700">{totalPending} ({pendingRate.toFixed(1)}%)</span>
+          </div>
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full bg-yellow-500 transition-all" style={{ width: `${pendingRate}%` }} />
+          </div>
+        </div>
+
+        {/* نسبة عدم الرد */}
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm font-medium text-gray-600">📵 لم يرد</span>
+            <span className="text-sm font-bold text-gray-600">{stats.noAnswer || 0} ({noAnswerRate.toFixed(1)}%)</span>
+          </div>
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full bg-gray-400 transition-all" style={{ width: `${noAnswerRate}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* ملخص سريع */}
+      <div className="mt-4 pt-3 border-t border-gray-200/50">
+        <div className="text-center p-2 bg-white/50 rounded text-xs">
+          <div className="font-bold text-purple-700">{confirmRate > 0 && rejectRate > 0 ? (confirmRate / rejectRate).toFixed(1) : '-'}</div>
+          <div className="text-gray-600">نسبة تأكيد:رفض</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// بطاقة تقرير المصدر المبسطة
+const SourceReportCard: React.FC<{ title: string; stats: any }> = ({ title, stats }) => {
+  const total = stats.total || 0;
+  const totalConfirmed = (stats.confirmed || 0) + (stats.shipped || 0);
+  const confirmRate = total > 0 ? ((totalConfirmed / total) * 100) : 0;
+
+  return (
+    <div className="bg-white border rounded-lg p-4 shadow-sm flex items-center justify-between">
+      <div>
+        <h3 className="font-semibold text-gray-800">{title}</h3>
+        <span className="text-xs text-gray-500">{total} طلب</span>
+      </div>
+      <div className="text-left">
+        <div className={`text-lg font-bold ${confirmRate >= 20 ? 'text-green-600' : confirmRate >= 10 ? 'text-yellow-600' : 'text-red-600'}`}>
+          {confirmRate.toFixed(1)}%
+        </div>
+        <div className="text-xs text-gray-500">معدل التأكيد</div>
       </div>
     </div>
   );
@@ -123,18 +165,50 @@ type EmployeeStats = {
 
 export default function Dashboard() {
   const { user } = useCurrentUser();
-  const [selectedPeriod, setSelectedPeriod] = useState('all');
-  
-  // Fetch regular dashboard data
-  const { data, error } = useSWR('/api/orders?stats=true', fetcher, { refreshInterval: 30000 });
-  
-  // Fetch employee reports data for admin
-  const { data: employeeData, error: employeeError, isLoading: employeeLoading } = useSWR(
-    user?.role === 'admin' ? '/api/orders?stats=true' : null, 
-    fetcher, 
-    { refreshInterval: 15000, revalidateOnFocus: true }
-  );
+  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'all'>('all');
 
+  // Fetch dashboard data - single call for all data
+  const { data, error, isLoading } = useSWR('/api/orders?stats=true', fetcher, {
+    refreshInterval: 15000,
+    revalidateOnFocus: true
+  });
+
+  // Extract data safely with defaults
+  const overall = data?.data?.overall || { total: 0, confirmed: 0, shipped: 0, new: 0, noAnswer: 0, pending: 0, contacted: 0, rejected: 0 };
+  const byProduct = data?.data?.byProduct || {};
+  const bySource = data?.data?.bySource || {};
+
+  // حساب الإحصائيات المحسنة - MUST be called before any returns
+  const enhancedStats = useMemo(() => {
+    const totalConfirmed = (overall.confirmed || 0) + (overall.shipped || 0);
+    const totalPending = (overall.new || 0) + (overall.noAnswer || 0) + (overall.pending || 0) + (overall.contacted || 0);
+    const totalRejected = overall.rejected || 0;
+    const conversionRate = overall.total > 0 ? ((totalConfirmed / overall.total) * 100).toFixed(1) : '0.0';
+    const decisionRate = overall.total > 0 ? (((totalConfirmed + totalRejected) / overall.total) * 100).toFixed(1) : '0.0';
+
+    return {
+      totalConfirmed,
+      totalPending,
+      totalRejected,
+      conversionRate,
+      decisionRate
+    };
+  }, [overall]);
+
+  // بيانات الرسم البياني الدائري - جميع الحالات مع دمج التأكيد والشحن
+  const pieChartData = useMemo(() => {
+    const totalConfirmed = (overall.confirmed || 0) + (overall.shipped || 0);
+    return [
+      { name: 'مؤكد (تأكيد+شحن)', value: totalConfirmed, color: '#22c55e' }, // أخضر
+      { name: 'جديد', value: overall.new || 0, color: '#8b5cf6' }, // بنفسجي
+      { name: 'لم يرد', value: overall.noAnswer || 0, color: '#f97316' }, // برتقالي
+      { name: 'انتظار تأكيد', value: overall.pending || 0, color: '#eab308' }, // أصفر
+      { name: 'تواصل واتساب', value: overall.contacted || 0, color: '#06b6d4' }, // سماوي
+      { name: 'مرفوض', value: overall.rejected || 0, color: '#ef4444' }, // أحمر
+    ].filter(item => item.value > 0); // إخفاء الحالات الفارغة
+  }, [overall]);
+
+  // Early returns AFTER all hooks
   if (error) return <div>فشل في جلب الإحصائيات: {error.message}</div>;
   if (!data) return <div>جاري تحميل الإحصائيات...</div>;
 
@@ -142,29 +216,27 @@ export default function Dashboard() {
     return <div>حدث خطأ: {data.error}</div>;
   }
 
-  const { overall, byProduct, bySource } = data.data;
-
-  if (!overall || !byProduct || !bySource) {
+  if (!data.data?.overall || !data.data?.byProduct || !data.data?.bySource) {
     return <div>البيانات غير مكتملة.</div>;
   }
 
   // Employee Reports Logic (for admin)
   const renderEmployeeReports = () => {
-    if (user?.role !== 'admin' || employeeLoading) {
+    if (user?.role !== 'admin' || isLoading) {
       return null;
     }
 
-    if (employeeError) {
+    if (!data?.data) {
       return <div className="text-center py-8 text-red-600">خطأ في تحميل تقارير الموظفين</div>;
     }
 
-    const stats = employeeData?.data;
+    const stats = data.data;
     const byAssignee = stats?.byAssignee || {};
     const byAssigneeByProduct = stats?.byAssigneeByProduct || {};
 
     // حساب إحصائيات شاملة ومؤشرات الأداء بالمنطق الصحيح
     const employees = ['heba.', 'ahmed.', 'aisha.'];
-    
+
     // إجمالي الليدز المعينة للموظفين فقط (بدون غير المعين)
     const assignedLeads = employees.reduce((sum, emp) => sum + (byAssignee[emp]?.total || 0), 0);
     const totalLeads = Object.values(byAssignee).reduce((sum: number, emp: any) => sum + emp.total, 0);
@@ -201,7 +273,7 @@ export default function Dashboard() {
       const min = Math.min(...counts);
       const difference = max - min;
       const maxAllowed = Math.ceil(assignedLeads * 0.1); // 10% كحد أقصى للاختلاف
-      
+
       return {
         isBalanced: difference <= maxAllowed,
         difference,
@@ -237,12 +309,12 @@ export default function Dashboard() {
     };
 
     // معدل التأكيد العام الصحيح (تأكيد + شحن)
-    const overallConfirmationRate = assignedLeads > 0 
+    const overallConfirmationRate = assignedLeads > 0
       ? ((overallStats.totalConfirmed / assignedLeads) * 100).toFixed(1)
       : '0.0';
 
     // معدل الحسم العام (مؤكد + مرفوض)
-    const overallDecisionRate = assignedLeads > 0 
+    const overallDecisionRate = assignedLeads > 0
       ? (((overallStats.totalConfirmed + overallStats.totalRejected) / assignedLeads) * 100).toFixed(1)
       : '0.0';
 
@@ -260,32 +332,32 @@ export default function Dashboard() {
 
         {/* إحصائيات إجمالية بالمنطق الصحيح */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          <StatCard 
-            label="إجمالي الليدز المعينة" 
-            value={assignedLeads} 
+          <StatCard
+            label="إجمالي الليدز المعينة"
+            value={assignedLeads}
             icon="👥"
-            bgColor="bg-blue-50" 
+            bgColor="bg-blue-50"
             textColor="text-blue-800"
           />
-          <StatCard 
-            label="معدل التأكيد العام" 
-            value={parseFloat(overallConfirmationRate)} 
+          <StatCard
+            label="معدل التأكيد العام"
+            value={parseFloat(overallConfirmationRate)}
             icon="✅"
-            bgColor="bg-green-50" 
+            bgColor="bg-green-50"
             textColor="text-green-800"
           />
-          <StatCard 
-            label="في الانتظار" 
-            value={overallStats.totalWaiting} 
+          <StatCard
+            label="في الانتظار"
+            value={overallStats.totalWaiting}
             icon="⏳"
-            bgColor="bg-yellow-50" 
+            bgColor="bg-yellow-50"
             textColor="text-yellow-800"
           />
-          <StatCard 
-            label="معدل الحسم" 
-            value={parseFloat(overallDecisionRate)} 
+          <StatCard
+            label="معدل الحسم"
+            value={parseFloat(overallDecisionRate)}
             icon="📊"
-            bgColor="bg-purple-50" 
+            bgColor="bg-purple-50"
             textColor="text-purple-800"
           />
         </div>
@@ -301,10 +373,10 @@ export default function Dashboard() {
                 const decisionRate = getDecisionRate(empData);
                 const waitingRate = getWaitingRate(empData);
                 const share = assignedLeads > 0 ? ((empData.total / assignedLeads) * 100).toFixed(1) : '0.0';
-                
+
                 const realConfirmed = getRealConfirmed(empData);
                 const realWaiting = getRealWaiting(empData);
-                
+
                 return (
                   <div key={emp} className="border rounded-lg p-3 sm:p-4 bg-gray-50">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 space-y-2 sm:space-y-0">
@@ -313,17 +385,16 @@ export default function Dashboard() {
                         <p className="text-xs sm:text-sm text-gray-700">نصيب: {share}% من الليدز المعينة ({empData.total} ليد)</p>
                       </div>
                       <div className="sm:text-right">
-                        <div className={`px-2 py-1 rounded text-xs font-medium ${
-                          parseFloat(conversionRate) >= 25 ? 'bg-green-100 text-green-800' :
+                        <div className={`px-2 py-1 rounded text-xs font-medium ${parseFloat(conversionRate) >= 25 ? 'bg-green-100 text-green-800' :
                           parseFloat(conversionRate) >= 15 ? 'bg-yellow-100 text-yellow-800' :
-                          parseFloat(conversionRate) >= 10 ? 'bg-orange-100 text-orange-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
+                            parseFloat(conversionRate) >= 10 ? 'bg-orange-100 text-orange-800' :
+                              'bg-red-100 text-red-800'
+                          }`}>
                           معدل التحويل: {conversionRate}%
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm mb-3">
                       <div className="text-center bg-green-100 p-2 rounded">
                         <p className="font-semibold text-green-800">{realConfirmed}</p>
@@ -339,7 +410,7 @@ export default function Dashboard() {
                         <p className="text-xs text-yellow-700">في الانتظار</p>
                       </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-3 gap-2 sm:gap-4 text-xs text-gray-700 pt-3 border-t">
                       <div className="text-center">
                         <span className="font-medium text-gray-800 text-xs">معدل التحويل</span>
@@ -370,7 +441,7 @@ export default function Dashboard() {
               {employees.map(emp => {
                 const empProducts = byAssigneeByProduct[emp] || {};
                 const empName = emp === 'heba.' ? 'هبة' : emp === 'ahmed.' ? 'أحمد' : 'عائشة';
-                
+
                 return (
                   <div key={emp} className="border rounded-lg p-4">
                     <h4 className="font-medium mb-3 text-gray-900">{empName}</h4>
@@ -379,26 +450,26 @@ export default function Dashboard() {
                     ) : (
                       <div className="space-y-2">
                         {Object.entries(empProducts)
-                          .sort(([,a]: any, [,b]: any) => b.total - a.total)
+                          .sort(([, a]: any, [, b]: any) => b.total - a.total)
                           .map(([product, stats]: any) => {
                             // معدل التحويل بالمنطق الصحيح: (confirmed + shipped) / total
                             const realConfirmed = stats.confirmed + stats.shipped;
-                            const productConversion = stats.total > 0 
+                            const productConversion = stats.total > 0
                               ? ((realConfirmed / stats.total) * 100).toFixed(1)
                               : '0.0';
-                            
+
                             // معدل الحسم: (confirmed + shipped + rejected) / total  
                             const decided = realConfirmed + stats.rejected;
-                            const decisionRate = stats.total > 0 
+                            const decisionRate = stats.total > 0
                               ? ((decided / stats.total) * 100).toFixed(1)
                               : '0.0';
-                            
+
                             return (
                               <div key={product} className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-sm py-2 px-3 bg-gray-50 rounded space-y-2 sm:space-y-0">
                                 <div className="flex-1">
                                   <p className="font-medium text-gray-900 text-xs sm:text-sm">{product}</p>
                                   <p className="text-xs text-gray-600">
-                                    تحويل: {productConversion}% | حسم: {decisionRate}% 
+                                    تحويل: {productConversion}% | حسم: {decisionRate}%
                                     <span className="hidden sm:inline">({decided}/{stats.total})</span>
                                   </p>
                                 </div>
@@ -444,7 +515,7 @@ export default function Dashboard() {
               <div className="flex justify-between pl-2 sm:pl-4"><span className="text-gray-600">- تواصل واتساب:</span><span className="text-yellow-600">{overallStats.totalContacted}</span></div>
             </div>
           </div>
-          
+
           <div className="bg-indigo-50 p-3 sm:p-4 rounded-lg">
             <h4 className="font-semibold text-indigo-900 mb-2 text-sm sm:text-base">📊 معدلات الأداء</h4>
             <div className="space-y-1 text-xs sm:text-sm">
@@ -523,13 +594,186 @@ export default function Dashboard() {
     <div className="space-y-8 sm:space-y-12">
       {/* لوحة التحكم الأساسية */}
       <div>
-        <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-800 border-b pb-2">📊 نظرة عامة</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          <StatCard label="إجمالي الطلبات" value={overall.total} icon="📊" />
-          <StatCard label="طلبات جديدة" value={overall.new} icon="🆕" />
-          <StatCard label="مؤكدة" value={overall.confirmed} icon="✅" />
-          <StatCard label="طلبات اليوم" value={overall.today} icon="📅" />
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 sm:mb-6 gap-3">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-800 border-b pb-2 sm:border-0 sm:pb-0">📊 نظرة عامة</h2>
+
+          {/* فلتر الفترة الزمنية */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">الفترة:</span>
+            <select
+              value={selectedPeriod}
+              onChange={(e) => setSelectedPeriod(e.target.value as any)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="today">اليوم</option>
+              <option value="week">هذا الأسبوع</option>
+              <option value="month">هذا الشهر</option>
+              <option value="all">الكل</option>
+            </select>
+          </div>
         </div>
+
+        {/* البطاقات الإحصائية المحسنة */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+          <StatCard label="إجمالي الطلبات" value={overall.total} icon="📊" />
+          <StatCard label="طلبات جديدة" value={overall.new || 0} icon="🆕" textColor="text-purple-600" />
+          <StatCard
+            label="مؤكدة (إجمالي)"
+            value={enhancedStats.totalConfirmed}
+            icon="✅"
+            bgColor="bg-green-50"
+            textColor="text-green-700"
+          />
+          <StatCard
+            label="في الانتظار"
+            value={enhancedStats.totalPending}
+            icon="⏳"
+            bgColor="bg-yellow-50"
+            textColor="text-yellow-700"
+          />
+          <StatCard
+            label="معدل التحويل"
+            value={enhancedStats.conversionRate}
+            icon="📈"
+            bgColor="bg-blue-50"
+            textColor="text-blue-700"
+            suffix="%"
+          />
+        </div>
+
+        {/* الرسوم البيانية */}
+        {user?.role === 'admin' && (
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* نسب حالات الطلبات */}
+            <div className="bg-white rounded-lg border p-4 sm:p-6">
+              <h3 className="font-semibold text-gray-800 mb-4">📊 توزيع حالات الطلبات</h3>
+              <div className="space-y-3">
+                {/* مؤكد (تأكيد + شحن) */}
+                <div className="p-3 bg-green-50 rounded-lg">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium text-green-800">✅ مؤكد (تأكيد + شحن)</span>
+                    <span className="font-bold text-green-700">{enhancedStats.totalConfirmed}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-green-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-green-500" style={{ width: `${overall.total > 0 ? (enhancedStats.totalConfirmed / overall.total) * 100 : 0}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-green-700 w-14 text-left">
+                      {overall.total > 0 ? ((enhancedStats.totalConfirmed / overall.total) * 100).toFixed(1) : 0}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* جديد */}
+                <div className="p-3 bg-purple-50 rounded-lg">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium text-purple-800">🆕 جديد</span>
+                    <span className="font-bold text-purple-700">{overall.new || 0}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-purple-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-purple-500" style={{ width: `${overall.total > 0 ? ((overall.new || 0) / overall.total) * 100 : 0}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-purple-700 w-14 text-left">
+                      {overall.total > 0 ? (((overall.new || 0) / overall.total) * 100).toFixed(1) : 0}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* لم يرد */}
+                <div className="p-3 bg-orange-50 rounded-lg">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium text-orange-800">📵 لم يرد</span>
+                    <span className="font-bold text-orange-700">{overall.noAnswer || 0}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-orange-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-orange-500" style={{ width: `${overall.total > 0 ? ((overall.noAnswer || 0) / overall.total) * 100 : 0}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-orange-700 w-14 text-left">
+                      {overall.total > 0 ? (((overall.noAnswer || 0) / overall.total) * 100).toFixed(1) : 0}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* انتظار تأكيد */}
+                <div className="p-3 bg-yellow-50 rounded-lg">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium text-yellow-800">⏳ انتظار تأكيد</span>
+                    <span className="font-bold text-yellow-700">{overall.pending || 0}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-yellow-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-yellow-500" style={{ width: `${overall.total > 0 ? ((overall.pending || 0) / overall.total) * 100 : 0}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-yellow-700 w-14 text-left">
+                      {overall.total > 0 ? (((overall.pending || 0) / overall.total) * 100).toFixed(1) : 0}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* تواصل واتساب */}
+                <div className="p-3 bg-cyan-50 rounded-lg">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium text-cyan-800">💬 تواصل واتساب</span>
+                    <span className="font-bold text-cyan-700">{overall.contacted || 0}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-cyan-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-cyan-500" style={{ width: `${overall.total > 0 ? ((overall.contacted || 0) / overall.total) * 100 : 0}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-cyan-700 w-14 text-left">
+                      {overall.total > 0 ? (((overall.contacted || 0) / overall.total) * 100).toFixed(1) : 0}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* مرفوض */}
+                <div className="p-3 bg-red-50 rounded-lg">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium text-red-800">❌ مرفوض</span>
+                    <span className="font-bold text-red-700">{overall.rejected || 0}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-red-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-red-500" style={{ width: `${overall.total > 0 ? ((overall.rejected || 0) / overall.total) * 100 : 0}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-red-700 w-14 text-left">
+                      {overall.total > 0 ? (((overall.rejected || 0) / overall.total) * 100).toFixed(1) : 0}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ملخص سريع */}
+            <div className="bg-white rounded-lg border p-4 sm:p-6">
+              <h3 className="font-semibold text-gray-800 mb-4">📋 ملخص الأداء</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                  <span className="text-green-800 font-medium">الطلبات المؤكدة</span>
+                  <div className="text-left">
+                    <span className="text-2xl font-bold text-green-700">{enhancedStats.totalConfirmed}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
+                  <span className="text-yellow-800 font-medium">في انتظار المتابعة</span>
+                  <div className="text-left">
+                    <span className="text-2xl font-bold text-yellow-700">{enhancedStats.totalPending}</span>
+                    <span className="text-sm text-yellow-600 mr-2">تحتاج متابعة</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                  <span className="text-red-800 font-medium">الطلبات المرفوضة</span>
+                  <div className="text-left">
+                    <span className="text-2xl font-bold text-red-700">{enhancedStats.totalRejected}</span>
+                    <span className="text-sm text-red-600 mr-2">مرفوض</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* تقارير الموظفين للأدمن فقط */}
@@ -540,7 +784,7 @@ export default function Dashboard() {
         <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-800 border-b pb-2">🛍️ تقارير حسب المنتج</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
           {Object.entries(byProduct).map(([productName, stats]: [string, any]) => (
-            <ReportCard key={productName} title={productName} stats={stats} />
+            <ProductReportCard key={productName} title={productName} stats={stats} />
           ))}
         </div>
       </div>
@@ -548,9 +792,9 @@ export default function Dashboard() {
       {/* تقارير حسب المصدر */}
       <div>
         <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-800 border-b pb-2">📈 تقارير حسب المصدر</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {Object.entries(bySource).map(([sourceName, stats]: [string, any]) => (
-            <ReportCard key={sourceName} title={sourceName} stats={stats} />
+            <SourceReportCard key={sourceName} title={sourceName} stats={stats} />
           ))}
         </div>
       </div>

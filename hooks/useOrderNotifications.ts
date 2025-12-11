@@ -228,20 +228,6 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
       }
     }
 
-    // سجل تشخيصي لفهم كيفية تحديد الأولوية
-    console.log(`🎯 تحديد أولوية الطلب #${order.id}:`, {
-      status: order.status,
-      statusPriority,
-      price: order.totalPrice,
-      pricePriority,
-      source: order.source,
-      sourcePriority,
-      createdAt: order.createdAt,
-      timePriority,
-      finalPriority,
-      customerName: order.name
-    });
-
     return finalPriority;
   };
 

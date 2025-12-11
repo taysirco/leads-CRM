@@ -39,7 +39,6 @@ export const initAudioSystem = (): boolean => {
     try {
         audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
         isInitialized = true;
-        console.log('🔊 تم تهيئة نظام الصوت بنجاح');
         return true;
     } catch (error) {
         console.error('❌ فشل في تهيئة نظام الصوت:', error);
@@ -52,7 +51,6 @@ export const initAudioSystem = (): boolean => {
  */
 export const setGlobalVolume = (volume: number): void => {
     globalVolume = Math.max(0, Math.min(1, volume));
-    console.log(`🔊 مستوى الصوت: ${Math.round(globalVolume * 100)}%`);
 };
 
 /**
@@ -65,7 +63,6 @@ export const getGlobalVolume = (): number => globalVolume;
  */
 export const toggleMute = (): boolean => {
     isMuted = !isMuted;
-    console.log(isMuted ? '🔇 تم كتم الصوت' : '🔊 تم إلغاء كتم الصوت');
     return isMuted;
 };
 
@@ -269,7 +266,6 @@ export const playNotificationSound = (
 ): boolean => {
     // التحقق من الشروط
     if (isMuted) {
-        console.log('🔇 الصوت مكتوم');
         return false;
     }
 
@@ -292,35 +288,27 @@ export const playNotificationSound = (
         switch (soundType) {
             case 'newOrder':
                 playNewOrderSound(ctx, volume);
-                console.log('🔊 ▶️ صوت طلب جديد');
                 break;
             case 'success':
                 playSuccessSound(ctx, volume);
-                console.log('🔊 ▶️ صوت نجاح');
                 break;
             case 'warning':
                 playWarningSound(ctx, volume);
-                console.log('🔊 ▶️ صوت تحذير');
                 break;
             case 'error':
                 playErrorSound(ctx, volume);
-                console.log('🔊 ▶️ صوت خطأ');
                 break;
             case 'critical':
                 playCriticalSound(ctx, volume);
-                console.log('🔊 ▶️ صوت حرج');
                 break;
             case 'message':
                 playMessageSound(ctx, volume);
-                console.log('🔊 ▶️ صوت رسالة');
                 break;
             case 'pop':
                 playPopSound(ctx, volume);
-                console.log('🔊 ▶️ صوت فقاعة');
                 break;
             case 'chime':
                 playChimeSound(ctx, volume);
-                console.log('🔊 ▶️ صوت جرس');
                 break;
             default:
                 playMessageSound(ctx, volume);
@@ -401,7 +389,7 @@ export const preloadSounds = (): void => {
         gainNode.gain.setValueAtTime(0, audioContext.currentTime);
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.001);
-        console.log('🔊 تم تحميل نظام الصوت مسبقاً');
+
     }
 };
 

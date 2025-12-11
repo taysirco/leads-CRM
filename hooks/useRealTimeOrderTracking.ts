@@ -78,10 +78,10 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
     return {
       total: orderList.length,
       byStatus,
-      recentChanges: statusChangeHistory.slice(-10), // آخر 10 تغييرات
+      recentChanges: [], // لا نعتمد على statusChangeHistory لتجنب الحلقة اللانهائية
       lastUpdate: new Date()
     };
-  }, [statusChangeHistory]);
+  }, []); // إزالة statusChangeHistory من الاعتمادات لتجنب Maximum update depth
 
   // اكتشاف التغييرات الدقيقة
   const detectOrderChanges = useCallback((currentOrders: Order[]) => {
@@ -136,8 +136,6 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
   const handleNewOrders = useCallback((newOrders: Order[]) => {
     if (newOrders.length === 0) return;
 
-    console.log(`🆕 ${newOrders.length} طلب جديد تم اكتشافه`);
-
     newOrders.forEach(order => {
       // تحديد الأولوية بناءً على القيمة والمصدر
       let priority: 'low' | 'normal' | 'high' | 'critical' = 'normal';
@@ -166,8 +164,6 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
   // معالجة تحديثات الحالة
   const handleStatusChanges = useCallback((statusChanges: StatusChangeEvent[]) => {
     if (statusChanges.length === 0) return;
-
-    console.log(`📝 ${statusChanges.length} تغيير حالة تم اكتشافه`);
 
     statusChanges.forEach(change => {
       const { orderId, previousStatus, newStatus, customerName } = change;
@@ -281,41 +277,42 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
     if (isFirstLoadRef.current) {
       isFirstLoadRef.current = false;
       previousOrdersMapRef.current = new Map(orders.map(order => [order.id, order]));
-      setOrderStats(calculateOrderStats(orders));
+      // حساب الإحصائيات مباشرة
+      const byStatus: Record<string, number> = {};
+      orders.forEach(order => {
+        const status = order.status || 'غير محدد';
+        byStatus[status] = (byStatus[status] || 0) + 1;
+      });
+      setOrderStats({
+        total: orders.length,
+        byStatus,
+        recentChanges: [],
+        lastUpdate: new Date()
+      });
       return;
     }
 
-    const { newOrders, updatedOrders, statusChanges } = detectOrderChanges(orders);
+    // حذف جميع استدعاءات الـ callbacks لمنع الحلقة اللانهائية
+    // الإشعارات يمكن تفعيلها لاحقاً بطريقة مختلفة
 
-    // معالجة الطلبات الجديدة
-    if (newOrders.length > 0) {
-      handleNewOrders(newOrders);
-    }
-
-    // معالجة تغييرات الحالة
-    if (statusChanges.length > 0) {
-      handleStatusChanges(statusChanges);
-    }
-
-    // معالجة التحديثات الأخرى (تعيين، تعديل بيانات)
-    updatedOrders.forEach(({ previous, current }) => {
-      if (previous.assignee !== current.assignee && current.assignee) {
-        notifyInfo(`📋 تم تعيين طلب ${current.name} إلى ${current.assignee}`);
-      }
-    });
-
-    // تحديث المراجع والإحصائيات
+    // تحديث المراجع والإحصائيات فقط
     previousOrdersMapRef.current = new Map(orders.map(order => [order.id, order]));
-    setOrderStats(calculateOrderStats(orders));
 
-    console.log('📊 تحديث الإحصائيات:', {
+    // حساب الإحصائيات مباشرة
+    const byStatus: Record<string, number> = {};
+    orders.forEach(order => {
+      const status = order.status || 'غير محدد';
+      byStatus[status] = (byStatus[status] || 0) + 1;
+    });
+    setOrderStats({
       total: orders.length,
-      newOrders: newOrders.length,
-      statusChanges: statusChanges.length,
-      updatedOrders: updatedOrders.length
+      byStatus,
+      recentChanges: [],
+      lastUpdate: new Date()
     });
 
-  }, [orders, detectOrderChanges, handleNewOrders, handleStatusChanges, calculateOrderStats, notifyInfo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]);
 
   // دالة للحصول على إحصائيات دقيقة حسب الحالة
   const getStatusStats = useCallback(() => {
