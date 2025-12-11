@@ -15,9 +15,10 @@ interface Order {
 export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolean) => {
   const previousOrdersRef = useRef<Order[]>([]);
   const isInitialLoad = useRef(true);
-  
+
   const {
     notifications,
+    notificationHistory,
     addNotification,
     removeNotification,
     clearAllNotifications,
@@ -25,7 +26,12 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
     stats,
     settings,
     updateSettings,
-    hasUserInteracted: smartHasInteracted
+    hasUserInteracted: smartHasInteracted,
+    unreadCount,
+    isDNDActive,
+    markAsRead,
+    markAllAsRead,
+    clearHistory
   } = useSmartNotifications(hasUserInteracted);
 
   // مراقبة الطلبات الجديدة
@@ -44,17 +50,17 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
 
     const previousOrders = previousOrdersRef.current;
     const previousIds = new Set(previousOrders.map(order => order.id));
-    
+
     // البحث عن الطلبات الجديدة
     const newOrders = orders.filter(order => !previousIds.has(order.id));
-    
+
     // البحث عن الطلبات المحدثة
     const updatedOrders = orders.filter(order => {
       if (!previousIds.has(order.id)) return false;
-      
+
       const previousOrder = previousOrders.find(p => p.id === order.id);
       if (!previousOrder) return false;
-      
+
       // فحص التغييرات المهمة
       return (
         previousOrder.status !== order.status ||
@@ -68,7 +74,7 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
     newOrders.forEach(order => {
       const priority = determineOrderPriority(order);
       const displayModes = getDisplayModesForOrder(order, priority);
-      
+
       addNotification({
         type: 'new_order',
         priority,
@@ -143,11 +149,11 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
   const checkStockAlerts = (stockItems: any[]) => {
     if (!stockItems || stockItems.length === 0) return;
 
-    const lowStockItems = stockItems.filter(item => 
+    const lowStockItems = stockItems.filter(item =>
       item.currentQuantity <= item.minimumQuantity && item.currentQuantity > 0
     );
-    
-    const outOfStockItems = stockItems.filter(item => 
+
+    const outOfStockItems = stockItems.filter(item =>
       item.currentQuantity <= 0
     );
 
@@ -199,29 +205,29 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
   const determineOrderPriority = (order: Order): 'low' | 'normal' | 'high' | 'critical' => {
     // 1. أولوية حسب حالة الطلب/الليد
     const statusPriority = getStatusPriority(order.status);
-    
+
     // 2. أولوية حسب القيمة المالية
     const pricePriority = getPricePriority(order.totalPrice);
-    
+
     // 3. أولوية حسب المصدر
     const sourcePriority = getSourcePriority(order.source);
-    
+
     // 4. أولوية حسب الوقت (الطلبات الجديدة أهم)
     const timePriority = getTimePriority(order.createdAt);
-    
+
     // اختيار أعلى أولوية من بين جميع العوامل
     const allPriorities = [statusPriority, pricePriority, sourcePriority, timePriority];
     const priorityOrder = ['critical', 'high', 'normal', 'low'];
-    
+
     let finalPriority: 'low' | 'normal' | 'high' | 'critical' = 'normal';
-    
+
     for (const priority of priorityOrder) {
       if (allPriorities.includes(priority as any)) {
         finalPriority = priority as 'low' | 'normal' | 'high' | 'critical';
         break;
       }
     }
-    
+
     // سجل تشخيصي لفهم كيفية تحديد الأولوية
     console.log(`🎯 تحديد أولوية الطلب #${order.id}:`, {
       status: order.status,
@@ -235,7 +241,7 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
       finalPriority,
       customerName: order.name
     });
-    
+
     return finalPriority;
   };
 
@@ -247,18 +253,18 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
       'اعتراض': 'critical',
       'شكوى': 'critical',
       'إلغاء': 'high',
-      
+
       // حالات مهمة
       'جديد': 'high',
       'تم التأكيد': 'high',
       'معاد جدولة': 'high',
-      
+
       // حالات عادية
       'تم الاتصال': 'normal',
       'مهتم': 'normal',
       'يفكر': 'normal',
       'متابعة': 'normal',
-      
+
       // حالات منخفضة الأولوية
       'لا يرد': 'low',
       'رقم خطأ': 'low',
@@ -266,14 +272,14 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
       'تم الشحن': 'low',
       'مكتمل': 'low'
     };
-    
+
     return statusPriorities[status] || 'normal';
   };
 
   // تحديد الأولوية حسب القيمة المالية
   const getPricePriority = (totalPrice?: string): 'low' | 'normal' | 'high' | 'critical' => {
     let price = 0;
-    
+
     if (totalPrice) {
       if (typeof totalPrice === 'string') {
         price = parseFloat(totalPrice.replace(/[^\d.]/g, '') || '0');
@@ -281,7 +287,7 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
         price = parseFloat(String(totalPrice));
       }
     }
-    
+
     if (price > 10000) return 'critical';  // طلبات كبيرة جداً
     if (price > 5000) return 'high';       // طلبات كبيرة
     if (price > 1000) return 'normal';     // طلبات متوسطة
@@ -296,29 +302,29 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
       'Google Ads': 'high',
       'Instagram Ads': 'high',
       'TikTok Ads': 'high',
-      
+
       // مصادر عادية
       'Facebook': 'normal',
       'Instagram': 'normal',
       'WhatsApp': 'normal',
       'موقع إلكتروني': 'normal',
-      
+
       // مصادر أقل أهمية
       'إحالة': 'low',
       'أخرى': 'low'
     };
-    
+
     return sourcePriorities[source || ''] || 'normal';
   };
 
   // تحديد الأولوية حسب الوقت
   const getTimePriority = (createdAt?: string): 'low' | 'normal' | 'high' | 'critical' => {
     if (!createdAt) return 'normal';
-    
+
     const now = new Date();
     const orderDate = new Date(createdAt);
     const hoursDiff = (now.getTime() - orderDate.getTime()) / (1000 * 60 * 60);
-    
+
     if (hoursDiff < 1) return 'critical';    // أقل من ساعة
     if (hoursDiff < 4) return 'high';        // أقل من 4 ساعات
     if (hoursDiff < 24) return 'normal';     // أقل من يوم
@@ -501,15 +507,23 @@ export const useOrderNotifications = (orders: Order[], hasUserInteracted: boolea
   return {
     // الإشعارات والإحصائيات
     notifications,
+    notificationHistory,
     stats,
     settings,
     hasUserInteracted: smartHasInteracted,
+    unreadCount,
+    isDNDActive,
 
     // إدارة الإشعارات
     removeNotification,
     clearAllNotifications,
     clearNotificationsByType,
     updateSettings,
+
+    // إدارة السجل
+    markAsRead,
+    markAllAsRead,
+    clearHistory,
 
     // إشعارات سريعة
     notifySuccess,

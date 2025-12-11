@@ -38,11 +38,11 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
     recentChanges: [],
     lastUpdate: new Date()
   });
-  
+
   const [statusChangeHistory, setStatusChangeHistory] = useState<StatusChangeEvent[]>([]);
   const previousOrdersMapRef = useRef<Map<number, Order>>(new Map());
   const isFirstLoadRef = useRef(true);
-  
+
   // استخدام نظام الإشعارات المحسن
   const {
     notifySuccess,
@@ -50,6 +50,7 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
     notifyWarning,
     notifyInfo,
     notifications,
+    notificationHistory,
     removeNotification,
     clearAllNotifications,
     clearNotificationsByType,
@@ -57,18 +58,23 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
     updateSettings,
     newOrdersCount,
     criticalCount,
-    hasUserInteracted: smartHasInteracted
+    hasUserInteracted: smartHasInteracted,
+    unreadCount,
+    isDNDActive,
+    markAsRead,
+    markAllAsRead,
+    clearHistory
   } = useOrderNotifications(orders, hasUserInteracted);
 
   // حساب الإحصائيات الدقيقة
   const calculateOrderStats = useCallback((orderList: Order[]): OrderStats => {
     const byStatus: Record<string, number> = {};
-    
+
     orderList.forEach(order => {
       const status = order.status || 'غير محدد';
       byStatus[status] = (byStatus[status] || 0) + 1;
     });
-    
+
     return {
       total: orderList.length,
       byStatus,
@@ -81,7 +87,7 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
   const detectOrderChanges = useCallback((currentOrders: Order[]) => {
     const currentOrdersMap = new Map(currentOrders.map(order => [order.id, order]));
     const previousOrdersMap = previousOrdersMapRef.current;
-    
+
     const changes: StatusChangeEvent[] = [];
     const newOrders: Order[] = [];
     const updatedOrders: { previous: Order; current: Order }[] = [];
@@ -89,7 +95,7 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
     // البحث عن الطلبات الجديدة والمحدثة
     currentOrdersMap.forEach((currentOrder, orderId) => {
       const previousOrder = previousOrdersMap.get(orderId);
-      
+
       if (!previousOrder) {
         // طلب جديد
         newOrders.push(currentOrder);
@@ -105,7 +111,7 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
 
         if (hasStatusChange || hasAssigneeChange || hasOtherChanges) {
           updatedOrders.push({ previous: previousOrder, current: currentOrder });
-          
+
           // تسجيل تغيير الحالة
           if (hasStatusChange) {
             const changeEvent: StatusChangeEvent = {
@@ -135,11 +141,11 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
     newOrders.forEach(order => {
       // تحديد الأولوية بناءً على القيمة والمصدر
       let priority: 'low' | 'normal' | 'high' | 'critical' = 'normal';
-      
+
       const price = parseFloat(String(order.totalPrice || '0').replace(/[^\d.]/g, '') || '0');
       if (price > 5000) priority = 'critical';
       else if (price > 1000) priority = 'high';
-      
+
       if (order.source?.includes('Ads')) priority = 'high';
 
       notifySuccess(`🛒 طلب جديد من ${order.name}`, {
@@ -165,7 +171,7 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
 
     statusChanges.forEach(change => {
       const { orderId, previousStatus, newStatus, customerName } = change;
-      
+
       // تحديد نوع الإشعار حسب الحالة الجديدة
       const getStatusNotification = (status: string) => {
         const statusMap: Record<string, {
@@ -245,7 +251,7 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
       };
 
       const notification = getStatusNotification(newStatus);
-      
+
       // إرسال الإشعار المناسب
       switch (notification.type) {
         case 'success':
@@ -342,7 +348,7 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
       const criticalStatuses = ['عودة اتصال', 'اعتراض', 'شكوى'];
       const isHighValue = parseFloat(String(order.totalPrice || '0').replace(/[^\d.]/g, '') || '0') > 5000;
       const isPaidSource = order.source?.includes('Ads');
-      
+
       return criticalStatuses.includes(order.status) || (isHighValue && isPaidSource);
     });
   }, [orders]);
@@ -353,9 +359,10 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
     statusStats: getStatusStats(),
     criticalOrders: getCriticalOrders(),
     statusChangeHistory,
-    
+
     // الإشعارات
     notifications,
+    notificationHistory,
     removeNotification,
     clearAllNotifications,
     clearNotificationsByType,
@@ -364,6 +371,13 @@ export const useRealTimeOrderTracking = (orders: Order[], hasUserInteracted: boo
     newOrdersCount,
     criticalCount,
     hasUserInteracted: smartHasInteracted,
+    unreadCount,
+    isDNDActive,
+
+    // إدارة السجل
+    markAsRead,
+    markAllAsRead,
+    clearHistory,
 
     // دوال المساعدة
     notifySuccess,

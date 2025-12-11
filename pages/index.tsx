@@ -9,20 +9,15 @@ import StockManagement from '../components/StockManagement';
 import LiveStats from '../components/LiveStats';
 import SmartNotificationSystem from '../components/SmartNotificationSystem';
 import SmartNotificationSettings from '../components/SmartNotificationSettings';
+import NotificationHistory from '../components/NotificationHistory';
 
 import { useRealTimeOrderTracking } from '../hooks/useRealTimeOrderTracking';
 import { useCurrentUser } from '../hooks/useCurrentUser';
+import type { Order, TabId, UserNotificationSettings } from '../types';
 
-interface Lead {
-  id: number;
-  orderDate: string;
-  name: string;
-  phone: string;
-  governorate: string;
-  status: string;
-  productName: string;
-  totalPrice: string;
-}
+// استخدام Order type من types/index.ts
+// نحتفظ بـ Lead للتوافق مع الكود القديم
+interface Lead extends Order { }
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -34,17 +29,18 @@ const fetcher = async (url: string) => {
 
 export default function Home() {
   const { user } = useCurrentUser();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'follow-up' | 'export' | 'archive' | 'rejected' | 'stock'>('orders');
+  const [activeTab, setActiveTab] = useState<TabId>('orders');
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [showNotificationSettings, setShowNotificationSettings] = useState(false);
-  const [notificationSettings, setNotificationSettings] = useState<any>({
+  const [showNotificationHistory, setShowNotificationHistory] = useState(false);
+  const [notificationSettings, setNotificationSettings] = useState<UserNotificationSettings>({
     autoRefresh: true,
     refreshInterval: 30,
     soundEnabled: true
   });
   const [hasInteracted, setHasInteracted] = useState(false);
-  
+
   useEffect(() => {
     const handleInteraction = () => {
       setHasInteracted(true);
@@ -62,20 +58,21 @@ export default function Home() {
   }, []);
 
   const { data, error, mutate } = useSWR(
-    '/api/orders', 
-    fetcher, 
-    { 
+    '/api/orders',
+    fetcher,
+    {
       refreshInterval: notificationSettings.autoRefresh ? Math.min(notificationSettings.refreshInterval * 1000, 10000) : 0, // حد أقصى 10 ثوان
       revalidateOnFocus: true, // إعادة تحديث عند التركيز على الصفحة
       revalidateOnReconnect: true, // إعادة تحديث عند إعادة الاتصال
       dedupingInterval: 5000 // منع التكرار لمدة 5 ثوان
     }
   );
-  
+
   const orders = data?.data || [];
-  
+
   const {
     notifications,
+    notificationHistory,
     removeNotification,
     clearAllNotifications,
     clearNotificationsByType,
@@ -87,7 +84,11 @@ export default function Home() {
     newOrdersCount,
     criticalCount,
     hasUserInteracted: smartHasInteracted,
-
+    unreadCount,
+    isDNDActive,
+    markAsRead,
+    markAllAsRead,
+    clearHistory
   } = useRealTimeOrderTracking(orders, hasInteracted);
 
   const handleUpdateOrder = async (orderId: number, updates: any): Promise<void> => {
@@ -98,25 +99,25 @@ export default function Home() {
         await mutate();
         return;
       }
-      
+
       const response = await fetch('/api/orders', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rowNumber: orderId, ...updates }),
       });
-      
+
       const result = await response.json();
-      
+
       if (!response.ok) {
         // معالجة خاصة لأخطاء المخزون
         if (result.stockError) {
-          const errorMessage = updates.status === 'تم الشحن' 
+          const errorMessage = updates.status === 'تم الشحن'
             ? `❌ لا يمكن شحن الطلب رقم ${orderId}\n\n${result.message}`
             : result.message;
-            
+
           if (result.availableQuantity !== undefined) {
             const details = `\n\n📦 التفاصيل:\n• المنتج: ${result.productName}\n• المطلوب: ${result.requiredQuantity}\n• المتوفر: ${result.availableQuantity}\n• النقص: ${result.requiredQuantity - result.availableQuantity}`;
-            
+
             notifyError(errorMessage + details, result);
           } else {
             notifyError(errorMessage, result);
@@ -127,22 +128,22 @@ export default function Home() {
         }
         throw new Error(result.message || 'فشل في التحديث');
       }
-      
+
       // نجح التحديث
       await mutate();
-      
+
       // عرض رسالة نجاح مع معلومات المخزون إن وُجدت
       if (result.stockResult && result.stockResult.success) {
         notifySuccess(`✅ تم شحن الطلب رقم ${orderId}\n📦 ${result.stockResult.message}`, result);
       } else if (updates.status === 'تم الشحن') {
         notifySuccess(`تم تحديث الطلب رقم ${orderId} بنجاح`, result);
       }
-      
+
       // عرض تحذيرات المخزون إن وُجدت
       if (result.warning) {
         notifyWarning(result.warning, result);
       }
-      
+
     } catch (error) {
       console.error('Error updating order:', error);
       throw error;
@@ -152,24 +153,24 @@ export default function Home() {
   const handleAssign = async () => {
     try {
       notifyWarning('🔄 جاري توزيع الليدز غير المعيّنة بالتساوي بين موظفي الكول سنتر...');
-      
+
       const res = await fetch('/api/assign', { method: 'POST' });
       const data = await res.json();
-      
+
       if (!res.ok) throw new Error(data.message || 'فشل التوزيع');
-      
+
       // رسالة تفصيلية عن نتيجة التوزيع
       let message = data.message;
       if (data.distributed > 0) {
         const getEmployeeName = (username: string) => {
           const nameMap: Record<string, string> = {
             'heba.': 'هبة',
-            'ahmed.': 'أحمد', 
+            'ahmed.': 'أحمد',
             'aisha.': 'عائشة'
           };
           return nameMap[username] || username;
         };
-        
+
         const distDetails = Object.entries(data.currentDistribution || {})
           .map(([emp, count]) => {
             const name = getEmployeeName(emp);
@@ -177,24 +178,24 @@ export default function Home() {
           })
           .join(' | ');
         message += `\n📊 التوزيع النهائي: ${distDetails}`;
-        
+
         if (data.remainingUnassigned > 0) {
           message += `\n⚠️ ${data.remainingUnassigned} ليد متبقي غير معين`;
         }
-        
+
         if (!data.isBalanced) {
           message += `\n⚡ فارق التوزيع: ${data.balanceDifference} (قد تحتاج توزيع إضافي)`;
         } else {
           message += `\n✅ التوزيع متوازن تماماً`;
         }
       }
-      
+
       if (data.distributed > 0) {
         notifySuccess(message, data);
       } else {
         notifyWarning(message, data);
       }
-      
+
       await mutate(); // تحديث البيانات بعد التوزيع
     } catch (e: any) {
       notifyError(e.message + '\n💡 تأكد من الاتصال بالإنترنت وحاول مرة أخرى', e);
@@ -202,8 +203,8 @@ export default function Home() {
   };
 
   const handleSelectOrder = (orderId: number) => {
-    setSelectedOrders(prev => 
-      prev.includes(orderId) 
+    setSelectedOrders(prev =>
+      prev.includes(orderId)
         ? prev.filter(id => id !== orderId)
         : [...prev, orderId]
     );
@@ -211,10 +212,10 @@ export default function Home() {
 
   const handleSelectAll = () => {
     const orders = data?.data || [];
-    const exportableOrders = orders.filter((order: any) => 
-      order.status === 'تم التأكيد' && 
-      order.name && 
-      order.phone && 
+    const exportableOrders = orders.filter((order: any) =>
+      order.status === 'تم التأكيد' &&
+      order.name &&
+      order.phone &&
       order.governorate &&
       order.address
     );
@@ -228,13 +229,13 @@ export default function Home() {
   const tabCounts = useMemo(() => {
     const allOrders = data?.data || [];
     return {
-      orders: allOrders.filter((order: any) => 
-        !order.status || 
-        order.status === 'جديد' || 
+      orders: allOrders.filter((order: any) =>
+        !order.status ||
+        order.status === 'جديد' ||
         order.status === 'لم يرد'
       ).length,
-      followUp: allOrders.filter((order: any) => 
-        order.status === 'في انتظار تأكيد العميل' || 
+      followUp: allOrders.filter((order: any) =>
+        order.status === 'في انتظار تأكيد العميل' ||
         order.status === 'تم التواصل معه واتساب'
       ).length,
       export: allOrders.filter((order: any) => order.status === 'تم التأكيد').length,
@@ -243,14 +244,14 @@ export default function Home() {
 
   const getFilteredOrders = (tabId: string) => {
     if (!orders) return [];
-    
+
     let filteredOrders = [] as any[];
-    
+
     switch (tabId) {
       case 'orders':
-        filteredOrders = orders.filter((order: any) => 
-          !order.status || 
-          order.status === 'جديد' || 
+        filteredOrders = orders.filter((order: any) =>
+          !order.status ||
+          order.status === 'جديد' ||
           order.status === 'لم يرد'
         );
         filteredOrders = filteredOrders.sort((a: any, b: any) => {
@@ -264,8 +265,8 @@ export default function Home() {
         });
         break;
       case 'follow-up':
-        filteredOrders = orders.filter((order: any) => 
-          order.status === 'في انتظار تأكيد العميل' || 
+        filteredOrders = orders.filter((order: any) =>
+          order.status === 'في انتظار تأكيد العميل' ||
           order.status === 'تم التواصل معه واتساب'
         );
         break;
@@ -281,7 +282,7 @@ export default function Home() {
       default:
         filteredOrders = orders;
     }
-    
+
     return filteredOrders;
   };
 
@@ -289,7 +290,7 @@ export default function Home() {
   const distributionStats = useMemo(() => {
     const employees = ['heba.', 'ahmed.', 'aisha.'];
     const counts = { 'heba.': 0, 'ahmed.': 0, 'aisha.': 0, 'غير معين': 0 };
-    
+
     orders.forEach((order: any) => {
       const assignee = (order.assignee || '').trim();
       if (employees.includes(assignee)) {
@@ -298,7 +299,7 @@ export default function Home() {
         counts['غير معين']++;
       }
     });
-    
+
     const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
     const employeeCounts = [counts['heba.'], counts['ahmed.'], counts['aisha.']];
     const max = Math.max(...employeeCounts);
@@ -306,7 +307,7 @@ export default function Home() {
     const imbalance = max - min;
     const maxAllowed = Math.ceil(total * 0.1); // 10% كحد أقصى للاختلاف
     const isBalanced = total > 0 ? imbalance <= maxAllowed : true;
-    
+
     return { counts, total, imbalance, isBalanced, maxAllowed };
   }, [orders]);
 
@@ -350,16 +351,25 @@ export default function Home() {
         onDismissAll={clearAllNotifications}
         onDismissType={(type: string) => clearNotificationsByType(type as any)}
         hasUserInteracted={smartHasInteracted}
+        isDNDActive={isDNDActive}
       />
-      
+
       <SmartNotificationSettings
         settings={smartNotificationSettings}
         onSettingsChange={updateNotificationSettings}
         isOpen={showNotificationSettings}
         onClose={() => setShowNotificationSettings(false)}
       />
-      
 
+      <NotificationHistory
+        history={notificationHistory}
+        unreadCount={unreadCount}
+        onMarkAsRead={markAsRead}
+        onMarkAllAsRead={markAllAsRead}
+        onClearHistory={clearHistory}
+        isOpen={showNotificationHistory}
+        onClose={() => setShowNotificationHistory(false)}
+      />
 
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto p-2 sm:p-4">
@@ -374,9 +384,8 @@ export default function Home() {
                       مرحباً {user.displayName || user.username} ({user.role === 'admin' ? 'مدير النظام' : 'موظف كول سنتر'})
                     </span>
                     {user.role === 'admin' && (
-                      <div className={`text-xs px-2 py-1 rounded-full ${
-                        distributionStats.isBalanced ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
+                      <div className={`text-xs px-2 py-1 rounded-full ${distributionStats.isBalanced ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
                         {distributionStats.isBalanced ? '✅ توزيع متوازن' : `⚠️ فارق: ${distributionStats.imbalance}`}
                       </div>
                     )}
@@ -402,15 +411,14 @@ export default function Home() {
                   <div className="flex flex-col sm:flex-row gap-2 order-1 sm:order-2">
                     <button
                       onClick={handleAssign}
-                      className={`px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-colors text-xs sm:text-sm ${
-                        distributionStats.counts['غير معين'] > 0 || !distributionStats.isBalanced
-                          ? 'bg-red-500 hover:bg-red-600 text-white shadow-md animate-pulse'
-                          : 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                      }`}
+                      className={`px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-colors text-xs sm:text-sm ${distributionStats.counts['غير معين'] > 0 || !distributionStats.isBalanced
+                        ? 'bg-red-500 hover:bg-red-600 text-white shadow-md animate-pulse'
+                        : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                        }`}
                       title={`توزيع تلقائي لليدز غير المعيّنة (${distributionStats.counts['غير معين']} ليد)`}
                     >
-                      {distributionStats.counts['غير معين'] > 0 
-                        ? `⚡ توزيع ${distributionStats.counts['غير معين']} ليد` 
+                      {distributionStats.counts['غير معين'] > 0
+                        ? `⚡ توزيع ${distributionStats.counts['غير معين']} ليد`
                         : '🔄 إعادة توزيع'}
                     </button>
                     <button
@@ -420,17 +428,45 @@ export default function Home() {
                     >
                       الإعدادات
                     </button>
+                    <button
+                      onClick={() => setShowNotificationHistory(true)}
+                      className="relative bg-gradient-to-r from-indigo-100 to-purple-100 hover:from-indigo-200 hover:to-purple-200 text-indigo-700 px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2 text-xs sm:text-sm"
+                      title="سجل الإشعارات"
+                    >
+                      <span>🔔</span>
+                      <span className="hidden sm:inline">السجل</span>
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      )}
+                    </button>
                   </div>
                 </div>
               )}
               {user?.role !== 'admin' && (
-              <button
-                onClick={() => setShowSettings(true)}
-                  className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2 text-xs sm:text-sm self-start sm:self-auto"
-                title="إعدادات الإشعارات"
-              >
-                الإعدادات
-              </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowSettings(true)}
+                    className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2 text-xs sm:text-sm"
+                    title="إعدادات الإشعارات"
+                  >
+                    الإعدادات
+                  </button>
+                  <button
+                    onClick={() => setShowNotificationHistory(true)}
+                    className="relative bg-gradient-to-r from-indigo-100 to-purple-100 hover:from-indigo-200 hover:to-purple-200 text-indigo-700 px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2 text-xs sm:text-sm"
+                    title="سجل الإشعارات"
+                  >
+                    <span>🔔</span>
+                    <span className="hidden sm:inline">السجل</span>
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
           </header>
@@ -451,22 +487,21 @@ export default function Home() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-md font-medium transition-all text-xs sm:text-sm ${
-                    activeTab === tab.id
-                      ? 'bg-blue-100 text-blue-700 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                  }`}
+                  className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-md font-medium transition-all text-xs sm:text-sm ${activeTab === tab.id
+                    ? 'bg-blue-100 text-blue-700 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
                 >
                   <span className="text-xs sm:text-base">{tab.icon}</span>
                   <span className="hidden sm:inline">{tab.name}</span>
                   <span className="sm:hidden text-xs">{
                     tab.id === 'dashboard' ? 'لوحة' :
-                    tab.id === 'orders' ? 'نشطة' :
-                    tab.id === 'follow-up' ? 'متابعة' :
-                    tab.id === 'export' ? 'تصدير' :
-                    tab.id === 'archive' ? 'شحن' :
-                    tab.id === 'stock' ? 'مخزون' :
-                    'مهملة'
+                      tab.id === 'orders' ? 'نشطة' :
+                        tab.id === 'follow-up' ? 'متابعة' :
+                          tab.id === 'export' ? 'تصدير' :
+                            tab.id === 'archive' ? 'شحن' :
+                              tab.id === 'stock' ? 'مخزون' :
+                                'مهملة'
                   }</span>
                   {(tab.id === 'orders' && tabCounts.orders > 0) && (
                     <span className="bg-red-500 text-white text-xs rounded-full px-1 sm:px-2 py-1 min-w-[16px] sm:min-w-[20px] text-center text-xs">
@@ -498,32 +533,32 @@ export default function Home() {
               />
             )}
             {activeTab === 'follow-up' && (
-                <OrdersTable 
+              <OrdersTable
                 orders={getFilteredOrders('follow-up')}
-                  onUpdateOrder={handleUpdateOrder} 
-                />
+                onUpdateOrder={handleUpdateOrder}
+              />
             )}
             {activeTab === 'export' && (
-                <BostaExport
+              <BostaExport
                 orders={getFilteredOrders('export')}
-                  selectedOrders={selectedOrders}
-                  onSelectOrder={handleSelectOrder}
-                  onSelectAll={handleSelectAll}
-                  onDeselectAll={handleDeselectAll}
-                  onUpdateOrder={handleUpdateOrder}
-                />
+                selectedOrders={selectedOrders}
+                onSelectOrder={handleSelectOrder}
+                onSelectAll={handleSelectAll}
+                onDeselectAll={handleDeselectAll}
+                onUpdateOrder={handleUpdateOrder}
+              />
             )}
             {activeTab === 'archive' && (
-                <ArchiveTable 
-                orders={getFilteredOrders('archive')} 
-                  onUpdateOrder={handleUpdateOrder} 
-                />
+              <ArchiveTable
+                orders={getFilteredOrders('archive')}
+                onUpdateOrder={handleUpdateOrder}
+              />
             )}
             {activeTab === 'rejected' && (
-                <RejectedTable 
-                orders={getFilteredOrders('rejected')} 
-                  onUpdateOrder={handleUpdateOrder} 
-                />
+              <RejectedTable
+                orders={getFilteredOrders('rejected')}
+                onUpdateOrder={handleUpdateOrder}
+              />
             )}
             {activeTab === 'stock' && user?.role === 'admin' && (
               <StockManagement />
