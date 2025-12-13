@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { fetchLeads, updateLead, getOrderStatistics, LeadRow, updateLeadsBatch } from '../../lib/googleSheets';
 import { deductStock, deductStockBulk } from '../../lib/googleSheets';
 import { checkRateLimitByType, getClientIP } from '../../lib/rateLimit';
+import { validateStockAvailability, formatValidationError } from '../../lib/stockValidation';
 
 // استخراج قائمة الموظفين من CALL_CENTER_USERS
 function getEmployeesFromEnv(): string[] {
@@ -148,6 +149,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('📦 تحديث جماعي مكتشف');
       try {
         console.log(`📦 تحديث جماعي: ${orders.length} طلب إلى حالة "${status}"`);
+
+        // ✨ تحسين جديد: التحقق المسبق من المخزون قبل أي تحديث
+        if (status === 'تم الشحن') {
+          console.log('🔍 الخطوة 0: التحقق المسبق من توفر المخزون...');
+
+          // جلب بيانات الطلبات للتحقق
+          const leads = await fetchLeads();
+          const orderItems: Array<{ productName: string; quantity: number; orderId: number }> = [];
+
+          for (const orderId of orders) {
+            const targetLead = leads.find(lead => lead.id === Number(orderId));
+            if (targetLead && targetLead.productName && targetLead.quantity) {
+              const quantity = parseInt(targetLead.quantity) || 1;
+              orderItems.push({
+                productName: targetLead.productName,
+                quantity,
+                orderId: targetLead.id
+              });
+            }
+          }
+
+          // التحقق من توفر المخزون
+          const validation = await validateStockAvailability(orderItems);
+
+          if (!validation.isValid) {
+            console.log('❌ فشل التحقق المسبق - المخزون غير كافي');
+            const errorMessage = formatValidationError(validation);
+
+            return res.status(400).json({
+              error: 'لا يمكن إتمام الشحن',
+              stockError: true,
+              preValidationFailed: true,
+              message: errorMessage,
+              invalidProducts: validation.invalidProducts,
+              validProducts: validation.validProducts
+            });
+          }
+
+          console.log('✅ التحقق المسبق نجح - جميع المنتجات متوفرة');
+        }
 
         // الخطوة 1: تحديث جميع الطلبات إلى الحالة الجديدة أولاً
         console.log('🔄 الخطوة 1: تحديث حالة الطلبات...');

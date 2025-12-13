@@ -2375,6 +2375,9 @@ export async function resetStockMovementsHeaders(): Promise<{ success: boolean; 
 }
 
 // دالة جديدة لخصم المخزون الجماعي - أكثر كفاءة للطلبات المتعددة
+// ✨ محمية بـ Mutex لمنع Race Conditions
+import { stockMutex } from './stockValidation';
+
 export async function deductStockBulk(
   orderItems: Array<{ productName: string; quantity: number; orderId: number }>
 ): Promise<{
@@ -2400,6 +2403,10 @@ export async function deductStockBulk(
     }>;
   };
 }> {
+  // ✨ تحسين جديد: الحصول على قفل المخزون لمنع التزامن
+  const release = await stockMutex.acquire();
+  console.log('🔒 تم الحصول على قفل المخزون للخصم الجماعي');
+
   try {
     console.log(`📦 بدء خصم المخزون الجماعي لـ ${orderItems.length} طلب...`);
 
@@ -2586,5 +2593,9 @@ export async function deductStockBulk(
         message: 'خطأ في النظام'
       }))
     };
+  } finally {
+    // ✨ تحرير قفل المخزون
+    release();
+    console.log('🔓 تم تحرير قفل المخزون بعد الخصم الجماعي');
   }
 }

@@ -280,19 +280,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
     }
   };
 
-  // دالة للحفظ التلقائي الذكي
-  const autoSaveChanges = async () => {
-    if (!editingOrder || !hasUnsavedChanges) {
-      return;
-    }
-
-    try {
-      await saveOrderInternal(false);
-    } catch (error) {
-      console.error('❌ فشل في الحفظ التلقائي:', error);
-      // لا نعرض رسالة خطأ للمستخدم في الحفظ التلقائي
-    }
-  };
+  // تم تعطيل الحفظ التلقائي - الحفظ يتم يدوياً فقط عند الضغط على زر الحفظ
 
   const handleUpdateField = (field: keyof Order, value: string) => {
     if (!editingOrder || !originalOrder) return;
@@ -307,20 +295,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
     });
 
     setHasUnsavedChanges(hasChanges);
-
-    // إلغاء أي timer سابق
-    if (autoSaveTimer) {
-      clearTimeout(autoSaveTimer);
-    }
-
-    // إعداد حفظ تلقائي بعد 3 ثواني من آخر تعديل
-    if (hasChanges) {
-      const newTimer = setTimeout(() => {
-        autoSaveChanges();
-      }, 3000);
-
-      setAutoSaveTimer(newTimer);
-    }
+    // الحفظ يتم يدوياً فقط عند الضغط على زر الحفظ
   };
 
   // دالة الحفظ الداخلية المرنة
@@ -901,15 +876,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     </div>
                   )}
 
-                  {/* مؤشر الحفظ التلقائي */}
-                  {autoSaveTimer && (
-                    <div className="flex items-center gap-1 sm:gap-2">
-                      <div className="w-2 h-2 sm:w-3 sm:h-3 bg-green-400 rounded-full animate-pulse"></div>
-                      <span className="text-xs sm:text-sm text-green-200 font-medium">
-                        سيحفظ تلقائياً...
-                      </span>
-                    </div>
-                  )}
+                  {/* تم تعطيل مؤشر الحفظ التلقائي - الحفظ يدوي فقط */}
                 </h3>
                 <button
                   onClick={() => setEditModalOpen(false)}
@@ -1112,11 +1079,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     <div className="flex items-center gap-2 text-yellow-600">
                       <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
                       <span className="font-medium">يوجد تغييرات غير محفوظة</span>
-                      {autoSaveTimer && (
-                        <span className="text-xs text-gray-500">
-                          (سيحفظ تلقائياً خلال 3 ثواني)
-                        </span>
-                      )}
+
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 text-green-600">
