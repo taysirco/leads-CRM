@@ -136,6 +136,64 @@ class APIRateLimit {
   }
 }
 
+// ===== دالة إعادة المحاولة مع تأخير متصاعد (Exponential Backoff) =====
+// تستخدم لحل مشكلة التزامن عند استخدام عدة موظفين للنظام في نفس الوقت
+async function retryWithBackoff<T>(
+  operation: () => Promise<T>,
+  operationName: string,
+  maxRetries: number = 3,
+  baseDelayMs: number = 1000
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+      const errorMessage = error?.message || String(error);
+      const errorCode = error?.code || error?.response?.status;
+
+      // تحديد إذا كان الخطأ قابل لإعادة المحاولة
+      const isRetryable =
+        errorCode === 429 || // Rate limit exceeded
+        errorCode === 503 || // Service unavailable
+        errorCode === 500 || // Internal server error
+        errorCode === 'ECONNRESET' ||
+        errorCode === 'ETIMEDOUT' ||
+        errorCode === 'ENOTFOUND' ||
+        errorMessage.includes('quota') ||
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('RESOURCE_EXHAUSTED') ||
+        errorMessage.includes('temporarily unavailable') ||
+        errorMessage.includes('socket hang up') ||
+        errorMessage.includes('ECONNREFUSED');
+
+      if (!isRetryable || attempt === maxRetries) {
+        console.error(`❌ [${operationName}] فشل نهائي بعد ${attempt} محاولة:`, errorMessage);
+        throw error;
+      }
+
+      // حساب التأخير المتصاعد: 1s, 2s, 4s, ...
+      const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+      // إضافة عشوائية صغيرة لتجنب التزامن (jitter)
+      const jitter = Math.random() * 500;
+      const totalDelay = delayMs + jitter;
+
+      console.warn(
+        `⚠️ [${operationName}] المحاولة ${attempt}/${maxRetries} فشلت. ` +
+        `إعادة المحاولة خلال ${Math.round(totalDelay)}ms... ` +
+        `(الخطأ: ${errorMessage.substring(0, 100)})`
+      );
+
+      await new Promise(resolve => setTimeout(resolve, totalDelay));
+    }
+  }
+
+  // لن نصل لهنا أبداً، لكن TypeScript يحتاج return
+  throw lastError;
+}
+
 const getAuth = () => {
   let rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
   if (!rawKey && process.env.GOOGLE_PRIVATE_KEY_BASE64) {
@@ -1564,11 +1622,15 @@ export async function fetchLeads() {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'leads',
-    valueRenderOption: 'FORMULA',
-  });
+  // جلب البيانات مع إعادة المحاولة عند حدوث أخطاء مؤقتة
+  const response = await retryWithBackoff(
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'leads',
+      valueRenderOption: 'FORMULA',
+    }),
+    'جلب بيانات الطلبات'
+  );
 
   const rows = response.data.values;
   if (!rows || rows.length === 0) {
@@ -1724,11 +1786,16 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   const sheets = google.sheets({ version: 'v4', auth });
 
   const headers = ['تاريخ الطلب', 'الاسم', 'رقم الهاتف', 'رقم الواتساب', 'المحافظة', 'المنطقة', 'العنوان', 'تفاصيل الطلب', 'الكمية', 'إجمالي السعر', 'اسم المنتج', 'الحالة', 'ملاحظات', 'المصدر', 'ارسال واتس اب', 'عمود P', 'المسؤول'];
+  const range = `leads!A${rowNumber}:${String.fromCharCode(64 + headers.length)}${rowNumber}`;
 
-  const currentData = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: `leads!A${rowNumber}:${String.fromCharCode(64 + headers.length)}${rowNumber}`,
-  });
+  // جلب البيانات الحالية مع إعادة المحاولة
+  const currentData = await retryWithBackoff(
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range,
+    }),
+    `قراءة الصف ${rowNumber}`
+  );
 
   const currentRow = currentData.data.values?.[0] || [];
   const updatedRow = [...currentRow];
@@ -1787,14 +1854,18 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
 
   console.log(`✏️ البيانات الجديدة للصف ${rowNumber}:`, updatedRow);
 
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SHEET_ID,
-    range: `leads!A${rowNumber}:${String.fromCharCode(64 + headers.length)}${rowNumber}`,
-    valueInputOption: 'RAW',
-    requestBody: {
-      values: [updatedRow]
-    }
-  });
+  // تحديث البيانات مع إعادة المحاولة
+  await retryWithBackoff(
+    () => sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range,
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [updatedRow]
+      }
+    }),
+    `تحديث الصف ${rowNumber}`
+  );
 
   console.log(`✅ تم تحديث الليد ${rowNumber} بنجاح`);
 }
@@ -1831,13 +1902,17 @@ export async function updateLeadsBatch(updates: Array<{ rowNumber: number; updat
 
   if (requests.length > 0) {
     console.log(`⚡ تنفيذ ${requests.length} تحديث مجمع...`);
-    await sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId: SHEET_ID,
-      requestBody: {
-        valueInputOption: 'RAW',
-        data: requests
-      }
-    });
+    // استخدام إعادة المحاولة للتحديث المجمع
+    await retryWithBackoff(
+      () => sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: SHEET_ID,
+        requestBody: {
+          valueInputOption: 'RAW',
+          data: requests
+        }
+      }),
+      `تحديث مجمع لـ ${updates.length} ليد`
+    );
     console.log('✅ تم تنفيذ التحديث المجمع بنجاح');
   } else {
     console.log('⚠️ لا توجد تحديثات للتنفيذ');

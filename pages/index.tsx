@@ -64,7 +64,24 @@ export default function Home() {
       refreshInterval: notificationSettings.autoRefresh ? Math.min(notificationSettings.refreshInterval * 1000, 10000) : 0, // حد أقصى 10 ثوان
       revalidateOnFocus: true, // إعادة تحديث عند التركيز على الصفحة
       revalidateOnReconnect: true, // إعادة تحديث عند إعادة الاتصال
-      dedupingInterval: 5000 // منع التكرار لمدة 5 ثوان
+      dedupingInterval: 5000, // منع التكرار لمدة 5 ثوان
+      shouldRetryOnError: true, // تفعيل إعادة المحاولة عند الخطأ
+      errorRetryCount: 3, // عدد محاولات إعادة المحاولة
+      // إعادة محاولة مخصصة مع تأخير متصاعد لحل مشكلة التزامن
+      onErrorRetry: (error, key, config, revalidate, { retryCount }) => {
+        // لا تعيد المحاولة لأخطاء 404 أو 401 أو 403
+        if (error.status === 404 || error.status === 401 || error.status === 403) return;
+
+        // لا تعيد المحاولة أكثر من 3 مرات
+        if (retryCount >= 3) return;
+
+        // تأخير متصاعد: 1s, 2s, 4s
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
+
+        console.warn(`⚠️ خطأ في جلب البيانات. إعادة المحاولة ${retryCount + 1}/3 خلال ${delay}ms...`);
+
+        setTimeout(() => revalidate({ retryCount }), delay);
+      }
     }
   );
 
