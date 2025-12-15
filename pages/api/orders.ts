@@ -6,7 +6,7 @@ import { validateStockAvailability, formatValidationError } from '../../lib/stoc
 
 // استخراج قائمة الموظفين من CALL_CENTER_USERS
 function getEmployeesFromEnv(): string[] {
-  const fallback = ['heba.', 'ahmed.', 'aisha.'];
+  const fallback = ['ahmed.', 'mai.', 'nada.'];
   const envVal = process.env.CALL_CENTER_USERS || '';
 
   if (!envVal || !envVal.trim()) {

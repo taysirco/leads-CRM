@@ -8,11 +8,10 @@ const USERNAME = process.env.APP_USERNAME;
 const PASSWORD = process.env.APP_PASSWORD;
 
 // تهيئة مستخدمي الكول سنتر من متغير البيئة CALL_CENTER_USERS بصيغة:
-// CALL_CENTER_USERS="ahmed.:1234:أحمد,doaa.:2345:دعاء,mai.:3456:مي,nada.:4567:ندي"
+// CALL_CENTER_USERS="ahmed.:1234:أحمد,mai.:3456:مي,nada.:4567:ندي"
 function parseCallCenterUsers(envValue?: string) {
   const fallback = [
     { username: 'ahmed.', password: '1234', role: 'agent' as const, displayName: 'أحمد' },
-    { username: 'doaa.', password: '2345', role: 'agent' as const, displayName: 'دعاء' },
     { username: 'mai.', password: '3456', role: 'agent' as const, displayName: 'مي' },
     { username: 'nada.', password: '4567', role: 'agent' as const, displayName: 'ندي' },
   ];

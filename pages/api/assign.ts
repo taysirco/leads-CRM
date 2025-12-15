@@ -2,22 +2,22 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { fetchLeads, updateLeadsBatch, LeadRow } from '../../lib/googleSheets';
 
 function getEmployeesFromEnv(): string[] {
-  const fallback = ['heba.', 'ahmed.', 'aisha.'];
+  const fallback = ['ahmed.', 'mai.', 'nada.'];
   const envVal = process.env.CALL_CENTER_USERS || '';
-  
+
   if (!envVal || !envVal.trim()) {
     console.log('⚠️ لم يتم العثور على CALL_CENTER_USERS في متغيرات البيئة، استخدام القيم الافتراضية');
     return fallback;
   }
-  
+
   const entries = envVal.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
   const users = entries.map(e => e.split(':')[0]).filter(Boolean);
-  
+
   if (users.length === 0) {
     console.log('⚠️ لم يتم العثور على مستخدمين صالحين، استخدام القيم الافتراضية');
     return fallback;
   }
-  
+
   console.log('✅ تم تحميل موظفي الكول سنتر:', users);
   return users;
 }
@@ -44,7 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     EMPLOYEES.forEach(emp => {
       currentCounts[emp] = 0;
     });
-    
+
     // عد الليدز المعينة حالياً لكل موظف
     for (const lead of leads) {
       const assignee = (lead.assignee || '').trim();
@@ -60,7 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`📈 ليدز غير معينة: ${unassigned.length}`);
 
     if (unassigned.length === 0) {
-      return res.status(200).json({ 
+      return res.status(200).json({
         message: 'لا توجد ليدز غير معيّنة للتوزيع.',
         currentDistribution: currentCounts,
         totalLeads: leads.length,
@@ -74,25 +74,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // توزيع دفعي للحفاظ على الكوتا (حد أقصى 200 في الدفعة الواحدة)
     const maxBatchSize = 200;
     const totalToDistribute = Math.min(unassigned.length, maxBatchSize);
-    
+
     const updates: Array<{ rowNumber: number; updates: { assignee: string } }> = [];
-    
+
     // توزيع ذكي ومتوازن: نعطي الأولوية للموظف الذي لديه أقل ليدز
     for (let i = 0; i < totalToDistribute; i++) {
       const lead = unassigned[i];
-      
+
       // العثور على الموظف الذي لديه أقل ليدز حالياً
-      const employeeWithLeastLeads = EMPLOYEES.reduce((minEmp, emp) => 
+      const employeeWithLeastLeads = EMPLOYEES.reduce((minEmp, emp) =>
         (currentCounts[emp] || 0) < (currentCounts[minEmp] || 0) ? emp : minEmp
       );
-      
+
       const assignee = employeeWithLeastLeads;
-      
+
       // تحديث العداد المحلي لضمان التوزيع العادل في نفس الدفعة
       currentCounts[assignee] = (currentCounts[assignee] || 0) + 1;
-      
+
       console.log(`📋 تعيين الليد #${lead.id} (صف ${lead.rowIndex}) للموظف: ${assignee} (إجمالي جديد: ${currentCounts[assignee]})`);
-      
+
       updates.push({
         rowNumber: lead.rowIndex,
         updates: { assignee }
@@ -111,7 +111,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const finalDistribution = { ...currentCounts };
     const distributed = updates.length;
     const remainingUnassigned = unassigned.length - distributed;
-    
+
     // حساب التوازن في التوزيع
     const counts = Object.values(finalDistribution);
     const minCount = Math.min(...counts);
@@ -134,7 +134,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   } catch (error) {
     console.error('❌ خطأ في التوزيع:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       message: 'حدث خطأ أثناء توزيع الليدز. يرجى المحاولة مرة أخرى.',
       error: error instanceof Error ? error.message : 'خطأ غير معروف'
     });
