@@ -181,9 +181,9 @@ export default function Home() {
       if (data.distributed > 0) {
         const getEmployeeName = (username: string) => {
           const nameMap: Record<string, string> = {
-            'heba.': 'هبة',
             'ahmed.': 'أحمد',
-            'aisha.': 'عائشة'
+            'mai.': 'مي',
+            'nada.': 'ندي'
           };
           return nameMap[username] || username;
         };
@@ -305,8 +305,8 @@ export default function Home() {
 
   // حساب إحصائيات التوزيع للعرض
   const distributionStats = useMemo(() => {
-    const employees = ['heba.', 'ahmed.', 'aisha.'];
-    const counts = { 'heba.': 0, 'ahmed.': 0, 'aisha.': 0, 'غير معين': 0 };
+    const employees = ['ahmed.', 'mai.', 'nada.'];
+    const counts = { 'ahmed.': 0, 'mai.': 0, 'nada.': 0, 'غير معين': 0 };
 
     orders.forEach((order: any) => {
       const assignee = (order.assignee || '').trim();
@@ -318,7 +318,7 @@ export default function Home() {
     });
 
     const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
-    const employeeCounts = [counts['heba.'], counts['ahmed.'], counts['aisha.']];
+    const employeeCounts = [counts['ahmed.'], counts['mai.'], counts['nada.']];
     const max = Math.max(...employeeCounts);
     const min = Math.min(...employeeCounts);
     const imbalance = max - min;
@@ -331,13 +331,13 @@ export default function Home() {
   // أسماء العرض للموظفين من البيئة إن توفرت
   const employeeDisplayNames = useMemo(() => {
     const envVal = process.env.NEXT_PUBLIC_CALL_CENTER_USERS_DISPLAY || '';
-    // صيغة: heba.:هبة,ahmed.:أحمد,aisha.:عائشة
+    // صيغة: ahmed.:أحمد,mai.:مي,nada.:ندي
     const map = new Map<string, string>();
     envVal.split(/[,;]+/).map(s => s.trim()).filter(Boolean).forEach(pair => {
       const [u, n] = pair.split(':');
       if (u && n) map.set(u.trim(), n.trim());
     });
-    return (username: string) => map.get(username) || (username === 'heba.' ? 'هبة' : username === 'ahmed.' ? 'أحمد' : username === 'aisha.' ? 'عائشة' : username);
+    return (username: string) => map.get(username) || (username === 'ahmed.' ? 'أحمد' : username === 'mai.' ? 'مي' : username === 'nada.' ? 'ندي' : username);
   }, []);
 
   if (error) return (
@@ -417,9 +417,9 @@ export default function Home() {
                       <span className={distributionStats.counts['غير معين'] > 0 ? 'text-orange-600 font-medium' : ''}>
                         غير معين: {distributionStats.counts['غير معين']}
                       </span>
-                      <span>هبة: {distributionStats.counts['heba.']}</span>
                       <span>أحمد: {distributionStats.counts['ahmed.']}</span>
-                      <span>عائشة: {distributionStats.counts['aisha.']}</span>
+                      <span>مي: {distributionStats.counts['mai.']}</span>
+                      <span>ندي: {distributionStats.counts['nada.']}</span>
                       <span className="text-gray-500">
                         حد الفارق: {distributionStats.maxAllowed}
                       </span>

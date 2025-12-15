@@ -13,7 +13,7 @@ export interface CustomerInfo {
  * رسالة المتابعة الأولى - احترافية ودودة
  */
 export function generateFollowUpMessage(customer: CustomerInfo): string {
-  const message = `السلام عليكم مع حضرتك هبة بخصوص طلبك (*${customer.productName}*), حاولنا الاتصال بك ولم نتمكن من الوصول إليك. نرجو التكرم بالرد لتأكيد الطلب, ونحن في خدمتك لأي استفسار.`;
+  const message = `السلام عليكم بخصوص طلبك (*${customer.productName}*), حاولنا الاتصال بك ولم نتمكن من الوصول إليك. نرجو التكرم بالرد لتأكيد الطلب, ونحن في خدمتك لأي استفسار.`;
 
   return encodeURIComponent(message);
 }
