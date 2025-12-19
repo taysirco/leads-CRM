@@ -253,7 +253,8 @@ export default function Home() {
       ).length,
       followUp: allOrders.filter((order: any) =>
         order.status === 'في انتظار تأكيد العميل' ||
-        order.status === 'تم التواصل معه واتساب'
+        order.status === 'تم التواصل معه واتساب' ||
+        order.status === 'طلب مصاريف الشحن'
       ).length,
       export: allOrders.filter((order: any) => order.status === 'تم التأكيد').length,
     };
@@ -284,7 +285,8 @@ export default function Home() {
       case 'follow-up':
         filteredOrders = orders.filter((order: any) =>
           order.status === 'في انتظار تأكيد العميل' ||
-          order.status === 'تم التواصل معه واتساب'
+          order.status === 'تم التواصل معه واتساب' ||
+          order.status === 'طلب مصاريف الشحن'
         );
         break;
       case 'export':
