@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { fetchLeads, updateLead, getOrderStatistics, LeadRow, updateLeadsBatch } from '../../lib/googleSheets';
 import { deductStock, deductStockBulk } from '../../lib/googleSheets';
 import { checkRateLimitByType, getClientIP } from '../../lib/rateLimit';
-import { validateStockAvailability, formatValidationError } from '../../lib/stockValidation';
+import { validateStockAvailability, formatValidationError, atomicBulkShipping } from '../../lib/stockValidation';
 
 // استخراج قائمة الموظفين من CALL_CENTER_USERS
 function getEmployeesFromEnv(): string[] {
@@ -150,185 +150,88 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         console.log(`📦 تحديث جماعي: ${orders.length} طلب إلى حالة "${status}"`);
 
-        // ✨ تحسين جديد: التحقق المسبق من المخزون قبل أي تحديث
+        // ✨ إذا كانت الحالة "تم الشحن"، استخدم العملية الذرية الآمنة
         if (status === 'تم الشحن') {
-          console.log('🔍 الخطوة 0: التحقق المسبق من توفر المخزون...');
+          console.log('🔒 [ATOMIC] استخدام العملية الذرية للشحن الآمن...');
+          
+          const atomicResult = await atomicBulkShipping(orders);
+          
+          if (!atomicResult.success) {
+            // فشل كلي أو جزئي
+            if (atomicResult.shippedOrders.length === 0) {
+              // فشل كلي - لم يتم شحن أي طلب
+              return res.status(400).json({
+                error: 'لا يمكن إتمام الشحن',
+                stockError: true,
+                preValidationFailed: true,
+                message: atomicResult.message,
+                failedOrders: atomicResult.failedOrders,
+                stockResults: atomicResult.stockResults
+              });
+            } else {
+              // فشل جزئي - تم شحن بعض الطلبات فقط
+              const errorDetails = atomicResult.stockResults
+                .filter(r => !r.success)
+                .map(r => `• الطلب ${r.orderId}: ${r.message}${r.availableQuantity !== undefined ? ` (متوفر: ${r.availableQuantity})` : ''}`)
+                .join('\n');
 
-          // جلب بيانات الطلبات للتحقق
-          const leads = await fetchLeads();
-          const orderItems: Array<{ productName: string; quantity: number; orderId: number }> = [];
+              let productSummary = '';
+              if (atomicResult.stockSummary?.productsSummary?.length > 0) {
+                productSummary = '\n\n📋 ملخص المنتجات:\n';
+                for (const product of atomicResult.stockSummary.productsSummary) {
+                  productSummary += `• ${product.productName}: مطلوب ${product.totalQuantityRequested}، متوفر ${product.availableQuantity}${product.totalQuantityDeducted > 0 ? `، تم خصم ${product.totalQuantityDeducted}` : ''}\n`;
+                }
+              }
 
-          for (const orderId of orders) {
-            const targetLead = leads.find(lead => lead.id === Number(orderId));
-            if (targetLead && targetLead.productName && targetLead.quantity) {
-              const quantity = parseInt(targetLead.quantity) || 1;
-              orderItems.push({
-                productName: targetLead.productName,
-                quantity,
-                orderId: targetLead.id
+              return res.status(400).json({
+                error: 'فشل في شحن بعض الطلبات',
+                stockError: true,
+                message: `❌ تم شحن ${atomicResult.shippedOrders.length} من ${orders.length} طلب فقط:\n\n${errorDetails}\n\n⚠️ تم إرجاع ${atomicResult.revertedOrders.length} طلب إلى حالتها الأصلية${productSummary}`,
+                failedOrders: atomicResult.failedOrders,
+                stockResults: atomicResult.stockResults,
+                successfulOrders: atomicResult.shippedOrders,
+                revertedOrders: atomicResult.revertedOrders,
+                stockSummary: atomicResult.stockSummary
               });
             }
           }
 
-          // التحقق من توفر المخزون
-          const validation = await validateStockAvailability(orderItems);
+          // نجاح كامل
+          const response: any = {
+            success: true,
+            message: `✅ تم شحن ${atomicResult.shippedOrders.length} طلب بنجاح`
+          };
 
-          if (!validation.isValid) {
-            console.log('❌ فشل التحقق المسبق - المخزون غير كافي');
-            const errorMessage = formatValidationError(validation);
+          if (atomicResult.stockSummary) {
+            response.message += `\n\n📦 تفاصيل خصم المخزون:`;
+            response.message += `\n• إجمالي الطلبات: ${atomicResult.stockSummary.totalOrders}`;
+            response.message += `\n• نجح: ${atomicResult.stockSummary.successfulOrders} طلب`;
+            response.message += `\n• منتجات مختلفة: ${atomicResult.stockSummary.productsSummary?.length || 0}`;
 
-            return res.status(400).json({
-              error: 'لا يمكن إتمام الشحن',
-              stockError: true,
-              preValidationFailed: true,
-              message: errorMessage,
-              invalidProducts: validation.invalidProducts,
-              validProducts: validation.validProducts
-            });
+            const totalDeducted = atomicResult.stockSummary.productsSummary?.reduce(
+              (sum: number, product: any) => sum + product.totalQuantityDeducted,
+              0
+            ) || 0;
+            response.message += `\n• إجمالي القطع المخصومة: ${totalDeducted}`;
+
+            response.stockResults = atomicResult.stockResults;
+            response.stockSummary = atomicResult.stockSummary;
           }
 
-          console.log('✅ التحقق المسبق نجح - جميع المنتجات متوفرة');
+          return res.status(200).json(response);
         }
 
-        // الخطوة 1: تحديث جميع الطلبات إلى الحالة الجديدة أولاً
-        console.log('🔄 الخطوة 1: تحديث حالة الطلبات...');
+        // للحالات الأخرى (غير "تم الشحن") - تحديث عادي
+        console.log('🔄 تحديث حالة الطلبات (غير شحن)...');
         const updatePromises = orders.map((orderId: number) => updateLead(Number(orderId), { status }));
         await Promise.all(updatePromises);
         console.log('✅ تم تحديث جميع الطلبات بنجاح');
 
-        let stockResults: any[] = [];
-        let failedOrders: number[] = [];
-        let ordersToRevert: number[] = [];
-        let bulkResult: any = null;
-
-        // الخطوة 2: إذا كانت الحالة الجديدة "تم الشحن"، اخصم المخزون بعد التحديث
-        if (status === 'تم الشحن') {
-          console.log('🚚 الخطوة 2: خصم المخزون بعد تأكيد الشحن...');
-          const leads = await fetchLeads();
-
-          // جمع بيانات جميع الطلبات للخصم الجماعي
-          const orderItems: Array<{ productName: string; quantity: number; orderId: number }> = [];
-
-          for (const orderId of orders) {
-            const targetLead = leads.find(lead => lead.id === Number(orderId));
-
-            if (targetLead && targetLead.productName && targetLead.quantity) {
-              const quantity = parseInt(targetLead.quantity) || 1;
-              const productName = targetLead.productName || 'غير محدد';
-
-              orderItems.push({
-                productName,
-                quantity,
-                orderId: targetLead.id
-              });
-            } else {
-              console.error(`❌ لم يتم العثور على الطلب ${orderId} أو بيانات ناقصة`);
-              failedOrders.push(orderId);
-              ordersToRevert.push(orderId);
-              stockResults.push({
-                orderId,
-                success: false,
-                message: 'لم يتم العثور على بيانات الطلب أو بيانات ناقصة'
-              });
-            }
-          }
-
-          // تنفيذ خصم المخزون الجماعي
-          if (orderItems.length > 0) {
-            console.log(`📦 تنفيذ خصم مخزون جماعي لـ ${orderItems.length} طلب...`);
-            bulkResult = await deductStockBulk(orderItems);
-
-            // معالجة النتائج
-            stockResults = bulkResult.results;
-
-            // تحديد الطلبات الفاشلة
-            for (const result of stockResults) {
-              if (!result.success) {
-                if (!failedOrders.includes(result.orderId)) {
-                  failedOrders.push(result.orderId);
-                  ordersToRevert.push(result.orderId);
-                }
-              }
-            }
-
-            console.log(`📊 نتيجة الخصم الجماعي: ${bulkResult.message}`);
-
-            // عرض ملخص المنتجات إذا كان متوفراً
-            if (bulkResult.summary) {
-              console.log('📋 ملخص المنتجات:');
-              for (const product of bulkResult.summary.productsSummary) {
-                console.log(`  - ${product.productName}: مطلوب ${product.totalQuantityRequested}، متوفر ${product.availableQuantity}، تم خصم ${product.totalQuantityDeducted}`);
-              }
-            }
-          }
-
-          // الخطوة 3: إرجاع الطلبات التي فشل خصم مخزونها إلى حالة سابقة
-          if (ordersToRevert.length > 0) {
-            console.log(`🔄 الخطوة 3: إرجاع ${ordersToRevert.length} طلب إلى حالة "تم التأكيد"...`);
-            try {
-              const revertPromises = ordersToRevert.map((orderId: number) =>
-                updateLead(Number(orderId), { status: 'تم التأكيد' })
-              );
-              await Promise.all(revertPromises);
-              console.log('✅ تم إرجاع الطلبات الفاشلة بنجاح');
-            } catch (revertError) {
-              console.error('❌ خطأ في إرجاع الطلبات:', revertError);
-            }
-
-            const failedStockResults = stockResults.filter(r => !r.success);
-            const errorDetails = failedStockResults.map(r =>
-              `• الطلب ${r.orderId}: ${r.message}${r.availableQuantity !== undefined ? ` (متوفر: ${r.availableQuantity})` : ''}`
-            ).join('\n');
-
-            const successfulOrders = orders.filter((id: number) => !failedOrders.includes(id));
-
-            // إضافة ملخص المنتجات إذا كان متوفراً
-            let productSummary = '';
-            if (bulkResult && bulkResult.summary && bulkResult.summary.productsSummary.length > 0) {
-              productSummary = '\n\n📋 ملخص المنتجات:\n';
-              for (const product of bulkResult.summary.productsSummary) {
-                productSummary += `• ${product.productName}: مطلوب إجمالي ${product.totalQuantityRequested}، متوفر ${product.availableQuantity}${product.totalQuantityDeducted > 0 ? `، تم خصم ${product.totalQuantityDeducted}` : ''}\n`;
-              }
-            }
-
-            return res.status(400).json({
-              error: 'فشل في شحن بعض الطلبات',
-              stockError: true,
-              message: `❌ تم شحن ${successfulOrders.length} من ${orders.length} طلب فقط بسبب نقص المخزون:\n\n${errorDetails}\n\n⚠️ تم إرجاع الطلبات الفاشلة إلى حالة "تم التأكيد"${productSummary}`,
-              failedOrders,
-              stockResults,
-              successfulOrders,
-              revertedOrders: ordersToRevert,
-              stockSummary: bulkResult?.summary
-            });
-          }
-        }
-
-        const response: any = {
+        return res.status(200).json({
           success: true,
           message: `تم تحديث ${orders.length} طلب بنجاح إلى حالة "${status}"`
-        };
+        });
 
-        if (bulkResult && bulkResult.summary) {
-          // إضافة ملخص تفصيلي للخصم الجماعي
-          response.message += `\n\n📦 تفاصيل خصم المخزون الجماعي:`;
-          response.message += `\n• إجمالي الطلبات: ${bulkResult.summary.totalOrders}`;
-          response.message += `\n• نجح: ${bulkResult.summary.successfulOrders} طلب`;
-          response.message += `\n• فشل: ${bulkResult.summary.failedOrders} طلب`;
-          response.message += `\n• منتجات مختلفة: ${bulkResult.summary.productsSummary.length}`;
-
-          // حساب إجمالي القطع المخصومة
-          const totalDeducted = bulkResult.summary.productsSummary.reduce(
-            (sum: number, product: any) => sum + product.totalQuantityDeducted,
-            0
-          );
-          response.message += `\n• إجمالي القطع المخصومة: ${totalDeducted}`;
-
-          response.stockResults = bulkResult.results;
-          response.stockSummary = bulkResult.summary;
-        }
-
-        return res.status(200).json(response);
       } catch (error: any) {
         console.error(`❌ خطأ في التحديث الجماعي:`, error.message);
         return res.status(500).json({

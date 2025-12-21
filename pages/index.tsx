@@ -40,6 +40,7 @@ export default function Home() {
     soundEnabled: true
   });
   const [hasInteracted, setHasInteracted] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
 
   useEffect(() => {
     const handleInteraction = () => {
@@ -61,14 +62,18 @@ export default function Home() {
     '/api/orders',
     fetcher,
     {
-      refreshInterval: notificationSettings.autoRefresh ? Math.min(notificationSettings.refreshInterval * 1000, 10000) : 0, // حد أقصى 10 ثوان
-      revalidateOnFocus: true, // إعادة تحديث عند التركيز على الصفحة
-      revalidateOnReconnect: true, // إعادة تحديث عند إعادة الاتصال
-      dedupingInterval: 5000, // منع التكرار لمدة 5 ثوان
-      shouldRetryOnError: true, // تفعيل إعادة المحاولة عند الخطأ
-      errorRetryCount: 3, // عدد محاولات إعادة المحاولة
+      // ✨ إيقاف التحديث التلقائي أثناء الأرشفة لمنع Race Conditions
+      refreshInterval: isArchiving ? 0 : (notificationSettings.autoRefresh ? Math.min(notificationSettings.refreshInterval * 1000, 10000) : 0),
+      revalidateOnFocus: !isArchiving, // إيقاف التحديث عند التركيز أثناء الأرشفة
+      revalidateOnReconnect: !isArchiving, // إيقاف التحديث عند إعادة الاتصال أثناء الأرشفة
+      dedupingInterval: isArchiving ? 30000 : 5000, // زيادة فترة منع التكرار أثناء الأرشفة
+      shouldRetryOnError: !isArchiving, // إيقاف إعادة المحاولة أثناء الأرشفة
+      errorRetryCount: 3,
       // إعادة محاولة مخصصة مع تأخير متصاعد لحل مشكلة التزامن
       onErrorRetry: (error, key, config, revalidate, { retryCount }) => {
+        // ✨ لا تعيد المحاولة أثناء الأرشفة
+        if (isArchiving) return;
+        
         // لا تعيد المحاولة لأخطاء 404 أو 401 أو 403
         if (error.status === 404 || error.status === 401 || error.status === 403) return;
 
@@ -565,6 +570,14 @@ export default function Home() {
                 onSelectAll={handleSelectAll}
                 onDeselectAll={handleDeselectAll}
                 onUpdateOrder={handleUpdateOrder}
+                onArchiveStart={() => {
+                  console.log('⏸️ [SWR] إيقاف التحديث التلقائي - بدء الأرشفة');
+                  setIsArchiving(true);
+                }}
+                onArchiveEnd={() => {
+                  console.log('▶️ [SWR] إعادة تفعيل التحديث التلقائي - انتهاء الأرشفة');
+                  setIsArchiving(false);
+                }}
               />
             )}
             {activeTab === 'archive' && (

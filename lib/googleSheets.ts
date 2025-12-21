@@ -2454,7 +2454,8 @@ export async function resetStockMovementsHeaders(): Promise<{ success: boolean; 
 import { stockMutex } from './stockValidation';
 
 export async function deductStockBulk(
-  orderItems: Array<{ productName: string; quantity: number; orderId: number }>
+  orderItems: Array<{ productName: string; quantity: number; orderId: number }>,
+  options?: { skipLock?: boolean }
 ): Promise<{
   success: boolean;
   message: string;
@@ -2478,9 +2479,16 @@ export async function deductStockBulk(
     }>;
   };
 }> {
-  // ✨ تحسين جديد: الحصول على قفل المخزون لمنع التزامن
-  const release = await stockMutex.acquire();
-  console.log('🔒 تم الحصول على قفل المخزون للخصم الجماعي');
+  // ✨ تحسين: دعم تخطي القفل عند الاستخدام من داخل عملية ذرية مقفلة مسبقاً
+  const skipLock = options?.skipLock ?? false;
+  let release: (() => void) | null = null;
+  
+  if (!skipLock) {
+    release = await stockMutex.acquire();
+    console.log('🔒 تم الحصول على قفل المخزون للخصم الجماعي');
+  } else {
+    console.log('⏭️ تخطي القفل - العملية مقفلة مسبقاً');
+  }
 
   try {
     console.log(`📦 بدء خصم المخزون الجماعي لـ ${orderItems.length} طلب...`);
@@ -2669,8 +2677,10 @@ export async function deductStockBulk(
       }))
     };
   } finally {
-    // ✨ تحرير قفل المخزون
-    release();
-    console.log('🔓 تم تحرير قفل المخزون بعد الخصم الجماعي');
+    // ✨ تحرير قفل المخزون فقط إذا تم الحصول عليه
+    if (release) {
+      release();
+      console.log('🔓 تم تحرير قفل المخزون بعد الخصم الجماعي');
+    }
   }
 }

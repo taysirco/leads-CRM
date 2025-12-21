@@ -211,3 +211,225 @@ export async function withStockLock<T>(
         console.log('🔓 تم تحرير قفل المخزون');
     }
 }
+
+// ========================
+// Atomic Shipping Operation
+// ========================
+
+import { updateLead, deductStockBulk, fetchLeads } from './googleSheets';
+
+export interface AtomicShippingResult {
+    success: boolean;
+    message: string;
+    shippedOrders: number[];
+    failedOrders: number[];
+    revertedOrders: number[];
+    stockResults: any[];
+    stockSummary?: any;
+}
+
+/**
+ * ✨ عملية شحن ذرية آمنة - تمنع Race Conditions
+ * تقوم بالتحقق من المخزون وتحديث الحالة وخصم المخزون في عملية واحدة مقفلة
+ */
+export async function atomicBulkShipping(
+    orderIds: number[]
+): Promise<AtomicShippingResult> {
+    const release = await stockMutex.acquire();
+    console.log('🔒 [ATOMIC] تم الحصول على قفل المخزون للشحن الذري');
+
+    const shippedOrders: number[] = [];
+    const failedOrders: number[] = [];
+    const revertedOrders: number[] = [];
+    let stockResults: any[] = [];
+    let stockSummary: any = null;
+
+    try {
+        console.log(`📦 [ATOMIC] بدء عملية الشحن الذري لـ ${orderIds.length} طلب...`);
+
+        // الخطوة 1: جلب بيانات الطلبات
+        console.log('📋 [ATOMIC] الخطوة 1: جلب بيانات الطلبات...');
+        const leads = await fetchLeads();
+        const orderItems: Array<{ productName: string; quantity: number; orderId: number; originalStatus: string }> = [];
+        const orderStatusMap = new Map<number, string>();
+
+        for (const orderId of orderIds) {
+            const targetLead = leads.find(lead => lead.id === Number(orderId));
+            if (targetLead && targetLead.productName && targetLead.quantity) {
+                const quantity = parseInt(targetLead.quantity) || 1;
+                orderItems.push({
+                    productName: targetLead.productName.trim(),
+                    quantity,
+                    orderId: targetLead.id,
+                    originalStatus: targetLead.status || 'تم التأكيد'
+                });
+                orderStatusMap.set(targetLead.id, targetLead.status || 'تم التأكيد');
+            } else {
+                console.error(`❌ [ATOMIC] الطلب ${orderId} - بيانات ناقصة`);
+                failedOrders.push(orderId);
+                stockResults.push({
+                    orderId,
+                    success: false,
+                    message: 'بيانات الطلب ناقصة (اسم المنتج أو الكمية)'
+                });
+            }
+        }
+
+        if (orderItems.length === 0) {
+            return {
+                success: false,
+                message: 'لا توجد طلبات صالحة للشحن',
+                shippedOrders: [],
+                failedOrders: orderIds,
+                revertedOrders: [],
+                stockResults
+            };
+        }
+
+        // الخطوة 2: التحقق من المخزون داخل القفل
+        console.log('🔍 [ATOMIC] الخطوة 2: التحقق من توفر المخزون...');
+        const validation = await validateStockAvailability(orderItems);
+
+        if (!validation.isValid) {
+            console.log('❌ [ATOMIC] المخزون غير كافي - لن يتم تحديث أي طلب');
+            
+            // تحديد الطلبات التي ستفشل
+            for (const invalidProduct of validation.invalidProducts) {
+                for (const orderId of invalidProduct.orders) {
+                    if (!failedOrders.includes(orderId)) {
+                        failedOrders.push(orderId);
+                    }
+                    stockResults.push({
+                        orderId,
+                        productName: invalidProduct.productName,
+                        success: false,
+                        message: invalidProduct.message,
+                        availableQuantity: invalidProduct.availableQuantity
+                    });
+                }
+            }
+
+            return {
+                success: false,
+                message: formatValidationError(validation),
+                shippedOrders: [],
+                failedOrders,
+                revertedOrders: [],
+                stockResults
+            };
+        }
+
+        console.log('✅ [ATOMIC] التحقق من المخزون نجح');
+
+        // الخطوة 3: تحديث حالة الطلبات إلى "تم الشحن"
+        console.log('🔄 [ATOMIC] الخطوة 3: تحديث حالة الطلبات...');
+        const ordersToShip = orderItems.map(item => item.orderId);
+        
+        try {
+            const updatePromises = ordersToShip.map(orderId => 
+                updateLead(Number(orderId), { status: 'تم الشحن' })
+            );
+            await Promise.all(updatePromises);
+            console.log(`✅ [ATOMIC] تم تحديث ${ordersToShip.length} طلب إلى "تم الشحن"`);
+        } catch (updateError) {
+            console.error('❌ [ATOMIC] فشل في تحديث حالة الطلبات:', updateError);
+            return {
+                success: false,
+                message: 'فشل في تحديث حالة الطلبات',
+                shippedOrders: [],
+                failedOrders: orderIds,
+                revertedOrders: [],
+                stockResults: []
+            };
+        }
+
+        // الخطوة 4: خصم المخزون (بدون قفل إضافي لأننا داخل القفل بالفعل)
+        console.log('📦 [ATOMIC] الخطوة 4: خصم المخزون...');
+        
+        // استخدام deductStockBulkInternal بدون قفل إضافي
+        const bulkResult = await deductStockBulkWithoutLock(orderItems);
+        stockResults = bulkResult.results;
+        stockSummary = bulkResult.summary;
+
+        // الخطوة 5: معالجة النتائج وإرجاع الفاشلة
+        const successfulDeductions = stockResults.filter(r => r.success);
+        const failedDeductions = stockResults.filter(r => !r.success);
+
+        for (const result of successfulDeductions) {
+            shippedOrders.push(result.orderId);
+        }
+
+        // إرجاع الطلبات الفاشلة إلى حالتها الأصلية
+        if (failedDeductions.length > 0) {
+            console.log(`🔄 [ATOMIC] الخطوة 5: إرجاع ${failedDeductions.length} طلب فاشل...`);
+            
+            for (const failed of failedDeductions) {
+                const originalStatus = orderStatusMap.get(failed.orderId) || 'تم التأكيد';
+                try {
+                    await updateLead(Number(failed.orderId), { status: originalStatus });
+                    revertedOrders.push(failed.orderId);
+                    failedOrders.push(failed.orderId);
+                    console.log(`✅ [ATOMIC] تم إرجاع الطلب ${failed.orderId} إلى "${originalStatus}"`);
+                } catch (revertError) {
+                    console.error(`❌ [ATOMIC] فشل إرجاع الطلب ${failed.orderId}:`, revertError);
+                    failedOrders.push(failed.orderId);
+                }
+            }
+        }
+
+        const allSuccess = failedOrders.length === 0;
+        const message = allSuccess
+            ? `✅ تم شحن ${shippedOrders.length} طلب بنجاح`
+            : `⚠️ تم شحن ${shippedOrders.length} من ${orderIds.length} طلب. فشل ${failedOrders.length} طلب.`;
+
+        console.log(`📊 [ATOMIC] ${message}`);
+
+        return {
+            success: allSuccess,
+            message,
+            shippedOrders,
+            failedOrders,
+            revertedOrders,
+            stockResults,
+            stockSummary
+        };
+
+    } catch (error) {
+        console.error('❌ [ATOMIC] خطأ في عملية الشحن الذري:', error);
+        return {
+            success: false,
+            message: `خطأ في النظام: ${error}`,
+            shippedOrders: [],
+            failedOrders: orderIds,
+            revertedOrders: [],
+            stockResults: []
+        };
+    } finally {
+        release();
+        console.log('🔓 [ATOMIC] تم تحرير قفل المخزون');
+    }
+}
+
+/**
+ * خصم المخزون الجماعي بدون قفل (للاستخدام داخل عملية مقفلة مسبقاً)
+ */
+async function deductStockBulkWithoutLock(
+    orderItems: Array<{ productName: string; quantity: number; orderId: number }>
+): Promise<{ success: boolean; results: any[]; summary?: any }> {
+    try {
+        // ✨ استخدام skipLock لتجنب Deadlock لأننا داخل قفل بالفعل
+        const result = await deductStockBulk(orderItems, { skipLock: true });
+        return result;
+    } catch (error) {
+        return {
+            success: false,
+            results: orderItems.map(item => ({
+                orderId: item.orderId,
+                productName: item.productName,
+                quantity: item.quantity,
+                success: false,
+                message: 'خطأ في خصم المخزون'
+            }))
+        };
+    }
+}

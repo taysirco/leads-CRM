@@ -30,9 +30,11 @@ interface BostaExportProps {
   onSelectAll: () => void;
   onDeselectAll: () => void;
   onUpdateOrder: (id: number, updates: Partial<Order>) => Promise<void>;
+  onArchiveStart?: () => void;
+  onArchiveEnd?: () => void;
 }
 
-export default function BostaExport({ orders, selectedOrders, onSelectOrder, onSelectAll, onDeselectAll, onUpdateOrder }: BostaExportProps) {
+export default function BostaExport({ orders, selectedOrders, onSelectOrder, onSelectAll, onDeselectAll, onUpdateOrder, onArchiveStart, onArchiveEnd }: BostaExportProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState<Set<number>>(new Set());
@@ -95,9 +97,13 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       return;
     }
 
+    // ✨ إيقاف التحديث التلقائي أثناء الأرشفة
+    onArchiveStart?.();
     setIsArchiving(true);
+    
     try {
-      console.log(`🚀 بدء أرشفة ${selectedOrders.length} طلب...`);
+      console.log(`🚀 [ARCHIVE] بدء أرشفة ${selectedOrders.length} طلب...`);
+      console.log('⏸️ [ARCHIVE] تم إيقاف التحديث التلقائي مؤقتاً');
       
       const response = await fetch("/api/orders", {
         method: "PUT",
@@ -106,7 +112,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       });
       
       const result = await response.json();
-      console.log("📋 نتيجة الأرشفة:", result);
+      console.log("📋 [ARCHIVE] نتيجة الأرشفة:", result);
       
       if (!response.ok) {
         if (result.stockError && result.failedOrders) {
@@ -130,11 +136,10 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
           
           alert(errorMessage);
           
-          if (result.successfulOrders && result.successfulOrders.length > 0) {
-            onDeselectAll();
-            // إعادة تحديث البيانات بإعادة تحميل الصفحة للتأكد من التحديث الكامل
-      window.location.reload();
-          }
+          onDeselectAll();
+          // ✨ إعادة تفعيل التحديث التلقائي ثم إعادة تحميل الصفحة
+          onArchiveEnd?.();
+          window.location.reload();
           
           return;
         } else {
@@ -142,7 +147,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
         }
       }
       
-      console.log("✅ تمت الأرشفة بنجاح");
+      console.log("✅ [ARCHIVE] تمت الأرشفة بنجاح");
       
       let successMessage = `✅ تم تحويل ${selectedOrders.length} طلب إلى حالة "تم الشحن" بنجاح!`;
       
@@ -154,17 +159,21 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       alert(successMessage);
       
       onDeselectAll();
-      // إعادة تحديث البيانات بإعادة تحميل الصفحة للتأكد من التحديث الكامل
+      // ✨ إعادة تفعيل التحديث التلقائي ثم إعادة تحميل الصفحة
+      onArchiveEnd?.();
       window.location.reload();
       
-      console.log("🔄 تم تحديث البيانات بعد الأرشفة");
+      console.log("🔄 [ARCHIVE] تم تحديث البيانات بعد الأرشفة");
       
     } catch (error) {
-      console.error("❌ خطأ في الأرشفة:", error);
+      console.error("❌ [ARCHIVE] خطأ في الأرشفة:", error);
       alert(`فشل في أرشفة الطلبات: ${error instanceof Error ? error.message : "خطأ غير معروف"}\n\nيرجى المحاولة مرة أخرى.`);
     } finally {
       setIsArchiving(false);
-    }  };
+      // ✨ التأكد من إعادة تفعيل التحديث التلقائي
+      onArchiveEnd?.();
+    }
+  };
 
   const openEditModal = (order: Order) => {
     setEditingOrder({ ...order });
