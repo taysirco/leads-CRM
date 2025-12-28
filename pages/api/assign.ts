@@ -23,6 +23,7 @@ function getEmployeesFromEnv(): string[] {
 }
 
 const EMPLOYEES = getEmployeesFromEnv();
+let lastAssignedIndex = -1; // مؤشر Round Robin لضمان التوزيع المتساوي
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -81,12 +82,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     for (let i = 0; i < totalToDistribute; i++) {
       const lead = unassigned[i];
 
-      // العثور على الموظف الذي لديه أقل ليدز حالياً
-      const employeeWithLeastLeads = EMPLOYEES.reduce((minEmp, emp) =>
-        (currentCounts[emp] || 0) < (currentCounts[minEmp] || 0) ? emp : minEmp
-      );
-
-      const assignee = employeeWithLeastLeads;
+      // العثور على الموظفين الذين لديهم أقل عدد من الليدز
+      const minCount = Math.min(...EMPLOYEES.map(emp => currentCounts[emp] || 0));
+      const employeesWithMinLeads = EMPLOYEES.filter(emp => (currentCounts[emp] || 0) === minCount);
+      
+      // استخدام Round Robin بين الموظفين المتساوين لضمان العدالة
+      let selectedIndex = 0;
+      if (employeesWithMinLeads.length > 1) {
+        // البحث عن الموظف التالي في الدورة
+        const currentIndices = employeesWithMinLeads.map(emp => EMPLOYEES.indexOf(emp));
+        const nextIndex = currentIndices.find(idx => idx > lastAssignedIndex);
+        if (nextIndex !== undefined) {
+          selectedIndex = employeesWithMinLeads.indexOf(EMPLOYEES[nextIndex]);
+        } else {
+          selectedIndex = 0; // العودة للبداية
+        }
+      }
+      
+      const assignee = employeesWithMinLeads[selectedIndex];
+      lastAssignedIndex = EMPLOYEES.indexOf(assignee);
 
       // تحديث العداد المحلي لضمان التوزيع العادل في نفس الدفعة
       currentCounts[assignee] = (currentCounts[assignee] || 0) + 1;

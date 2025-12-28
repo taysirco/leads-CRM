@@ -30,6 +30,7 @@ const EMPLOYEES = getEmployeesFromEnv();
 let lastAutoAssignAt = 0; // ms timestamp
 let autoAssignInProgress = false; // منع التداخل
 let hasRunInitialAutoAssign = false; // ضمان التوزيع التلقائي عند التشغيل الأول
+let lastAutoAssignedIndex = -1; // مؤشر Round Robin لضمان التوزيع المتساوي في التوزيع التلقائي
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Rate Limiting - حماية من الطلبات الزائدة
@@ -90,12 +91,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             for (let i = 0; i < slice.length; i++) {
               const lead = slice[i];
 
-              // العثور على الموظف الذي لديه أقل ليدز حالياً
-              const employeeWithLeastLeads = EMPLOYEES.reduce((minEmp, emp) =>
-                (currentAssignments[emp] || 0) < (currentAssignments[minEmp] || 0) ? emp : minEmp
-              );
-
-              const assignee = employeeWithLeastLeads;
+              // العثور على الموظفين الذين لديهم أقل عدد من الليدز
+              const minCount = Math.min(...EMPLOYEES.map(emp => currentAssignments[emp] || 0));
+              const employeesWithMinLeads = EMPLOYEES.filter(emp => (currentAssignments[emp] || 0) === minCount);
+              
+              // استخدام Round Robin بين الموظفين المتساوين لضمان العدالة
+              let selectedIndex = 0;
+              if (employeesWithMinLeads.length > 1) {
+                // البحث عن الموظف التالي في الدورة
+                const currentIndices = employeesWithMinLeads.map(emp => EMPLOYEES.indexOf(emp));
+                const nextIndex = currentIndices.find(idx => idx > lastAutoAssignedIndex);
+                if (nextIndex !== undefined) {
+                  selectedIndex = employeesWithMinLeads.indexOf(EMPLOYEES[nextIndex]);
+                } else {
+                  selectedIndex = 0; // العودة للبداية
+                }
+              }
+              
+              const assignee = employeesWithMinLeads[selectedIndex];
+              lastAutoAssignedIndex = EMPLOYEES.indexOf(assignee);
               currentAssignments[assignee] = (currentAssignments[assignee] || 0) + 1;
 
               batch.push({
