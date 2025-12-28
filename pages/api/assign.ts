@@ -1,29 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { fetchLeads, updateLeadsBatch, LeadRow } from '../../lib/googleSheets';
-
-function getEmployeesFromEnv(): string[] {
-  const fallback = ['ahmed.', 'mai.', 'nada.'];
-  const envVal = process.env.CALL_CENTER_USERS || '';
-
-  if (!envVal || !envVal.trim()) {
-    console.log('⚠️ لم يتم العثور على CALL_CENTER_USERS في متغيرات البيئة، استخدام القيم الافتراضية');
-    return fallback;
-  }
-
-  const entries = envVal.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
-  const users = entries.map(e => e.split(':')[0]).filter(Boolean);
-
-  if (users.length === 0) {
-    console.log('⚠️ لم يتم العثور على مستخدمين صالحين، استخدام القيم الافتراضية');
-    return fallback;
-  }
-
-  console.log('✅ تم تحميل موظفي الكول سنتر:', users);
-  return users;
-}
+import { getEmployeesFromEnv, getRoundRobinIndex, saveRoundRobinIndex } from '../../lib/employees';
 
 const EMPLOYEES = getEmployeesFromEnv();
-let lastAssignedIndex = -1; // مؤشر Round Robin لضمان التوزيع المتساوي
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -78,6 +57,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const updates: Array<{ rowNumber: number; updates: { assignee: string } }> = [];
 
+    // جلب مؤشر Round Robin المحفوظ
+    let lastAssignedIndex = await getRoundRobinIndex();
+    console.log(`📊 مؤشر Round Robin الحالي: ${lastAssignedIndex}`);
+
     // توزيع ذكي ومتوازن: نعطي الأولوية للموظف الذي لديه أقل ليدز
     for (let i = 0; i < totalToDistribute; i++) {
       const lead = unassigned[i];
@@ -118,7 +101,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // تنفيذ التحديث المجمع
     if (updates.length > 0) {
       await updateLeadsBatch(updates);
-      console.log(`✅ تم توزيع ${updates.length} ليد بنجاح`);
+      // حفظ مؤشر Round Robin بعد التوزيع
+      await saveRoundRobinIndex(lastAssignedIndex);
+      console.log(`✅ تم توزيع ${updates.length} ليد بنجاح وحفظ مؤشر Round Robin: ${lastAssignedIndex}`);
     }
 
     // حساب التوزيع النهائي والإحصائيات

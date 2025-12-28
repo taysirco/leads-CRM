@@ -3,34 +3,12 @@ import { fetchLeads, updateLead, getOrderStatistics, LeadRow, updateLeadsBatch }
 import { deductStock, deductStockBulk } from '../../lib/googleSheets';
 import { checkRateLimitByType, getClientIP } from '../../lib/rateLimit';
 import { validateStockAvailability, formatValidationError, atomicBulkShipping } from '../../lib/stockValidation';
-
-// استخراج قائمة الموظفين من CALL_CENTER_USERS
-function getEmployeesFromEnv(): string[] {
-  const fallback = ['ahmed.', 'mai.', 'nada.'];
-  const envVal = process.env.CALL_CENTER_USERS || '';
-
-  if (!envVal || !envVal.trim()) {
-    console.log('⚠️ لم يتم العثور على CALL_CENTER_USERS في متغيرات البيئة، استخدام القيم الافتراضية');
-    return fallback;
-  }
-
-  const entries = envVal.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
-  const users = entries.map(e => e.split(':')[0]).filter(Boolean);
-
-  if (users.length === 0) {
-    console.log('⚠️ لم يتم العثور على مستخدمين صالحين، استخدام القيم الافتراضية');
-    return fallback;
-  }
-
-  console.log('✅ تم تحميل موظفي الكول سنتر:', users);
-  return users;
-}
+import { getEmployeesFromEnv, getRoundRobinIndex, saveRoundRobinIndex } from '../../lib/employees';
 
 const EMPLOYEES = getEmployeesFromEnv();
 let lastAutoAssignAt = 0; // ms timestamp
 let autoAssignInProgress = false; // منع التداخل
 let hasRunInitialAutoAssign = false; // ضمان التوزيع التلقائي عند التشغيل الأول
-let lastAutoAssignedIndex = -1; // مؤشر Round Robin لضمان التوزيع المتساوي في التوزيع التلقائي
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Rate Limiting - حماية من الطلبات الزائدة
@@ -85,6 +63,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             const batchSize = Math.min(50, unassigned.length);
             const slice = unassigned.slice(0, batchSize);
 
+            // جلب مؤشر Round Robin المحفوظ
+            let lastAutoAssignedIndex = await getRoundRobinIndex();
+
             // إنشاء دفعة التحديث مع توزيع ذكي ومتوازن
             const batch = [];
 
@@ -120,6 +101,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
             // تنفيذ التحديث المجمع
             await updateLeadsBatch(batch);
+            // حفظ مؤشر Round Robin بعد التوزيع
+            await saveRoundRobinIndex(lastAutoAssignedIndex);
             lastAutoAssignAt = now;
             hasRunInitialAutoAssign = true;
 
