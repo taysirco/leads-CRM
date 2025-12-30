@@ -250,8 +250,8 @@ export async function atomicBulkShipping(
         // الخطوة 1: جلب بيانات الطلبات
         console.log('📋 [ATOMIC] الخطوة 1: جلب بيانات الطلبات...');
         const leads = await fetchLeads();
-        const orderItems: Array<{ productName: string; quantity: number; orderId: number; originalStatus: string }> = [];
-        const orderStatusMap = new Map<number, string>();
+        const orderItems: Array<{ productName: string; quantity: number; orderId: number; rowIndex: number; originalStatus: string }> = [];
+        const orderStatusMap = new Map<number, { rowIndex: number; status: string }>();
 
         for (const orderId of orderIds) {
             const targetLead = leads.find(lead => lead.id === Number(orderId));
@@ -261,9 +261,10 @@ export async function atomicBulkShipping(
                     productName: targetLead.productName.trim(),
                     quantity,
                     orderId: targetLead.id,
+                    rowIndex: targetLead.rowIndex,
                     originalStatus: targetLead.status || 'تم التأكيد'
                 });
-                orderStatusMap.set(targetLead.id, targetLead.status || 'تم التأكيد');
+                orderStatusMap.set(targetLead.id, { rowIndex: targetLead.rowIndex, status: targetLead.status || 'تم التأكيد' });
             } else {
                 console.error(`❌ [ATOMIC] الطلب ${orderId} - بيانات ناقصة`);
                 failedOrders.push(orderId);
@@ -323,14 +324,14 @@ export async function atomicBulkShipping(
 
         // الخطوة 3: تحديث حالة الطلبات إلى "تم الشحن"
         console.log('🔄 [ATOMIC] الخطوة 3: تحديث حالة الطلبات...');
-        const ordersToShip = orderItems.map(item => item.orderId);
         
         try {
-            const updatePromises = ordersToShip.map(orderId => 
-                updateLead(Number(orderId), { status: 'تم الشحن' })
+            // استخدام rowIndex بدلاً من orderId لأن updateLead تتوقع رقم الصف
+            const updatePromises = orderItems.map(item => 
+                updateLead(item.rowIndex, { status: 'تم الشحن' })
             );
             await Promise.all(updatePromises);
-            console.log(`✅ [ATOMIC] تم تحديث ${ordersToShip.length} طلب إلى "تم الشحن"`);
+            console.log(`✅ [ATOMIC] تم تحديث ${orderItems.length} طلب إلى "تم الشحن"`);
         } catch (updateError) {
             console.error('❌ [ATOMIC] فشل في تحديث حالة الطلبات:', updateError);
             return {
@@ -364,9 +365,18 @@ export async function atomicBulkShipping(
             console.log(`🔄 [ATOMIC] الخطوة 5: إرجاع ${failedDeductions.length} طلب فاشل...`);
             
             for (const failed of failedDeductions) {
-                const originalStatus = orderStatusMap.get(failed.orderId) || 'تم التأكيد';
+                const orderInfo = orderStatusMap.get(failed.orderId);
+                const originalStatus = orderInfo?.status || 'تم التأكيد';
+                const rowIndex = orderInfo?.rowIndex;
+                
+                if (!rowIndex) {
+                    console.error(`❌ [ATOMIC] لم يتم العثور على rowIndex للطلب ${failed.orderId}`);
+                    failedOrders.push(failed.orderId);
+                    continue;
+                }
+                
                 try {
-                    await updateLead(Number(failed.orderId), { status: originalStatus });
+                    await updateLead(rowIndex, { status: originalStatus });
                     revertedOrders.push(failed.orderId);
                     failedOrders.push(failed.orderId);
                     console.log(`✅ [ATOMIC] تم إرجاع الطلب ${failed.orderId} إلى "${originalStatus}"`);
