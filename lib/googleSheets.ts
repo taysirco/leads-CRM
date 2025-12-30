@@ -2663,17 +2663,18 @@ export async function deductStockBulk(
       }
     };
 
-  } catch (error) {
-    console.error('❌ خطأ في خصم المخزون الجماعي:', error);
+  } catch (error: any) {
+    const errorMessage = error?.message || error?.toString() || 'خطأ غير معروف';
+    console.error('❌ خطأ في خصم المخزون الجماعي:', errorMessage, error);
     return {
       success: false,
-      message: `حدث خطأ أثناء خصم المخزون الجماعي: ${error}`,
+      message: `حدث خطأ أثناء خصم المخزون الجماعي: ${errorMessage}`,
       results: orderItems.map(item => ({
         orderId: item.orderId,
         productName: item.productName,
         quantity: item.quantity,
         success: false,
-        message: 'خطأ في النظام'
+        message: `خطأ في خصم المخزون: ${errorMessage}`
       }))
     };
   } finally {

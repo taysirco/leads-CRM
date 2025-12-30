@@ -230,7 +230,8 @@ export interface AtomicShippingResult {
 
 /**
  * ✨ عملية شحن ذرية آمنة - تمنع Race Conditions
- * تقوم بالتحقق من المخزون وتحديث الحالة وخصم المخزون في عملية واحدة مقفلة
+ * الترتيب الصحيح: خصم المخزون أولاً، ثم تحديث حالة الطلبات
+ * هذا يضمن عدم تحديث الطلبات إذا فشل خصم المخزون
  */
 export async function atomicBulkShipping(
     orderIds: number[]
@@ -266,7 +267,7 @@ export async function atomicBulkShipping(
                 });
                 orderStatusMap.set(targetLead.id, { rowIndex: targetLead.rowIndex, status: targetLead.status || 'تم التأكيد' });
             } else {
-                console.error(`❌ [ATOMIC] الطلب ${orderId} - بيانات ناقصة`);
+                console.error(`❌ [ATOMIC] الطلب ${orderId} - بيانات ناقصة (المنتج: ${targetLead?.productName}, الكمية: ${targetLead?.quantity})`);
                 failedOrders.push(orderId);
                 stockResults.push({
                     orderId,
@@ -322,69 +323,61 @@ export async function atomicBulkShipping(
 
         console.log('✅ [ATOMIC] التحقق من المخزون نجح');
 
-        // الخطوة 3: تحديث حالة الطلبات إلى "تم الشحن"
-        console.log('🔄 [ATOMIC] الخطوة 3: تحديث حالة الطلبات...');
+        // ✨ الخطوة 3: خصم المخزون أولاً (قبل تحديث حالة الطلبات)
+        console.log('📦 [ATOMIC] الخطوة 3: خصم المخزون...');
         
-        try {
-            // استخدام rowIndex بدلاً من orderId لأن updateLead تتوقع رقم الصف
-            const updatePromises = orderItems.map(item => 
-                updateLead(item.rowIndex, { status: 'تم الشحن' })
-            );
-            await Promise.all(updatePromises);
-            console.log(`✅ [ATOMIC] تم تحديث ${orderItems.length} طلب إلى "تم الشحن"`);
-        } catch (updateError) {
-            console.error('❌ [ATOMIC] فشل في تحديث حالة الطلبات:', updateError);
-            return {
-                success: false,
-                message: 'فشل في تحديث حالة الطلبات',
-                shippedOrders: [],
-                failedOrders: orderIds,
-                revertedOrders: [],
-                stockResults: []
-            };
-        }
-
-        // الخطوة 4: خصم المخزون (بدون قفل إضافي لأننا داخل القفل بالفعل)
-        console.log('📦 [ATOMIC] الخطوة 4: خصم المخزون...');
-        
-        // استخدام deductStockBulkInternal بدون قفل إضافي
         const bulkResult = await deductStockBulkWithoutLock(orderItems);
         stockResults = bulkResult.results;
         stockSummary = bulkResult.summary;
 
-        // الخطوة 5: معالجة النتائج وإرجاع الفاشلة
+        // التحقق من نجاح خصم المخزون
         const successfulDeductions = stockResults.filter(r => r.success);
         const failedDeductions = stockResults.filter(r => !r.success);
 
-        for (const result of successfulDeductions) {
-            shippedOrders.push(result.orderId);
-        }
-
-        // إرجاع الطلبات الفاشلة إلى حالتها الأصلية
         if (failedDeductions.length > 0) {
-            console.log(`🔄 [ATOMIC] الخطوة 5: إرجاع ${failedDeductions.length} طلب فاشل...`);
+            console.log(`❌ [ATOMIC] فشل خصم المخزون لـ ${failedDeductions.length} طلب - لن يتم تحديث أي طلب`);
             
+            // إضافة الطلبات الفاشلة
             for (const failed of failedDeductions) {
-                const orderInfo = orderStatusMap.get(failed.orderId);
-                const originalStatus = orderInfo?.status || 'تم التأكيد';
-                const rowIndex = orderInfo?.rowIndex;
-                
-                if (!rowIndex) {
-                    console.error(`❌ [ATOMIC] لم يتم العثور على rowIndex للطلب ${failed.orderId}`);
-                    failedOrders.push(failed.orderId);
-                    continue;
-                }
-                
-                try {
-                    await updateLead(rowIndex, { status: originalStatus });
-                    revertedOrders.push(failed.orderId);
-                    failedOrders.push(failed.orderId);
-                    console.log(`✅ [ATOMIC] تم إرجاع الطلب ${failed.orderId} إلى "${originalStatus}"`);
-                } catch (revertError) {
-                    console.error(`❌ [ATOMIC] فشل إرجاع الطلب ${failed.orderId}:`, revertError);
+                if (!failedOrders.includes(failed.orderId)) {
                     failedOrders.push(failed.orderId);
                 }
             }
+
+            return {
+                success: false,
+                message: `فشل في خصم المخزون`,
+                shippedOrders: [],
+                failedOrders,
+                revertedOrders: [],
+                stockResults,
+                stockSummary
+            };
+        }
+
+        console.log(`✅ [ATOMIC] تم خصم المخزون بنجاح لـ ${successfulDeductions.length} طلب`);
+
+        // ✨ الخطوة 4: تحديث حالة الطلبات إلى "تم الشحن" (بعد نجاح خصم المخزون)
+        console.log('🔄 [ATOMIC] الخطوة 4: تحديث حالة الطلبات...');
+        
+        const updateErrors: Array<{ orderId: number; rowIndex: number; error: any }> = [];
+        
+        for (const item of orderItems) {
+            try {
+                await updateLead(item.rowIndex, { status: 'تم الشحن' });
+                shippedOrders.push(item.orderId);
+                console.log(`✅ [ATOMIC] تم تحديث الطلب ${item.orderId} (صف ${item.rowIndex}) إلى "تم الشحن"`);
+            } catch (updateError) {
+                console.error(`❌ [ATOMIC] فشل تحديث الطلب ${item.orderId} (صف ${item.rowIndex}):`, updateError);
+                updateErrors.push({ orderId: item.orderId, rowIndex: item.rowIndex, error: updateError });
+                failedOrders.push(item.orderId);
+            }
+        }
+
+        // معالجة أخطاء التحديث (المخزون تم خصمه بالفعل)
+        if (updateErrors.length > 0) {
+            console.warn(`⚠️ [ATOMIC] فشل تحديث ${updateErrors.length} طلب بعد خصم المخزون`);
+            // ملاحظة: المخزون تم خصمه بالفعل، لذا نحتاج لمراجعة يدوية
         }
 
         const allSuccess = failedOrders.length === 0;
@@ -404,15 +397,19 @@ export async function atomicBulkShipping(
             stockSummary
         };
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('❌ [ATOMIC] خطأ في عملية الشحن الذري:', error);
         return {
             success: false,
-            message: `خطأ في النظام: ${error}`,
+            message: `خطأ في النظام: ${error?.message || error}`,
             shippedOrders: [],
             failedOrders: orderIds,
             revertedOrders: [],
-            stockResults: []
+            stockResults: orderIds.map(id => ({
+                orderId: id,
+                success: false,
+                message: `خطأ في النظام: ${error?.message || 'خطأ غير معروف'}`
+            }))
         };
     } finally {
         release();
