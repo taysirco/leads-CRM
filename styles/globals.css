@@ -16,8 +16,7 @@
   }
 }
 
-/* Arabic font - Cairo */
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap');
+/* Arabic font - Cairo (يتم تحميله من _document.tsx بشكل محسن) */
 
 /* Global styles */
 * {
