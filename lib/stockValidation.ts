@@ -216,7 +216,7 @@ export async function withStockLock<T>(
 // Atomic Shipping Operation
 // ========================
 
-import { updateLead, deductStockBulk, fetchLeads } from './googleSheets';
+import { updateLead, updateLeadsBatch, deductStockBulk, fetchLeads } from './googleSheets';
 
 export interface AtomicShippingResult {
     success: boolean;
@@ -357,27 +357,41 @@ export async function atomicBulkShipping(
 
         console.log(`✅ [ATOMIC] تم خصم المخزون بنجاح لـ ${successfulDeductions.length} طلب`);
 
-        // ✨ الخطوة 4: تحديث حالة الطلبات إلى "تم الشحن" (بعد نجاح خصم المخزون)
-        console.log('🔄 [ATOMIC] الخطوة 4: تحديث حالة الطلبات...');
+        // ✨ الخطوة 4: تحديث حالة الطلبات إلى "تم الشحن" دفعة واحدة (طلب API واحد!)
+        console.log('🔄 [ATOMIC] الخطوة 4: تحديث حالة الطلبات دفعة واحدة...');
         
-        const updateErrors: Array<{ orderId: number; rowIndex: number; error: any }> = [];
-        
-        for (const item of orderItems) {
-            try {
-                await updateLead(item.rowIndex, { status: 'تم الشحن' });
-                shippedOrders.push(item.orderId);
-                console.log(`✅ [ATOMIC] تم تحديث الطلب ${item.orderId} (صف ${item.rowIndex}) إلى "تم الشحن"`);
-            } catch (updateError) {
-                console.error(`❌ [ATOMIC] فشل تحديث الطلب ${item.orderId} (صف ${item.rowIndex}):`, updateError);
-                updateErrors.push({ orderId: item.orderId, rowIndex: item.rowIndex, error: updateError });
-                failedOrders.push(item.orderId);
-            }
-        }
+        try {
+            // إعداد التحديثات المجمعة
+            const batchUpdates = orderItems.map(item => ({
+                rowNumber: item.rowIndex,
+                updates: { status: 'تم الشحن' }
+            }));
 
-        // معالجة أخطاء التحديث (المخزون تم خصمه بالفعل)
-        if (updateErrors.length > 0) {
-            console.warn(`⚠️ [ATOMIC] فشل تحديث ${updateErrors.length} طلب بعد خصم المخزون`);
-            // ملاحظة: المخزون تم خصمه بالفعل، لذا نحتاج لمراجعة يدوية
+            // تحديث جميع الطلبات دفعة واحدة
+            await updateLeadsBatch(batchUpdates);
+            
+            // جميع الطلبات نجحت
+            for (const item of orderItems) {
+                shippedOrders.push(item.orderId);
+            }
+            console.log(`✅ [ATOMIC] تم تحديث ${orderItems.length} طلب إلى "تم الشحن" دفعة واحدة`);
+            
+        } catch (batchUpdateError: any) {
+            console.error('❌ [ATOMIC] فشل التحديث المجمع:', batchUpdateError);
+            // في حالة فشل التحديث المجمع، نحاول التحديث الفردي كخطة بديلة
+            console.log('🔄 [ATOMIC] محاولة التحديث الفردي كخطة بديلة...');
+            
+            for (const item of orderItems) {
+                try {
+                    await updateLead(item.rowIndex, { status: 'تم الشحن' });
+                    shippedOrders.push(item.orderId);
+                } catch (updateError) {
+                    console.error(`❌ [ATOMIC] فشل تحديث الطلب ${item.orderId}:`, updateError);
+                    failedOrders.push(item.orderId);
+                }
+                // تأخير صغير لتجنب تجاوز الحد
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
         }
 
         const allSuccess = failedOrders.length === 0;

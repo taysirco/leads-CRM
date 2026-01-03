@@ -1554,6 +1554,118 @@ function getOperationTypeArabic(type: string): string {
   return operationTypes[type] || type;
 }
 
+/**
+ * ✨ دالة محسنة لإضافة حركات المخزون دفعة واحدة
+ * تقلل عدد طلبات API بشكل كبير لتجنب تجاوز الحد
+ */
+export async function addStockMovementsBatch(
+  movements: Array<Partial<StockMovement>>
+): Promise<{ success: boolean; count: number; message: string }> {
+  if (!movements || movements.length === 0) {
+    return { success: true, count: 0, message: 'لا توجد حركات لتسجيلها' };
+  }
+
+  try {
+    console.log(`📦 [BATCH] تسجيل ${movements.length} حركة مخزون دفعة واحدة...`);
+
+    const auth = getAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
+    const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+
+    if (!spreadsheetId) {
+      throw new Error('معرف Google Sheet غير موجود');
+    }
+
+    // التأكد من وجود ورقة stock_movements (مرة واحدة فقط)
+    await ensureStockMovementsSheetExists();
+
+    // جلب آخر ID من الورقة (مرة واحدة فقط)
+    const lastIdResponse = await retryWithBackoff(
+      () => sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'stock_movements!A:A',
+      }),
+      'جلب آخر ID لحركات المخزون'
+    );
+
+    const existingRows = lastIdResponse.data.values || [['رقم تسلسلي']];
+    let nextSequentialId = existingRows.length - 1;
+
+    // الحصول على التوقيت المصري (مرة واحدة)
+    const egyptianDate = getEgyptDate();
+    const egyptianTime = getEgyptTime();
+    const fullEgyptianDateTime = getEgyptDateTime();
+
+    // إعداد جميع الصفوف دفعة واحدة
+    const allRows: any[][] = [];
+
+    for (const movement of movements) {
+      nextSequentialId++;
+
+      const productName = (movement.productName || '').trim();
+      const movementType = movement.type || 'sale';
+      const quantity = movement.quantity || 0;
+      const reason = (movement.reason || 'شحن طلب - خصم جماعي').trim();
+      const orderId = movement.orderId || '';
+
+      const rowData = [
+        nextSequentialId,                      // A: رقم تسلسلي
+        egyptianDate,                          // B: تاريخ العملية
+        egyptianTime,                          // C: وقت العملية
+        fullEgyptianDateTime,                  // D: التوقيت الكامل
+        productName,                           // E: اسم المنتج
+        getOperationTypeArabic(movementType),  // F: نوع العملية
+        quantity,                              // G: الكمية المتأثرة
+        '',                                    // H: الكمية قبل (سيتم تحديثها لاحقاً إن لزم)
+        '',                                    // I: الكمية بعد
+        reason,                                // J: سبب العملية
+        '',                                    // K: المورد
+        0,                                     // L: تكلفة الوحدة
+        0,                                     // M: إجمالي التكلفة
+        orderId,                               // N: رقم الطلب
+        'النظام الآلي',                        // O: المسؤول
+        'شحن جماعي',                           // P: ملاحظات
+        'مكتملة',                              // Q: حالة العملية
+        fullEgyptianDateTime,                  // R: تاريخ الإدخال
+        'خادم التطبيق',                        // S: IP
+        `batch_${Date.now()}`                  // T: معرف الجلسة
+      ];
+
+      allRows.push(rowData);
+    }
+
+    // إدراج جميع الصفوف دفعة واحدة (طلب API واحد!)
+    await retryWithBackoff(
+      () => sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: 'stock_movements!A3:T',
+        valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: {
+          values: allRows
+        }
+      }),
+      `إضافة ${allRows.length} حركة مخزون`
+    );
+
+    console.log(`✅ [BATCH] تم تسجيل ${movements.length} حركة مخزون بنجاح`);
+
+    return {
+      success: true,
+      count: movements.length,
+      message: `تم تسجيل ${movements.length} حركة مخزون بنجاح`
+    };
+
+  } catch (error: any) {
+    console.error('❌ [BATCH] خطأ في تسجيل حركات المخزون:', error);
+    return {
+      success: false,
+      count: 0,
+      message: `فشل في تسجيل حركات المخزون: ${error?.message || error}`
+    };
+  }
+}
+
 // دالة لإنشاء ورقة حركات المخزون
 async function createStockMovementsSheet() {
   try {
@@ -2633,10 +2745,13 @@ export async function deductStockBulk(
       console.log(`✅ تم تحديث "${update.stockItem.productName}": ${update.stockItem.currentQuantity} → ${update.newQuantity}`);
     }
 
-    // تسجيل حركات المخزون دفعة واحدة
-    console.log(`📝 تسجيل ${stockMovements.length} حركة مخزون...`);
-    for (const movement of stockMovements) {
-      await addStockMovement(movement);
+    // ✨ تسجيل حركات المخزون دفعة واحدة (طلب API واحد بدلاً من طلب لكل حركة)
+    console.log(`📝 تسجيل ${stockMovements.length} حركة مخزون دفعة واحدة...`);
+    if (stockMovements.length > 0) {
+      const movementsResult = await addStockMovementsBatch(stockMovements);
+      if (!movementsResult.success) {
+        console.warn('⚠️ تحذير: فشل تسجيل بعض حركات المخزون:', movementsResult.message);
+      }
     }
 
     // حساب الإحصائيات
