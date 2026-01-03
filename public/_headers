@@ -1,0 +1,41 @@
+# ✨ Cloudflare Pages Headers للأداء والأمان
+
+# جميع الصفحات
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  X-XSS-Protection: 1; mode=block
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# الملفات الثابتة (JS, CSS) - تخزين لمدة سنة
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# الصور والخطوط - تخزين لمدة سنة
+/*.ico
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.png
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.jpg
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.jpeg
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.svg
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.webp
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.woff
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.woff2
+  Cache-Control: public, max-age=31536000, immutable
+
+# API routes - لا تخزين
+/api/*
+  Cache-Control: no-store, no-cache, must-revalidate
