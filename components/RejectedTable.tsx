@@ -79,10 +79,10 @@ export default function RejectedTable({ orders, onUpdateOrder }: RejectedTablePr
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
       const matchesSearch = !searchTerm || 
-        (order.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (order.phone || '').includes(searchTerm) ||
-        (order.governorate || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (order.productName || '').toLowerCase().includes(searchTerm.toLowerCase());
+        String(order.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(order.phone || '').includes(searchTerm) ||
+        String(order.governorate || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(order.productName || '').toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesSource = !sourceFilter || order.source === sourceFilter;
       const matchesGovernorate = !governorateFilter || order.governorate === governorateFilter;
