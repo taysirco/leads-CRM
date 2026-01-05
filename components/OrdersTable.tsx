@@ -143,9 +143,9 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
       const orderWithUpdates = getOrderWithUpdates(order);
 
       const matchesSearch = !searchTerm ||
-        orderWithUpdates.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        orderWithUpdates.phone.includes(searchTerm) ||
-        orderWithUpdates.whatsapp.includes(searchTerm);
+        (orderWithUpdates.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (orderWithUpdates.phone || '').includes(searchTerm) ||
+        (orderWithUpdates.whatsapp || '').includes(searchTerm);
 
       const orderStatus = (orderWithUpdates.status || 'جديد').trim();
       const selectedStatus = statusFilter.trim();

@@ -37,8 +37,8 @@ export default function ArchiveTable({ orders, onUpdateOrder }: ArchiveTableProp
       if (!isShipped) return false;
 
       const matchesSearch = !searchTerm ||
-        order.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.phone.includes(searchTerm) ||
+        (order.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.phone || '').includes(searchTerm) ||
         (order.notes && order.notes.toLowerCase().includes(searchTerm.toLowerCase()));
       
       const matchesProduct = !productFilter || cleanText(order.productName) === productFilter;

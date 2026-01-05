@@ -48,8 +48,8 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
       const matchesSearch = !searchTerm || 
-        order.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.phone.includes(searchTerm);
+        (order.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.phone || '').includes(searchTerm);
       
       const matchesProduct = !productFilter || cleanText(order.productName) === productFilter;
       const matchesSource = !sourceFilter || order.source === sourceFilter;
