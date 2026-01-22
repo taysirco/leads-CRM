@@ -33,8 +33,8 @@ if (typeof setInterval !== 'undefined') {
  * إعدادات Rate Limit المسبقة
  */
 export const RATE_LIMITS = {
-    // تسجيل الدخول: 5 محاولات / دقيقة
-    LOGIN: { limit: 5, windowMs: 60 * 1000 },
+    // تسجيل الدخول: 20 محاولة / دقيقة
+    LOGIN: { limit: 20, windowMs: 60 * 1000 },
     // API عام: 100 طلب / دقيقة
     API: { limit: 100, windowMs: 60 * 1000 },
     // API ثقيل: 20 طلب / دقيقة
