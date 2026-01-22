@@ -1828,7 +1828,12 @@ export async function fetchLeads() {
       else if (cleaned.length === 11 && cleaned.startsWith('20')) {
         result = '0' + cleaned.substring(1); // تحويل إلى 01XXXXXXXXX
       }
-      // الحالة 5: رقم يبدأ بـ 2 فقط (2XXXXXXXXX - 10 أرقام)
+      // الحالة 5: رقم أرضي يبدأ بـ 02 أو 03 (11 رقم - خطأ شائع بإضافة صفر زائد)
+      else if (cleaned.length === 11 && (cleaned.startsWith('02') || cleaned.startsWith('03'))) {
+        // إزالة الصفر الزائد: 02026182959 → 0226182959
+        result = '0' + cleaned.substring(2);
+      }
+      // الحالة 6: رقم يبدأ بـ 2 فقط (2XXXXXXXXX - 10 أرقام)
       else if (cleaned.length === 10 && cleaned.startsWith('2')) {
         result = '0' + cleaned; // إضافة الصفر → 02XXXXXXXXX
       }

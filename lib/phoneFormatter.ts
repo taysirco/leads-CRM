@@ -24,6 +24,7 @@ export function convertArabicNumerals(str: string): string {
 
 /**
  * تنسيق أرقام الهاتف المصرية إلى الصيغة الموحدة +201XXXXXXXXX
+ * يدعم أرقام المحمول والأرقام الأرضية
  */
 export function formatEgyptianPhone(phone: string | number): string {
   if (!phone) {
@@ -40,25 +41,54 @@ export function formatEgyptianPhone(phone: string | number): string {
 
   // 2. معالجة الحالات الأكثر شيوعًا ووضوحًا
 
-  // الحالة (أ): رقم دولي صحيح بدون علامة + (e.g., "201012345678")
-  if (cleaned.length === 12 && cleaned.startsWith('201')) {
+  // الحالة (أ): رقم دولي صحيح بدون علامة + (e.g., "201012345678" - 12 رقم)
+  if (cleaned.length === 12 && cleaned.startsWith('20')) {
     return `+${cleaned}`;
   }
 
-  // الحالة (ب): رقم محلي صحيح (e.g., "01012345678")
+  // الحالة (ب): رقم محلي محمول صحيح (e.g., "01012345678" - 11 رقم يبدأ بـ 01)
   if (cleaned.length === 11 && cleaned.startsWith('01')) {
     return `+20${cleaned.substring(1)}`;
   }
 
-  // الحالة (ج): رقم مكون من 10 خانات يبدأ بـ 1 (الحالة المطلوبة)
-  // (e.g., "1012345678" -> يفترض أنه كان "01012345678")
-  if (cleaned.length === 10 && cleaned.startsWith('1')) {
-    return `+20${cleaned}`;
+  // الحالة (ب-2): رقم أرضي بصفر زائد (e.g., "02026182959" - 11 رقم يبدأ بـ 02 أو 03)
+  // هذا خطأ شائع حيث يتم إضافة صفر زائد للأرقام الأرضية
+  if (cleaned.length === 11 && (cleaned.startsWith('02') || cleaned.startsWith('03'))) {
+    // إزالة الصفر الزائد: 02026182959 → +20226182959
+    return `+20${cleaned.substring(2)}`;
   }
 
-  // 3. إذا لم تتطابق أي قاعدة واضحة، أعد الرقم الأصلي كما هو
+  // الحالة (ج): رقم أرضي مصري (e.g., "0226182959" - 10 أرقام يبدأ بـ 0)
+  // أو رقم محمول بدون 0 الأول (e.g., "1012345678" - 10 أرقام يبدأ بـ 1)
+  if (cleaned.length === 10) {
+    if (cleaned.startsWith('1')) {
+      // رقم محمول بدون الصفر الأول
+      return `+20${cleaned}`;
+    } else if (cleaned.startsWith('2') || cleaned.startsWith('3')) {
+      // رقم أرضي بدون الصفر الأول (القاهرة 2، الإسكندرية 3)
+      return `+20${cleaned}`;
+    }
+  }
+
+  // الحالة (د): رقم أرضي كامل (e.g., "0226182959" أو "0326182959" - 10 أرقام)
+  if (cleaned.length === 10 && cleaned.startsWith('0')) {
+    return `+20${cleaned.substring(1)}`;
+  }
+
+  // الحالة (هـ): رقم يبدأ بـ 20 ثم 0 (e.g., "2002XXXXXXXX" - 12 رقم، رقم أرضي دولي خاطئ)
+  if (cleaned.length === 12 && cleaned.startsWith('200')) {
+    // إزالة الصفر الزائد: 2002XXXXXXX -> +202XXXXXXX
+    return `+20${cleaned.substring(3)}`;
+  }
+
+  // الحالة (و): رقم يبدأ بـ 002 (صيغة دولية قديمة)
+  if (cleaned.startsWith('002') && cleaned.length >= 12) {
+    return `+${cleaned.substring(2)}`;
+  }
+
+  // 3. إذا لم تتطابق أي قاعدة واضحة، أعد الرقم مع علامة تحذير
   // هذا يضمن ظهور الأرقام غير القياسية في الواجهة ليتمكن المستخدم من إصلاحها يدويًا
-  return String(phone);
+  return `${cleaned} ⚠️`;
 }
 
 /**
@@ -78,8 +108,17 @@ export function formatPhoneForDisplay(phone: string | number): string {
   const internationalFormat = formatEgyptianPhone(phone);
   if (!internationalFormat) return '';
 
-  const cleaned = internationalFormat.replace(/\D/g, '');
+  // إزالة علامة التحذير إن وُجدت
+  const cleanedFormat = internationalFormat.replace(' ⚠️', '');
+  const cleaned = cleanedFormat.replace(/\D/g, '');
+  
+  // رقم محمول دولي (201XXXXXXXXX - 12 رقم)
   if (cleaned.startsWith('201') && cleaned.length === 12) {
+    return `0${cleaned.substring(2)}`;
+  }
+  
+  // رقم أرضي دولي (202XXXXXXXX أو 203XXXXXXXX - 11 رقم)
+  if ((cleaned.startsWith('202') || cleaned.startsWith('203')) && cleaned.length === 11) {
     return `0${cleaned.substring(2)}`;
   }
 

@@ -904,70 +904,36 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
 
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">📞 رقم الهاتف</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                      <span className="text-gray-500 text-sm font-mono">+20</span>
-                    </div>
-                    <input
-                      type="text"
-                      value={editingOrder.phone}
-                      onChange={(e) => handleUpdateField('phone', e.target.value)}
-                      placeholder="01XXXXXXXXX"
-                      className="w-full pr-12 pl-3 sm:pl-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={editingOrder.phone}
+                    onChange={(e) => handleUpdateField('phone', e.target.value)}
+                    placeholder="01XXXXXXXXX"
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base"
+                  />
                   <div className="text-xs text-gray-500">
-                    الرقم الكامل: +20{editingOrder.phone || 'XXXXXXXXXXX'}
+                    الرقم الكامل: {editingOrder.phone ? formatEgyptianPhone(editingOrder.phone) : 'غير محدد'}
                   </div>
                 </div>
 
-                {/* عرض حقل الواتساب فقط إذا كان مختلف عن الهاتف */}
-                {(editingOrder.whatsapp && editingOrder.whatsapp.trim() && editingOrder.whatsapp !== editingOrder.phone) && (
-                  <div className="space-y-1 sm:space-y-2">
-                    <label className="block text-xs sm:text-sm font-bold text-gray-700">💬 رقم الواتساب</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                        <span className="text-green-600 text-sm font-mono">+20</span>
-                      </div>
-                      <input
-                        type="text"
-                        value={editingOrder.whatsapp}
-                        onChange={(e) => handleUpdateField('whatsapp', e.target.value)}
-                        placeholder="01XXXXXXXXX"
-                        className="w-full pr-12 pl-3 sm:pl-4 py-2 sm:py-3 border border-green-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base bg-green-50"
-                      />
-                    </div>
-                    <div className="text-xs text-green-600">
-                      الرقم الكامل: +20{editingOrder.whatsapp || 'XXXXXXXXXXX'}
-                    </div>
+                {/* حقل رقم الواتساب - يظهر دائماً للتعديل */}
+                <div className="space-y-1 sm:space-y-2">
+                  <label className="block text-xs sm:text-sm font-bold text-gray-700">💬 رقم الواتساب</label>
+                  <input
+                    type="text"
+                    value={editingOrder.whatsapp || ''}
+                    onChange={(e) => handleUpdateField('whatsapp', e.target.value)}
+                    placeholder="01XXXXXXXXX (اتركه فارغاً لاستخدام رقم الهاتف)"
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-green-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base bg-green-50"
+                  />
+                  <div className="text-xs text-green-600">
+                    {editingOrder.whatsapp && editingOrder.whatsapp.trim() ? (
+                      <span>الرقم الكامل: {formatEgyptianPhone(editingOrder.whatsapp)}</span>
+                    ) : (
+                      <span className="text-gray-500">سيتم استخدام رقم الهاتف للواتساب</span>
+                    )}
                   </div>
-                )}
-
-                {/* خيار إضافة رقم واتساب منفصل إذا لم يكن موجود */}
-                {(!editingOrder.whatsapp || !editingOrder.whatsapp.trim() || editingOrder.whatsapp === editingOrder.phone) && (
-                  <div className="space-y-1 sm:space-y-2">
-                    <label className="block text-xs sm:text-sm font-bold text-gray-700">💬 رقم الواتساب (اختياري)</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                        <span className="text-green-600 text-sm font-mono">+20</span>
-                      </div>
-                      <input
-                        type="text"
-                        value={editingOrder.whatsapp || ''}
-                        onChange={(e) => handleUpdateField('whatsapp', e.target.value)}
-                        placeholder="01XXXXXXXXX"
-                        className="w-full pr-12 pl-3 sm:pl-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 shadow-sm font-mono text-gray-900 text-sm sm:text-base"
-                      />
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {editingOrder.whatsapp && editingOrder.whatsapp.trim() ? (
-                        <span className="text-green-600">الرقم الكامل: +20{editingOrder.whatsapp}</span>
-                      ) : (
-                        <span></span>
-                      )}
-                    </div>
-                  </div>
-                )}
+                </div>
 
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">🏙️ المحافظة</label>
