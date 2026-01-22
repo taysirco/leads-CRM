@@ -1864,13 +1864,16 @@ export async function fetchLeads() {
 
     // تنظيف وتنسيق الأرقام
     const phoneNumber = cleanAndFormatEgyptianPhone(finalPhoneColumnIndex >= 0 ? (row[finalPhoneColumnIndex] || '') : '');
-    const whatsappNumber = cleanAndFormatEgyptianPhone(finalWhatsappColumnIndex >= 0 ? (row[finalWhatsappColumnIndex] || '') : '');
+    // قراءة رقم الواتساب الخام من الشيت (العمود D = الفهرس 3)
+    const rawWhatsappFromSheet = row[3] || '';
+    const whatsappNumber = cleanAndFormatEgyptianPhone(rawWhatsappFromSheet);
 
-    // مقارنة ذكية للأرقام: إذا كانا متطابقان، لا نعرض الواتساب
+    // تنظيف الأرقام
     const normalizedPhone = phoneNumber.trim();
     const normalizedWhatsApp = whatsappNumber.trim();
 
-    const shouldShowWhatsApp = normalizedWhatsApp && normalizedWhatsApp !== normalizedPhone;
+    // إرجاع الواتساب كما هو محفوظ في الشيت (بدون إخفائه)
+    // لضمان إمكانية التعديل عليه
 
     return {
       id: rowIndex,
@@ -1878,7 +1881,7 @@ export async function fetchLeads() {
       orderDate: row[0] || '', // العمود A
       name: row[1] || '', // العمود B
       phone: normalizedPhone, // العمود C
-      whatsapp: shouldShowWhatsApp ? normalizedWhatsApp : '', // العمود D - عرض الواتساب فقط إذا كان مختلف
+      whatsapp: normalizedWhatsApp, // العمود D - إرجاع الواتساب كما هو
       governorate: row[4] || '', // العمود E
       area: row[5] || '', // العمود F
       address: row[6] || '', // العمود G
@@ -1931,6 +1934,7 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   }
   if (updates.whatsapp !== undefined) {
     updatedRow[3] = updates.whatsapp; // رقم الواتساب
+    console.log(`📱 تحديث رقم الواتساب: "${updates.whatsapp}" في العمود D`);
   }
   if (updates.governorate !== undefined) {
     updatedRow[4] = updates.governorate; // المحافظة
