@@ -10,6 +10,7 @@ import LiveStats from '../components/LiveStats';
 import SmartNotificationSystem from '../components/SmartNotificationSystem';
 import SmartNotificationSettings from '../components/SmartNotificationSettings';
 import NotificationHistory from '../components/NotificationHistory';
+import FollowUpReminders from '../components/FollowUpReminders';
 
 import { useRealTimeOrderTracking } from '../hooks/useRealTimeOrderTracking';
 import { useCurrentUser } from '../hooks/useCurrentUser';
@@ -549,7 +550,18 @@ export default function Home() {
 
           {/* Tab Content */}
           <div className="space-y-6">
-            {activeTab === 'dashboard' && <Dashboard />}
+            {activeTab === 'dashboard' && (
+              <>
+                <FollowUpReminders
+                  orders={orders}
+                  currentUser={user?.username}
+                  onOrderClick={(order) => {
+                    setActiveTab('orders');
+                  }}
+                />
+                <Dashboard />
+              </>
+            )}
             {activeTab === 'orders' && (
               <OrdersTable
                 orders={getFilteredOrders('orders')}
