@@ -59,12 +59,12 @@ interface ReminderStats {
 const DEFAULT_SETTINGS: ReminderSettings = {
   enabled: true,
   thresholds: {
-    newOrder: 2,
-    noResponse: 4,
-    pendingConfirmation: 6,
-    whatsappSent: 8,
-    shippingFee: 12,
-    oldOrder: 24,
+    newOrder: 0.5,           // 30 دقيقة
+    noResponse: 1,           // ساعة واحدة
+    pendingConfirmation: 2,  // ساعتين
+    whatsappSent: 3,         // 3 ساعات
+    shippingFee: 4,          // 4 ساعات
+    oldOrder: 12,            // 12 ساعة
   },
   showInDashboard: true,
   showFloatingWidget: true,

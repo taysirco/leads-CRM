@@ -472,7 +472,7 @@ export const FollowUpReminders: React.FC<FollowUpRemindersProps> = ({
       )}
 
       {/* قسم لوحة التحكم */}
-      {settings.showInDashboard && stats.total > 0 && (
+      {settings.showInDashboard && (
         <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200 p-4 sm:p-6">
           {/* الهيدر */}
           <div className="flex items-center justify-between mb-4">
@@ -536,16 +536,24 @@ export const FollowUpReminders: React.FC<FollowUpRemindersProps> = ({
 
           {/* قائمة التنبيهات */}
           <div className="space-y-3">
-            {visibleReminders.map(reminder => (
-              <ReminderCard
-                key={reminder.id}
-                reminder={reminder}
-                onDismiss={dismissReminder}
-                onOrderClick={onOrderClick}
-                onCallClick={handleCallClick}
-                onWhatsAppClick={handleWhatsAppClick}
-              />
-            ))}
+            {stats.total === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <div className="text-4xl mb-2">✅</div>
+                <p className="font-medium text-gray-700">ممتاز! لا توجد طلبات تحتاج متابعة حالياً</p>
+                <p className="text-sm mt-1">سيتم تنبيهك تلقائياً عند وجود طلبات تحتاج متابعة</p>
+              </div>
+            ) : (
+              visibleReminders.map(reminder => (
+                <ReminderCard
+                  key={reminder.id}
+                  reminder={reminder}
+                  onDismiss={dismissReminder}
+                  onOrderClick={onOrderClick}
+                  onCallClick={handleCallClick}
+                  onWhatsAppClick={handleWhatsAppClick}
+                />
+              ))
+            )}
           </div>
 
           {/* عرض المزيد */}
