@@ -334,21 +334,25 @@ const ReminderSettingsModal: React.FC<ReminderSettingsModalProps> = ({
 
           {/* فترات التنبيه */}
           <div>
-            <h3 className="font-semibold text-gray-800 mb-3">⏱️ فترات التنبيه (بالساعات)</h3>
+            <h3 className="font-semibold text-gray-800 mb-3">⏱️ فترات التنبيه (بالدقائق)</h3>
+            <p className="text-xs text-gray-500 mb-3">التنبيه يظهر مرة واحدة فقط لكل طلب</p>
             <div className="grid grid-cols-2 gap-3">
               {Object.entries(settings.thresholds).map(([key, value]) => (
                 <div key={key} className="flex items-center gap-2">
                   <label className="text-sm text-gray-600 flex-1">
                     {thresholdLabels[key as keyof typeof settings.thresholds]}
                   </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="72"
-                    value={value}
-                    onChange={(e) => updateThresholds({ [key]: parseInt(e.target.value) || 1 })}
-                    className="w-16 px-2 py-1 border rounded-lg text-center"
-                  />
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="1440"
+                      value={value}
+                      onChange={(e) => updateThresholds({ [key]: parseInt(e.target.value) || 1 })}
+                      className="w-16 px-2 py-1 border rounded-lg text-center"
+                    />
+                    <span className="text-xs text-gray-400">د</span>
+                  </div>
                 </div>
               ))}
             </div>

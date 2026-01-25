@@ -30,14 +30,14 @@ export interface FollowUpReminder {
 
 export interface ReminderSettings {
   enabled: boolean;
-  // فترات التنبيه بالساعات
+  // فترات التنبيه بالدقائق
   thresholds: {
-    newOrder: number;              // طلب جديد (افتراضي: 2 ساعة)
-    noResponse: number;            // لم يرد (افتراضي: 4 ساعات)
-    pendingConfirmation: number;   // انتظار تأكيد (افتراضي: 6 ساعات)
-    whatsappSent: number;          // واتساب مُرسل (افتراضي: 8 ساعات)
-    shippingFee: number;           // طلب مصاريف شحن (افتراضي: 12 ساعة)
-    oldOrder: number;              // طلب قديم (افتراضي: 24 ساعة)
+    newOrder: number;              // طلب جديد (افتراضي: 15 دقيقة)
+    noResponse: number;            // لم يرد (افتراضي: 30 دقيقة)
+    pendingConfirmation: number;   // انتظار تأكيد (افتراضي: 60 دقيقة)
+    whatsappSent: number;          // واتساب مُرسل (افتراضي: 90 دقيقة)
+    shippingFee: number;           // طلب مصاريف شحن (افتراضي: 120 دقيقة)
+    oldOrder: number;              // طلب قديم (افتراضي: 240 دقيقة)
   };
   // إعدادات العرض
   showInDashboard: boolean;
@@ -59,12 +59,12 @@ interface ReminderStats {
 const DEFAULT_SETTINGS: ReminderSettings = {
   enabled: true,
   thresholds: {
-    newOrder: 0.5,           // 30 دقيقة
-    noResponse: 1,           // ساعة واحدة
-    pendingConfirmation: 2,  // ساعتين
-    whatsappSent: 3,         // 3 ساعات
-    shippingFee: 4,          // 4 ساعات
-    oldOrder: 12,            // 12 ساعة
+    newOrder: 15,            // 15 دقيقة
+    noResponse: 30,          // 30 دقيقة
+    pendingConfirmation: 60, // ساعة
+    whatsappSent: 90,        // ساعة ونصف
+    shippingFee: 120,        // ساعتين
+    oldOrder: 240,           // 4 ساعات
   },
   showInDashboard: true,
   showFloatingWidget: true,
@@ -132,31 +132,31 @@ function parseOrderDate(dateStr: string | number | null | undefined): Date | nul
   return null;
 }
 
-function getHoursElapsed(orderDate: Date): number {
+function getMinutesElapsed(orderDate: Date): number {
   const now = new Date();
   const diffMs = now.getTime() - orderDate.getTime();
-  return diffMs / (1000 * 60 * 60);
+  return diffMs / (1000 * 60); // بالدقائق
 }
 
-function formatTimeElapsed(hours: number): string {
-  if (hours < 1) {
-    const minutes = Math.floor(hours * 60);
-    return `منذ ${minutes} دقيقة`;
-  } else if (hours < 24) {
-    const h = Math.floor(hours);
+function formatTimeElapsed(minutes: number): string {
+  if (minutes < 60) {
+    const m = Math.floor(minutes);
+    return `منذ ${m} دقيقة`;
+  } else if (minutes < 1440) { // أقل من 24 ساعة
+    const h = Math.floor(minutes / 60);
     return `منذ ${h} ساعة${h > 2 && h < 11 ? 'ات' : ''}`;
   } else {
-    const days = Math.floor(hours / 24);
-    return `منذ ${days} يوم${days > 2 && days < 11 ? '' : ''}`;
+    const days = Math.floor(minutes / 1440);
+    return `منذ ${days} يوم`;
   }
 }
 
-function determinePriority(hours: number, category: ReminderCategory): ReminderPriority {
-  // الطلبات الجديدة والقديمة جداً لها أولوية عالية
-  if (category === 'old_order' || hours > 48) return 'urgent';
-  if (category === 'new_order' && hours > 4) return 'high';
-  if (hours > 24) return 'high';
-  if (hours > 12) return 'medium';
+function determinePriority(minutes: number, category: ReminderCategory): ReminderPriority {
+  // الطلبات القديمة جداً لها أولوية عالية
+  if (category === 'old_order' || minutes > 480) return 'urgent'; // > 8 ساعات
+  if (category === 'new_order' && minutes > 60) return 'high';    // > ساعة
+  if (minutes > 240) return 'high';   // > 4 ساعات
+  if (minutes > 120) return 'medium'; // > ساعتين
   return 'low';
 }
 
@@ -196,7 +196,7 @@ function getCategoryInfo(category: ReminderCategory): { title: string; icon: str
   return info[category];
 }
 
-function determineCategory(order: Order, hoursElapsed: number, thresholds: ReminderSettings['thresholds']): ReminderCategory | null {
+function determineCategory(order: Order, minutesElapsed: number, thresholds: ReminderSettings['thresholds']): ReminderCategory | null {
   const status = order.status;
 
   // الحالات المكتملة لا تحتاج تنبيه
@@ -205,28 +205,28 @@ function determineCategory(order: Order, hoursElapsed: number, thresholds: Remin
   }
 
   // طلب قديم جداً
-  if (hoursElapsed >= thresholds.oldOrder) {
+  if (minutesElapsed >= thresholds.oldOrder) {
     return 'old_order';
   }
 
   // حسب الحالة
-  if (status === 'جديد' && hoursElapsed >= thresholds.newOrder) {
+  if (status === 'جديد' && minutesElapsed >= thresholds.newOrder) {
     return 'new_order';
   }
 
-  if (status === 'لم يرد' && hoursElapsed >= thresholds.noResponse) {
+  if (status === 'لم يرد' && minutesElapsed >= thresholds.noResponse) {
     return 'no_response';
   }
 
-  if (status === 'في انتظار تأكيد العميل' && hoursElapsed >= thresholds.pendingConfirmation) {
+  if (status === 'في انتظار تأكيد العميل' && minutesElapsed >= thresholds.pendingConfirmation) {
     return 'pending_confirmation';
   }
 
-  if (status === 'تم التواصل معه واتساب' && hoursElapsed >= thresholds.whatsappSent) {
+  if (status === 'تم التواصل معه واتساب' && minutesElapsed >= thresholds.whatsappSent) {
     return 'whatsapp_sent';
   }
 
-  if (status === 'طلب مصاريف الشحن' && hoursElapsed >= thresholds.shippingFee) {
+  if (status === 'طلب مصاريف الشحن' && minutesElapsed >= thresholds.shippingFee) {
     return 'shipping_fee';
   }
 
@@ -293,18 +293,19 @@ export function useFollowUpReminders(orders: Order[], currentUser?: string) {
       const orderDate = parseOrderDate(order.orderDate);
       if (!orderDate) continue;
 
-      const hoursElapsed = getHoursElapsed(orderDate);
-      const category = determineCategory(order, hoursElapsed, settings.thresholds);
+      const minutesElapsed = getMinutesElapsed(orderDate);
+      const category = determineCategory(order, minutesElapsed, settings.thresholds);
 
       if (!category) continue;
 
-      const reminderId = `${order.id}-${category}`;
+      // التنبيه مرة واحدة فقط لكل طلب (باستخدام order.id فقط)
+      const reminderId = `order-${order.id}`;
       
-      // تجاهل التنبيهات المرفوضة
+      // تجاهل التنبيهات المرفوضة (مرة واحدة لكل طلب)
       if (dismissedReminders.has(reminderId)) continue;
 
       const categoryInfo = getCategoryInfo(category);
-      const priority = determinePriority(hoursElapsed, category);
+      const priority = determinePriority(minutesElapsed, category);
 
       result.push({
         id: reminderId,
@@ -314,8 +315,8 @@ export function useFollowUpReminders(orders: Order[], currentUser?: string) {
         priority,
         title: `${categoryInfo.icon} ${categoryInfo.title}`,
         message: `${order.name} - ${order.productName || 'بدون منتج'}`,
-        timeElapsed: formatTimeElapsed(hoursElapsed),
-        hoursElapsed,
+        timeElapsed: formatTimeElapsed(minutesElapsed),
+        hoursElapsed: minutesElapsed, // نحتفظ بالاسم للتوافق
         suggestedAction: categoryInfo.action,
         createdAt: new Date(),
         isDismissed: false,
