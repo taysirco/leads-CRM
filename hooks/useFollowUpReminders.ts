@@ -75,8 +75,12 @@ const DEFAULT_SETTINGS: ReminderSettings = {
 
 // ==================== دوال مساعدة ====================
 
-function parseOrderDate(dateStr: string): Date | null {
+function parseOrderDate(dateStr: string | number | null | undefined): Date | null {
   if (!dateStr) return null;
+  
+  // التأكد من أن القيمة string
+  const strDate = String(dateStr).trim();
+  if (!strDate || strDate === 'undefined' || strDate === 'null') return null;
   
   // محاولة تحليل التاريخ بتنسيقات مختلفة
   const formats = [
@@ -89,7 +93,7 @@ function parseOrderDate(dateStr: string): Date | null {
   ];
 
   for (const format of formats) {
-    const match = dateStr.match(format);
+    const match = strDate.match(format);
     if (match) {
       try {
         if (format === formats[0]) {
@@ -120,7 +124,7 @@ function parseOrderDate(dateStr: string): Date | null {
   }
 
   // محاولة أخيرة باستخدام Date.parse
-  const parsed = Date.parse(dateStr);
+  const parsed = Date.parse(strDate);
   if (!isNaN(parsed)) {
     return new Date(parsed);
   }
