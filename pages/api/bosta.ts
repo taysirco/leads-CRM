@@ -85,12 +85,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         continue;
       }
 
-      // التحقق من اكتمال البيانات المطلوبة
-      if (!order.name || !order.phone || !order.governorate || !order.address) {
+      // التحقق من اكتمال البيانات المطلوبة (المحافظة ليست مطلوبة هنا — createBostaDelivery يستخرجها من العنوان)
+      if (!order.name || !order.phone || !order.address) {
         const missing = [];
         if (!order.name) missing.push('الاسم');
         if (!order.phone) missing.push('الهاتف');
-        if (!order.governorate) missing.push('المحافظة');
         if (!order.address) missing.push('العنوان');
         results.push({
           orderId,

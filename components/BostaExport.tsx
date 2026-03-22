@@ -1,14 +1,14 @@
 import { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { cleanText, getUniqueProducts } from '../lib/textCleaner';
-import { formatToLocalEgyptianNumber, normalizeGovernorateName, validateEgyptianPhone } from '../lib/bosta';
+import { formatToLocalEgyptianNumber, normalizeGovernorateName, validateEgyptianPhone, parseAddressStructure } from '../lib/bosta';
 import StatusBadge from './StatusBadge';
 
 // 🧠 تدقيق جودة الطلب قبل الشحن — يكشف مشاكل محتملة
 function getOrderWarnings(order: Order): string[] {
   const warnings: string[] = [];
   // محافظة فارغة
-  if (!order.governorate || order.governorate.trim() === '') warnings.push('المحافظة فارغة');
+  if (!order.governorate || order.governorate.trim() === '') warnings.push('المحافظة فارغة (سيتم الاستخراج تلقائياً)');
   // عنوان قصير
   if (!order.address || order.address.trim().length < 5) warnings.push('العنوان قصير جداً');
   // هاتف غير صالح
@@ -244,9 +244,22 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       'City': normalizeGovernorateName(order.governorate),
       'Area': order.area || 'منطقة أخرى',
       'Street Name': order.address,
-      'Building#, Floor#, and Apartment#': '',
+      'Building#, Floor#, and Apartment#': (() => {
+        const parts = parseAddressStructure(order.address || '');
+        const segs: string[] = [];
+        if (parts.buildingNumber) segs.push(`عمارة ${parts.buildingNumber}`);
+        if (parts.floor) segs.push(parts.floor === '0' ? 'دور أرضي' : `الدور ${parts.floor}`);
+        if (parts.apartment) segs.push(`شقة ${parts.apartment}`);
+        return segs.join(' - ');
+      })(),
       'Work address': '',
-      'Delivery notes': order.notes || '',
+      'Delivery notes': (() => {
+        const noteParts: string[] = [];
+        if (order.notes) noteParts.push(order.notes);
+        const parts = parseAddressStructure(order.address || '');
+        if (parts.landmark) noteParts.push(`📍 ${parts.landmark}`);
+        return noteParts.join(' | ');
+      })(),
 
       // --- Order Details ---
       'Type': isExchange ? 'Exchange' : 'Cash Collection',
