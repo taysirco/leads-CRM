@@ -1,7 +1,22 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { createBostaDelivery } from '../../lib/bosta';
+import { createBostaDelivery, getTrackingUrl } from '../../lib/bosta';
 import { fetchLeads, updateLead } from '../../lib/googleSheets';
 import { checkRateLimitByType, getClientIP } from '../../lib/rateLimit';
+
+// معالجة متوازية مع حد للتزامن — يمنع إغراق بوسطة بطلبات متزامنة
+async function processBatch<T, R>(
+  items: T[],
+  processor: (item: T) => Promise<R>,
+  concurrency: number = 3
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const batchResults = await Promise.all(batch.map(processor));
+    results.push(...batchResults);
+  }
+  return results;
+}
 
 /**
  * API Route: /api/bosta
@@ -45,8 +60,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       orderId: number;
       success: boolean;
       trackingNumber?: string;
+      trackingUrl?: string;
       error?: string;
     }> = [];
+
+    // 🧠 فلترة وتحضير الطلبات قبل الإرسال
+    const validOrders: Array<{ order: any; orderId: number; effectiveFulfillment: number }> = [];
 
     for (const orderId of orderIds) {
       const order = leads.find((l) => l.id === Number(orderId));
@@ -81,7 +100,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         continue;
       }
 
-      // إنشاء الشحنة على بوسطة
+      // 🧠 ذكاء: كشف تلقائي لنوع التبديل من حالة الطلب
+      const isExchangeByStatus = /تبديل|استبدال|exchange/i.test(order.status || '');
+      const effectiveFulfillment = isExchangeByStatus ? 25 : fulfillmentType;
+      if (isExchangeByStatus && fulfillmentType !== 25) {
+        console.log(`🧠 [BOSTA API] كشف تلقائي: الطلب #${orderId} حالته "${order.status}" → تبديل (25)`);
+      }
+
+      // ⚠️ تحذير COD = 0 (ربما خطأ في البيانات)
+      const codValue = parseInt(String(order.totalPrice || '0').replace(/\D/g, '')) || 0;
+      if (codValue === 0) {
+        console.warn(`⚠️ [BOSTA API] الطلب #${orderId} مبلغ التحصيل = 0 — تأكد من صحة السعر`);
+      }
+
+      validOrders.push({ order, orderId, effectiveFulfillment });
+    }
+
+    // ✅ معالجة متوازية — 3 طلبات في نفس الوقت
+    const batchResults = await processBatch(validOrders, async ({ order, orderId, effectiveFulfillment }) => {
       const bostaResult = await createBostaDelivery({
         name: order.name,
         phone: order.phone,
@@ -95,12 +131,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         totalPrice: order.totalPrice,
         notes: order.notes,
         id: order.id,
-        fulfillmentType,
+        fulfillmentType: effectiveFulfillment,
       });
 
       if (bostaResult.success && bostaResult.trackingNumber) {
-        // تحديث الطلب في Google Sheet برقم التتبع والحالة
         const now = new Date().toLocaleString('sv-SE', { timeZone: 'Africa/Cairo' });
+        const trackingUrl = getTrackingUrl(bostaResult.trackingNumber);
         try {
           await updateLead(order.rowIndex, {
             status: 'تم الشحن',
@@ -110,28 +146,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
 
           console.log(`✅ [BOSTA API] تم الشحن وتحديث الطلب ${orderId} بنجاح`);
-          results.push({
+          return {
             orderId,
             success: true,
             trackingNumber: bostaResult.trackingNumber,
-          });
+            trackingUrl,
+          };
         } catch (updateError: any) {
           console.error(`⚠️ [BOSTA API] تم إنشاء الشحنة لكن فشل تحديث الشيت:`, updateError);
-          results.push({
+          return {
             orderId,
             success: true,
             trackingNumber: bostaResult.trackingNumber,
+            trackingUrl,
             error: `تم الشحن (تتبع: ${bostaResult.trackingNumber}) لكن فشل تحديث الشيت: ${updateError.message}`,
-          });
+          };
         }
       } else {
-        results.push({
+        return {
           orderId,
           success: false,
           error: bostaResult.error || 'خطأ غير معروف من بوسطة',
-        });
+        };
       }
-    }
+    }, 3);
+
+    results.push(...batchResults);
 
     // ملخص النتائج
     const successCount = results.filter((r) => r.success).length;

@@ -1,7 +1,25 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { mapBostaStateToCRM, verifyWebhookAuth } from '../../lib/bosta';
+import { mapBostaStateToCRM, verifyWebhookAuth, getTrackingUrl } from '../../lib/bosta';
 import { fetchLeads, updateLead } from '../../lib/googleSheets';
 import type { BostaWebhookPayload } from '../../lib/bosta';
+
+// خريطة أكواد الاستثناء من بوسطة لرسائل عربية مفهومة
+const BOSTA_EXCEPTION_MAP: Record<number, string> = {
+  1: 'العميل طلب التأجيل',
+  2: 'العميل لم يرد على الهاتف',
+  3: 'رقم الهاتف غير صحيح',
+  4: 'العنوان غير صحيح',
+  5: 'العميل رفض الاستلام',
+  6: 'العميل رفض الدفع',
+  7: 'الشحنة تالفة',
+  8: 'عنوان غير مكتمل',
+  9: 'العميل غير متواجد',
+  10: 'مشكلة أمنية',
+  11: 'لا يمكن الوصول للمنطقة',
+};
+
+// حالات نهائية لا يمكن الرجوع عنها
+const TERMINAL_CRM_STATES = ['تم التسليم'];
 
 /**
  * API Route: /api/bosta-webhook
@@ -90,16 +108,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
+    // 🛡️ حماية الحالات النهائية — لا يمكن الرجوع من "تم التسليم" إلى حالة أقل
+    if (TERMINAL_CRM_STATES.includes(targetLead.status) && !TERMINAL_CRM_STATES.includes(crmStatus)) {
+      console.log(`🛡️ [BOSTA WEBHOOK] رفض — الطلب #${targetLead.id} في حالة نهائية "${targetLead.status}" ولا يمكن الرجوع إلى "${crmStatus}"`);
+      return res.status(200).json({
+        received: true,
+        skipped: true,
+        orderId: targetLead.id,
+        reason: `Terminal state '${targetLead.status}' cannot be reverted to '${crmStatus}'`,
+      });
+    }
+
     // تجميع ملاحظات الحالة
     let statusNote = `\u200F${bostaStateAr}`;
     if (exceptionReason) {
-      statusNote += ` - ${exceptionReason}`;
+      // 🧠 ترجمة كود الاستثناء إلى عربي
+      const exCode = payload.exceptionCode;
+      const exArabic = exCode && BOSTA_EXCEPTION_MAP[exCode] ? BOSTA_EXCEPTION_MAP[exCode] : exceptionReason;
+      statusNote += ` - ${exArabic}`;
     }
     if (numberOfAttempts && numberOfAttempts > 0) {
       statusNote += ` (محاولة ${numberOfAttempts})`;
     }
     if (cod && state === 45) {
       statusNote += ` | تحصيل: ${cod} جنيه`;
+    }
+    // ✅ إضافة رابط التتبع عند التسليم
+    if (trackingNumber && (state === 45 || state === 46)) {
+      statusNote += ` | تتبع: ${getTrackingUrl(trackingNumber)}`;
     }
 
     // تحديث الطلب في Google Sheet
