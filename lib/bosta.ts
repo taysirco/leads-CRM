@@ -43,18 +43,37 @@ export function formatToLocalEgyptianNumber(phone: string): string {
   let cleaned = phone.replace(/\D/g, '');
 
   if (cleaned.startsWith('20') && cleaned.length === 12) {
-    return '0' + cleaned.substring(2);
+    cleaned = '0' + cleaned.substring(2);
+  } else if (cleaned.startsWith('2') && cleaned.length === 11) {
+    cleaned = '0' + cleaned.substring(1);
+  } else if (cleaned.startsWith('1') && cleaned.length === 10) {
+    cleaned = '0' + cleaned;
   }
-  if (cleaned.startsWith('2') && cleaned.length === 11) {
-    return '0' + cleaned.substring(1);
-  }
-  if (cleaned.startsWith('1') && cleaned.length === 10) {
-    return '0' + cleaned;
-  }
-  if (cleaned.startsWith('01') && cleaned.length === 11) {
-    return cleaned;
-  }
+
   return cleaned;
+}
+
+// التحقق من صحة رقم الهاتف المصري (010/011/012/015)
+export function validateEgyptianPhone(phone: string): { valid: boolean; formatted: string; error?: string } {
+  const formatted = formatToLocalEgyptianNumber(phone);
+  if (!formatted) return { valid: false, formatted: '', error: 'رقم الهاتف فارغ' };
+  if (formatted.length !== 11) return { valid: false, formatted, error: `رقم الهاتف "${phone}" يجب أن يكون 11 رقم (الحالي: ${formatted.length})` };
+  if (!formatted.startsWith('01')) return { valid: false, formatted, error: `رقم الهاتف "${phone}" يجب أن يبدأ بـ 01` };
+  const prefix = formatted.substring(0, 3);
+  if (!['010', '011', '012', '015'].includes(prefix)) {
+    return { valid: false, formatted, error: `بادئة الهاتف "${prefix}" غير صالحة — المسموح: 010, 011, 012, 015` };
+  }
+  return { valid: true, formatted };
+}
+
+// تنظيف العنوان — إزالة الفراغات الزائدة والرموز غير المفيدة
+export function sanitizeAddress(address: string): string {
+  if (!address) return '';
+  return address
+    .replace(/\s+/g, ' ')              // فراغات متعددة → واحد
+    .replace(/^[\s,.-]+|[\s,.-]+$/g, '') // إزالة الفواصل والنقاط من الأطراف
+    .replace(/\n+/g, ' - ')              // أسطر جديدة → فاصل
+    .trim();
 }
 
 // Bosta API يقبل أسماء المحافظات بالعربية مباشرة
@@ -139,41 +158,45 @@ interface BostaZone {
   dropOffAvailability: boolean;
 }
 
-// كاش في الذاكرة — يُحمل مرة واحدة لكل cold start
+// كاش في الذاكرة مع TTL — يُحمل ويُجدد كل ساعة
+const CACHE_TTL_MS = 60 * 60 * 1000; // ساعة واحدة
 let cachedCities: BostaCity[] | null = null;
-let cachedZones: Map<string, BostaZone[]> = new Map();
+let cachedCitiesTimestamp = 0;
+let cachedZones: Map<string, { data: BostaZone[]; timestamp: number }> = new Map();
 
-/** جلب قائمة المدن من بوسطة (مع كاش) */
+/** جلب قائمة المدن من بوسطة (مع كاش + TTL) */
 async function fetchBostaCities(): Promise<BostaCity[]> {
-  if (cachedCities) return cachedCities;
+  if (cachedCities && (Date.now() - cachedCitiesTimestamp) < CACHE_TTL_MS) return cachedCities;
   try {
     const res = await fetch(`${BOSTA_BASE_URL}/cities`, {
       headers: { 'Authorization': BOSTA_API_KEY },
     });
     const json = await res.json();
     cachedCities = json?.data?.list || [];
-    console.log(`📍 [BOSTA] تم تحميل ${cachedCities!.length} مدينة`);
+    cachedCitiesTimestamp = Date.now();
+    console.log(`📍 [BOSTA] تم تحميل ${cachedCities!.length} مدينة (TTL: 1h)`);
     return cachedCities!;
   } catch (e) {
     console.error('❌ [BOSTA] فشل تحميل المدن:', e);
-    return [];
+    return cachedCities || []; // fallback للكاش القديم
   }
 }
 
-/** جلب مناطق مدينة معينة من بوسطة (مع كاش) */
+/** جلب مناطق مدينة معينة من بوسطة (مع كاش + TTL) */
 async function fetchBostaZones(cityId: string): Promise<BostaZone[]> {
-  if (cachedZones.has(cityId)) return cachedZones.get(cityId)!;
+  const cached = cachedZones.get(cityId);
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) return cached.data;
   try {
     const res = await fetch(`${BOSTA_BASE_URL}/cities/${cityId}/zones`, {
       headers: { 'Authorization': BOSTA_API_KEY },
     });
     const json = await res.json();
     const zones = json?.data || [];
-    cachedZones.set(cityId, zones);
+    cachedZones.set(cityId, { data: zones, timestamp: Date.now() });
     return zones;
   } catch (e) {
     console.error(`❌ [BOSTA] فشل تحميل مناطق المدينة ${cityId}:`, e);
-    return [];
+    return cached?.data || []; // fallback للكاش القديم
   }
 }
 
@@ -388,18 +411,30 @@ export async function createBostaDelivery(order: {
   const firstName = nameParts[0] || order.name;
   const lastName = nameParts.slice(1).join(' ') || '.';
 
-  // استخراج مبلغ التحصيل (COD)
-  const codAmount = parseInt(String(order.totalPrice).replace(/\D/g, '')) || 0;
+  // استخراج مبلغ التحصيل (COD) — يدعم الأرقام العشرية (يُقرّب لأعلى)
+  const priceStr = String(order.totalPrice || '0').replace(/[^\d.]/g, '');
+  const codAmount = Math.ceil(parseFloat(priceStr) || 0);
 
-  // تنسيق رقم الهاتف الأساسي
-  const formattedPhone = formatToLocalEgyptianNumber(order.phone);
-  if (!formattedPhone) {
-    return { success: false, error: `رقم الهاتف "${order.phone}" غير صالح — لا يمكن تنسيقه` };
+  // ✅ التحقق من رقم الهاتف الأساسي (مع التحقق من البادئة المصرية)
+  const phoneValidation = validateEgyptianPhone(order.phone);
+  if (!phoneValidation.valid) {
+    return { success: false, error: `📱 ${phoneValidation.error}` };
   }
 
-  // تنسيق رقم الهاتف الثاني (واتساب أو رقم بديل) — يُتجاهل إذا تطابق مع الأساسي
-  const rawPhone2 = order.whatsapp ? formatToLocalEgyptianNumber(order.whatsapp) : undefined;
-  const formattedPhone2 = (rawPhone2 && rawPhone2 !== formattedPhone) ? rawPhone2 : undefined;
+  // تنسيق رقم الهاتف الثاني (واتساب أو رقم بديل) — يُتجاهل إذا تطابق مع الأساسي أو غير صالح
+  let formattedPhone2: string | undefined;
+  if (order.whatsapp) {
+    const phone2Validation = validateEgyptianPhone(order.whatsapp);
+    if (phone2Validation.valid && phone2Validation.formatted !== phoneValidation.formatted) {
+      formattedPhone2 = phone2Validation.formatted;
+    }
+  }
+
+  // ✅ تنظيف العنوان
+  const cleanAddress = sanitizeAddress(order.address);
+  if (!cleanAddress || cleanAddress.length < 5) {
+    return { success: false, error: `📍 العنوان "${order.address}" قصير جداً — يجب أن يكون 5 حروف على الأقل` };
+  }
 
   // 🧠 التحقق الذكي — مطابقة المحافظة والمنطقة ضد قاعدة بيانات بوسطة
   const normalizedGov = normalizeGovernorateName(order.governorate);
@@ -427,12 +462,12 @@ export async function createBostaDelivery(order: {
     dropOffAddress: {
       city: match.city,           // ✅ المدينة المصححة من بوسطة
       zone: match.zone || undefined, // ✅ المنطقة المصححة من بوسطة
-      firstLine: order.address,
+      firstLine: cleanAddress,    // ✅ العنوان المنظف
     },
     receiver: {
       firstName,
       lastName,
-      phone: formattedPhone,
+      phone: phoneValidation.formatted, // ✅ رقم الهاتف المتحقق منه
       ...(formattedPhone2 && { phone2: formattedPhone2 }),
     },
     businessReference,
@@ -458,51 +493,79 @@ export async function createBostaDelivery(order: {
     console.log(`📦 [BOSTA] البيانات:`, JSON.stringify(deliveryData, null, 2));
   }
 
-  try {
-    const response = await fetch(`${BOSTA_BASE_URL}/deliveries`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': BOSTA_API_KEY,
-      },
-      body: JSON.stringify(deliveryData),
-    });
-
-    const responseText = await response.text();
-    let result: any;
+  // ✅ Retry مع exponential backoff — 3 محاولات
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      result = JSON.parse(responseText);
-    } catch {
-      console.error(`❌ [BOSTA] رد غير صالح (ليس JSON):`, responseText.substring(0, 500));
-      return { success: false, error: `رد غير صالح من بوسطة: ${response.status}` };
-    }
+      const response = await fetch(`${BOSTA_BASE_URL}/deliveries`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': BOSTA_API_KEY,
+        },
+        body: JSON.stringify(deliveryData),
+      });
 
-    if (!response.ok) {
-      console.error(`❌ [BOSTA] فشل (${response.status}):`, JSON.stringify(result));
-      console.error(`❌ [BOSTA] البيانات المرسلة:`, JSON.stringify(deliveryData));
+      const responseText = await response.text();
+      let result: any;
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        console.error(`❌ [BOSTA] رد غير صالح (ليس JSON):`, responseText.substring(0, 500));
+        return { success: false, error: `رد غير صالح من بوسطة: ${response.status}` };
+      }
+
+      if (!response.ok) {
+        // إذا 400 (bad request) لا تعد المحاولة — الخطأ في البيانات
+        if (response.status === 400 || response.status === 422) {
+          console.error(`❌ [BOSTA] فشل (${response.status}):`, JSON.stringify(result));
+          console.error(`❌ [BOSTA] البيانات المرسلة:`, JSON.stringify(deliveryData));
+          return {
+            success: false,
+            error: result.message || result.error || JSON.stringify(result) || `خطأ من بوسطة: ${response.status}`,
+          };
+        }
+        // للأخطاء الأخرى (500, 503, timeout) — أعد المحاولة
+        if (attempt < MAX_RETRIES) {
+          const delay = Math.pow(2, attempt) * 500; // 1s, 2s
+          console.warn(`⚠️ [BOSTA] فشل المحاولة ${attempt}/${MAX_RETRIES} (${response.status}) — إعادة بعد ${delay}ms`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        console.error(`❌ [BOSTA] فشل نهائي بعد ${MAX_RETRIES} محاولات:`, JSON.stringify(result));
+        return {
+          success: false,
+          error: result.message || result.error || `خطأ من بوسطة: ${response.status}`,
+        };
+      }
+
+      // بوسطة تُغلف البيانات في result.data
+      const data = result.data || result;
+      const trackingNumber = String(data.trackingNumber || data._id || '');
+      console.log(`✅ [BOSTA] تم إنشاء الشحنة بنجاح! رقم التتبع: ${trackingNumber}`);
+
+      return {
+        success: true,
+        trackingNumber,
+        bostaId: data._id,
+      };
+    } catch (error: any) {
+      if (attempt < MAX_RETRIES) {
+        const delay = Math.pow(2, attempt) * 500;
+        console.warn(`⚠️ [BOSTA] خطأ اتصال (محاولة ${attempt}/${MAX_RETRIES}) — إعادة بعد ${delay}ms:`, error.message);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      console.error(`❌ [BOSTA] خطأ في الاتصال بـ API بعد ${MAX_RETRIES} محاولات:`, error);
       return {
         success: false,
-        error: result.message || result.error || JSON.stringify(result) || `خطأ من بوسطة: ${response.status}`,
+        error: `فشل الاتصال بـ Bosta API: ${error.message}`,
       };
     }
-
-    // بوسطة تُغلف البيانات في result.data
-    const data = result.data || result;
-    const trackingNumber = String(data.trackingNumber || data._id || '');
-    console.log(`✅ [BOSTA] تم إنشاء الشحنة بنجاح! رقم التتبع: ${trackingNumber}`);
-
-    return {
-      success: true,
-      trackingNumber,
-      bostaId: data._id,
-    };
-  } catch (error: any) {
-    console.error(`❌ [BOSTA] خطأ في الاتصال بـ API:`, error);
-    return {
-      success: false,
-      error: `فشل الاتصال بـ Bosta API: ${error.message}`,
-    };
   }
+
+  // لن يصل هنا أبداً — لكن TypeScript يحتاجه
+  return { success: false, error: 'خطأ غير متوقع' };
 }
 
 // التحقق من صحة webhook — timing-safe لمنع هجمات التوقيت

@@ -49,7 +49,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   const [searchTerm, setSearchTerm] = useState('');
   const [productFilter, setProductFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
-  const [fulfillmentType, setFulfillmentType] = useState<10 | 30>(10); // 10 = من مخزونك, 30 = مخزون بوسطة
+  const [fulfillmentType, setFulfillmentType] = useState<10 | 25 | 30>(10); // 10 = عادي, 25 = تبديل, 30 = مخزون بوسطة
 
   // Filter orders based on search and filters
   const filteredOrders = useMemo(() => {
@@ -287,7 +287,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       return;
     }
 
-    const shipMode = fulfillmentType === 30 ? '🏭 مخزون بوسطة (Fulfillment)' : '🏠 مخزونك الشخصي';
+    const shipMode = fulfillmentType === 30 ? '🏭 مخزون بوسطة (Fulfillment)' : fulfillmentType === 25 ? '🔄 تبديل (Exchange)' : '🏠 مخزونك الشخصي';
     const confirmShip = confirm(
       `هل أنت متأكد من إنشاء ${selectedOrders.length} شحنة على بوسطة؟\n\n` +
       `📦 نوع الشحن: ${shipMode}\n\n` +
@@ -424,6 +424,16 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                 onChange={() => setFulfillmentType(10)} className="accent-purple-600" />
               <span className="font-medium">🏠 شحن من مخزوني</span>
               <span className="text-xs text-gray-500">(بوسطة تستلم منك)</span>
+            </label>
+            <label className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 cursor-pointer transition-all text-sm ${
+              fulfillmentType === 25 
+                ? 'border-orange-500 bg-orange-100 text-orange-800 shadow-sm' 
+                : 'border-gray-300 bg-white text-gray-600 hover:border-orange-300'
+            }`}>
+              <input type="radio" name="fulfillmentType" value={25} checked={fulfillmentType === 25}
+                onChange={() => setFulfillmentType(25)} className="accent-orange-600" />
+              <span className="font-medium">🔄 تبديل (Exchange)</span>
+              <span className="text-xs text-gray-500">(إرسال + استلام)</span>
             </label>
             <label className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 cursor-pointer transition-all text-sm ${
               fulfillmentType === 30 
