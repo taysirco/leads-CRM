@@ -79,6 +79,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
+    // حماية ضد التكرار (idempotency) — إذا كانت الحالة نفسها بالفعل، تجاهل
+    if (targetLead.bostaState === bostaStateAr && targetLead.status === crmStatus) {
+      console.log(`ℹ️ [BOSTA WEBHOOK] تجاهل — الطلب #${targetLead.id} بالفعل في حالة "${crmStatus}"`);
+      return res.status(200).json({
+        received: true,
+        skipped: true,
+        orderId: targetLead.id,
+        reason: 'Status already up to date',
+      });
+    }
+
     // تجميع ملاحظات الحالة
     let statusNote = `\u200F${bostaStateAr}`;
     if (exceptionReason) {
@@ -96,6 +107,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       status: crmStatus,
       bostaState: bostaStateAr,
       lastBostaUpdate: now,
+      notes: `${targetLead.notes ? targetLead.notes + ' | ' : ''}‏[${now}] ${statusNote}`,
     };
 
     // حفظ رقم التتبع إذا لم يكن محفوظاً بالفعل

@@ -2,6 +2,7 @@
  * Bosta Shipping API Client
  * يتعامل مع Bosta API لإنشاء الشحنات واستقبال تحديثات الحالة
  */
+import crypto from 'crypto';
 
 const BOSTA_BASE_URL = 'https://app.bosta.co/api/v2';
 const BOSTA_API_KEY = process.env.BOSTA_API_KEY || '';
@@ -253,8 +254,11 @@ export async function createBostaDelivery(order: {
     notes: order.notes || undefined,
   };
 
-  console.log(`🚚 [BOSTA] إنشاء شحنة جديدة للطلب #${order.id}...`);
-  console.log(`📦 [BOSTA] البيانات:`, JSON.stringify(deliveryData, null, 2));
+  console.log(`🚚 [BOSTA] إنشاء شحنة للطلب #${order.id} → ${normalizedGov} | COD: ${codAmount} | نوع: ${shipmentType === 30 ? 'Fulfillment' : 'عادي'}`);
+  // لا نطبع البيانات الكاملة في الإنتاج (خصوصية أرقام الهاتف)
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`📦 [BOSTA] البيانات:`, JSON.stringify(deliveryData, null, 2));
+  }
 
   try {
     const response = await fetch(`${BOSTA_BASE_URL}/deliveries`, {
@@ -293,7 +297,7 @@ export async function createBostaDelivery(order: {
   }
 }
 
-// التحقق من صحة webhook
+// التحقق من صحة webhook — timing-safe لمنع هجمات التوقيت
 export function verifyWebhookAuth(authHeader: string | null | undefined): boolean {
   const webhookSecret = process.env.BOSTA_WEBHOOK_SECRET;
   // إذا لم يتم تعيين سر webhook، اقبل أي طلب (للتطوير)
@@ -301,7 +305,16 @@ export function verifyWebhookAuth(authHeader: string | null | undefined): boolea
     console.warn('⚠️ [BOSTA] BOSTA_WEBHOOK_SECRET غير مُعرّف — يتم قبول جميع الطلبات');
     return true;
   }
-  return authHeader === webhookSecret;
+  if (!authHeader) return false;
+  // مقارنة آمنة ضد هجمات التوقيت
+  try {
+    const secretBuf = Buffer.from(webhookSecret, 'utf8');
+    const headerBuf = Buffer.from(authHeader, 'utf8');
+    if (secretBuf.length !== headerBuf.length) return false;
+    return crypto.timingSafeEqual(secretBuf, headerBuf);
+  } catch {
+    return false;
+  }
 }
 
 // الحصول على رابط التتبع

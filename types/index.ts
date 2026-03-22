@@ -42,6 +42,7 @@ export interface Order {
     bostaTrackingNumber?: string;
     bostaState?: string;
     lastBostaUpdate?: string;
+    fulfillmentType?: 10 | 30;
 }
 
 export interface OrderUpdate extends Partial<Order> {
