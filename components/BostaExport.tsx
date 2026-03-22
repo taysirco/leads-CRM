@@ -212,6 +212,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
 
   const mapOrderToBosta = (order: Order) => {
     // ✅ يستخدم الدوال المشتركة من bosta.ts (DRY — مصدر واحد للحقيقة)
+    const isExchange = /تبديل|استبدال|exchange/i.test(order.status || '');
     return {
       'Full Name': order.name,
       'Phone': formatToLocalEgyptianNumber(order.phone),
@@ -224,16 +225,16 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       'Delivery notes': order.notes || '',
 
       // --- Order Details ---
-      'Type': 'Cash Collection',
+      'Type': isExchange ? 'Exchange' : 'Cash Collection',
       'Cash Amount': order.totalPrice ? String(order.totalPrice).replace(/\D/g, '') || '0' : '0',
       '#Items': order.quantity || '1',
       'Package Description': order.productName || order.orderDetails || 'Order',
       'Order Reference': `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}`,
-      'Allow opening package': '',
+      'Allow opening package': 'yes',
 
       // --- Exchange / Large Deliveries (Optional) ---
-      'Return #Items': '',
-      'Return Package Description': '',
+      'Return #Items': isExchange ? (order.quantity || '1') : '',
+      'Return Package Description': isExchange ? (order.productName || order.orderDetails || 'Return') : '',
       'Package Type': '',
     };
   };

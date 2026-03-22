@@ -24,8 +24,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { orderIds, fulfillmentType: rawFulfillmentType } = req.body;
 
-  // التحقق من نوع الشحن — السماح بـ 10 (عادي) أو 30 (Fulfillment) فقط
-  const fulfillmentType = [10, 30].includes(Number(rawFulfillmentType)) ? Number(rawFulfillmentType) : 10;
+  // التحقق من نوع الشحن — 10 (عادي) أو 25 (تبديل/Exchange) أو 30 (Fulfillment)
+  const fulfillmentType = [10, 25, 30].includes(Number(rawFulfillmentType)) ? Number(rawFulfillmentType) : 10;
 
   if (!Array.isArray(orderIds) || orderIds.length === 0) {
     return res.status(400).json({
@@ -34,7 +34,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  console.log(`🚚 [BOSTA API] طلب إنشاء ${orderIds.length} شحنة (نوع: ${fulfillmentType === 30 ? 'مخزون بوسطة' : 'عادي'})...`);
+  const typeLabel = fulfillmentType === 30 ? 'مخزون بوسطة' : fulfillmentType === 25 ? 'تبديل/Exchange' : 'عادي';
+  console.log(`🚚 [BOSTA API] طلب إنشاء ${orderIds.length} شحنة (نوع: ${typeLabel})...`);
 
   try {
     // جلب بيانات الطلبات من Google Sheets

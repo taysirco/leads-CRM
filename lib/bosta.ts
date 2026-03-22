@@ -153,6 +153,7 @@ export interface BostaDeliveryRequest {
   };
   businessReference: string;
   cod: number;
+  allowToOpenPackage?: boolean;
   notes?: string;
   webhookUrl?: string;
 }
@@ -251,6 +252,7 @@ export async function createBostaDelivery(order: {
     },
     businessReference,
     cod: codAmount,
+    allowToOpenPackage: true, // ✅ السماح للعميل بفتح الشحنة والفحص
     notes: order.notes || undefined,
   };
 
