@@ -123,6 +123,161 @@ export function normalizeGovernorateName(governorate: string): string {
   return cleaned;
 }
 
+// ==================== التحقق الذكي من المدينة والمنطقة عبر Bosta API ====================
+
+interface BostaCity {
+  _id: string;
+  name: string;       // English name (e.g. "Cairo")
+  nameAr: string;     // Arabic name (e.g. "القاهره")
+  alias?: string;     // alias (e.g. "القاهرة")
+}
+
+interface BostaZone {
+  _id: string;
+  name: string;       // English name
+  nameAr: string;     // Arabic name
+  dropOffAvailability: boolean;
+}
+
+// كاش في الذاكرة — يُحمل مرة واحدة لكل cold start
+let cachedCities: BostaCity[] | null = null;
+let cachedZones: Map<string, BostaZone[]> = new Map();
+
+/** جلب قائمة المدن من بوسطة (مع كاش) */
+async function fetchBostaCities(): Promise<BostaCity[]> {
+  if (cachedCities) return cachedCities;
+  try {
+    const res = await fetch(`${BOSTA_BASE_URL}/cities`, {
+      headers: { 'Authorization': BOSTA_API_KEY },
+    });
+    const json = await res.json();
+    cachedCities = json?.data?.list || [];
+    console.log(`📍 [BOSTA] تم تحميل ${cachedCities!.length} مدينة`);
+    return cachedCities!;
+  } catch (e) {
+    console.error('❌ [BOSTA] فشل تحميل المدن:', e);
+    return [];
+  }
+}
+
+/** جلب مناطق مدينة معينة من بوسطة (مع كاش) */
+async function fetchBostaZones(cityId: string): Promise<BostaZone[]> {
+  if (cachedZones.has(cityId)) return cachedZones.get(cityId)!;
+  try {
+    const res = await fetch(`${BOSTA_BASE_URL}/cities/${cityId}/zones`, {
+      headers: { 'Authorization': BOSTA_API_KEY },
+    });
+    const json = await res.json();
+    const zones = json?.data || [];
+    cachedZones.set(cityId, zones);
+    return zones;
+  } catch (e) {
+    console.error(`❌ [BOSTA] فشل تحميل مناطق المدينة ${cityId}:`, e);
+    return [];
+  }
+}
+
+/** تطبيع النص العربي — إزالة التشكيل وتوحيد الحروف */
+function normalizeArabic(text: string): string {
+  return text
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670]/g, '') // حذف التشكيل
+    .replace(/[أإآ]/g, 'ا')    // توحيد الألف
+    .replace(/ة/g, 'ه')        // التاء المربوطة → هاء
+    .replace(/ى/g, 'ي')        // الألف المقصورة → ياء
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
+    .trim().toLowerCase();
+}
+
+/** حساب تشابه بين نصين (Jaccard similarity على مستوى الحروف) */
+function textSimilarity(a: string, b: string): number {
+  const na = normalizeArabic(a);
+  const nb = normalizeArabic(b);
+  if (na === nb) return 1;
+  if (na.includes(nb) || nb.includes(na)) return 0.85;
+  const setA = new Set(na.split(''));
+  const setB = new Set(nb.split(''));
+  const intersection = [...setA].filter(c => setB.has(c)).length;
+  const union = new Set([...setA, ...setB]).size;
+  return union > 0 ? intersection / union : 0;
+}
+
+/**
+ * 🧠 التحقق الذكي — يطابق المدينة والمنطقة ضد قاعدة بيانات بوسطة الفعلية
+ * يرجع الأسماء المصححة أو null إذا لم يجد تطابق
+ */
+export async function smartMatchCityAndZone(
+  userCity: string,
+  userArea?: string
+): Promise<{ city: string; zone?: string; cityId?: string; warning?: string }> {
+  const cities = await fetchBostaCities();
+  if (cities.length === 0) {
+    // إذا فشل التحميل، نرجع القيمة كما هي
+    return { city: userCity, zone: userArea };
+  }
+
+  // ابحث عن أفضل تطابق للمدينة
+  let bestCity: BostaCity | null = null;
+  let bestScore = 0;
+
+  for (const city of cities) {
+    const candidates = [city.name, city.nameAr, city.alias || ''].filter(Boolean);
+    for (const candidate of candidates) {
+      const score = textSimilarity(userCity, candidate);
+      if (score > bestScore) {
+        bestScore = score;
+        bestCity = city;
+      }
+    }
+  }
+
+  if (!bestCity || bestScore < 0.5) {
+    return { city: userCity, zone: userArea, warning: `⚠️ المدينة "${userCity}" غير موجودة في بوسطة` };
+  }
+
+  // استخدم اسم المدينة المعتمد من بوسطة (nameAr)
+  const correctedCity = bestCity.nameAr;
+  let warning = bestScore < 0.9 ? `📍 تم تصحيح المدينة: "${userCity}" → "${correctedCity}"` : undefined;
+
+  // إذا لا يوجد منطقة، نرجع المدينة فقط
+  if (!userArea || userArea.trim() === '') {
+    return { city: correctedCity, cityId: bestCity._id, warning };
+  }
+
+  // ابحث عن أفضل تطابق للمنطقة
+  const zones = await fetchBostaZones(bestCity._id);
+  if (zones.length === 0) {
+    return { city: correctedCity, zone: userArea, cityId: bestCity._id, warning };
+  }
+
+  let bestZone: BostaZone | null = null;
+  let bestZoneScore = 0;
+
+  for (const zone of zones) {
+    if (!zone.dropOffAvailability) continue;
+    const candidates = [zone.name, zone.nameAr].filter(Boolean);
+    for (const candidate of candidates) {
+      const score = textSimilarity(userArea, candidate);
+      if (score > bestZoneScore) {
+        bestZoneScore = score;
+        bestZone = zone;
+      }
+    }
+  }
+
+  if (bestZone && bestZoneScore >= 0.5) {
+    const correctedZone = bestZone.nameAr;
+    if (bestZoneScore < 0.9) {
+      const zoneWarning = `📍 تم تصحيح المنطقة: "${userArea}" → "${correctedZone}"`;
+      warning = warning ? `${warning} | ${zoneWarning}` : zoneWarning;
+    }
+    return { city: correctedCity, zone: correctedZone, cityId: bestCity._id, warning };
+  }
+
+  // المنطقة غير موجودة — نرسلها كما هي (بوسطة قد تقبلها)
+  return { city: correctedCity, zone: userArea, cityId: bestCity._id, warning };
+}
+
 // ==================== Bosta API ====================
 
 export interface BostaDeliveryRequest {
@@ -220,14 +375,18 @@ export async function createBostaDelivery(order: {
   const rawPhone2 = order.whatsapp ? formatToLocalEgyptianNumber(order.whatsapp) : undefined;
   const formattedPhone2 = (rawPhone2 && rawPhone2 !== formattedPhone) ? rawPhone2 : undefined;
 
-  // تحويل المحافظة
+  // 🧠 التحقق الذكي — مطابقة المحافظة والمنطقة ضد قاعدة بيانات بوسطة
   const normalizedGov = normalizeGovernorateName(order.governorate);
+  const match = await smartMatchCityAndZone(normalizedGov, order.area);
+  if (match.warning) {
+    console.log(`🧠 [BOSTA] ${match.warning}`);
+  }
 
   // إنشاء مرجع فريد للطلب (مع لاحقة عشوائية لتجنب التكرار عند إعادة الشحن بنفس اليوم)
   const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
   const businessReference = `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}-${randomSuffix}`;
 
-  // تحديد نوع الشحن: 10 = عادي (من مخزونك), 30 = من مخزون بوسطة (Fulfillment)
+  // تحديد نوع الشحن: 10 = عادي, 25 = تبديل, 30 = Fulfillment
   const shipmentType = order.fulfillmentType || 10;
 
   const deliveryData: BostaDeliveryRequest = {
@@ -240,8 +399,8 @@ export async function createBostaDelivery(order: {
       size: 'SMALL',
     },
     dropOffAddress: {
-      city: normalizedGov,
-      zone: order.area || undefined,
+      city: match.city,           // ✅ المدينة المصححة من بوسطة
+      zone: match.zone || undefined, // ✅ المنطقة المصححة من بوسطة
       firstLine: order.address,
     },
     receiver: {
@@ -256,7 +415,8 @@ export async function createBostaDelivery(order: {
     notes: order.notes || undefined,
   };
 
-  console.log(`🚚 [BOSTA] إنشاء شحنة للطلب #${order.id} → ${normalizedGov} | COD: ${codAmount} | نوع: ${shipmentType === 30 ? 'Fulfillment' : 'عادي'}`);
+  const typeLabel = shipmentType === 30 ? 'Fulfillment' : shipmentType === 25 ? 'تبديل' : 'عادي';
+  console.log(`🚚 [BOSTA] إنشاء شحنة للطلب #${order.id} → ${match.city}/${match.zone || '-'} | COD: ${codAmount} | نوع: ${typeLabel}`);
   // لا نطبع البيانات الكاملة في الإنتاج (خصوصية أرقام الهاتف)
   if (process.env.NODE_ENV === 'development') {
     console.log(`📦 [BOSTA] البيانات:`, JSON.stringify(deliveryData, null, 2));
