@@ -189,16 +189,35 @@ function normalizeArabic(text: string): string {
     .trim().toLowerCase();
 }
 
-/** حساب تشابه بين نصين (Jaccard similarity على مستوى الحروف) */
+/** حساب تشابه بين نصين — مُحسّن للعربية */
 function textSimilarity(a: string, b: string): number {
   const na = normalizeArabic(a);
   const nb = normalizeArabic(b);
   if (na === nb) return 1;
-  if (na.includes(nb) || nb.includes(na)) return 0.85;
-  const setA = new Set(na.split(''));
-  const setB = new Set(nb.split(''));
-  const intersection = [...setA].filter(c => setB.has(c)).length;
-  const union = new Set([...setA, ...setB]).size;
+
+  // تطابق احتواء — أحدهما جزء من الآخر
+  if (na.length > 2 && nb.length > 2) {
+    if (na.includes(nb) || nb.includes(na)) return 0.85;
+  }
+
+  // للكلمات القصيرة جداً (مثل "قنا") — يُفضل Levenshtein-like
+  if (na.length <= 4 || nb.length <= 4) {
+    // مقارنة حرف بحرف مع تسامح خطأ واحد
+    const maxLen = Math.max(na.length, nb.length);
+    let matches = 0;
+    for (let i = 0; i < Math.min(na.length, nb.length); i++) {
+      if (na[i] === nb[i]) matches++;
+    }
+    return maxLen > 0 ? matches / maxLen : 0;
+  }
+
+  // Bigram similarity (أفضل من Jaccard على مستوى الحروف المفردة)
+  const bigramsA = new Set<string>();
+  const bigramsB = new Set<string>();
+  for (let i = 0; i < na.length - 1; i++) bigramsA.add(na.substring(i, i + 2));
+  for (let i = 0; i < nb.length - 1; i++) bigramsB.add(nb.substring(i, i + 2));
+  const intersection = [...bigramsA].filter(bg => bigramsB.has(bg)).length;
+  const union = new Set([...bigramsA, ...bigramsB]).size;
   return union > 0 ? intersection / union : 0;
 }
 
@@ -281,7 +300,7 @@ export async function smartMatchCityAndZone(
 // ==================== Bosta API ====================
 
 export interface BostaDeliveryRequest {
-  type: number; // 10 = SEND (delivery from your warehouse), 30 = SEND (from Bosta fulfillment)
+  type: number; // 10 = إرسال عادي, 25 = تبديل (Exchange), 30 = Fulfillment
   specs: {
     packageDetails: {
       itemsCount: number;
@@ -309,6 +328,13 @@ export interface BostaDeliveryRequest {
   businessReference: string;
   cod: number;
   allowToOpenPackage?: boolean;
+  returnSpecs?: { // مطلوب لنوع 25 (تبديل/Exchange)
+    packageDetails: {
+      itemsCount: number;
+      description: string;
+    };
+    size?: string;
+  };
   notes?: string;
   webhookUrl?: string;
 }
@@ -350,7 +376,7 @@ export async function createBostaDelivery(order: {
   totalPrice: string;
   notes?: string;
   id: number;
-  fulfillmentType?: number; // 10 = من مخزونك, 30 = من مخزون بوسطة (Fulfillment)
+  fulfillmentType?: number; // 10 = عادي, 25 = تبديل (Exchange), 30 = Fulfillment
 }): Promise<{ success: boolean; trackingNumber?: string; bostaId?: string; error?: string }> {
 
   if (!BOSTA_API_KEY) {
@@ -412,6 +438,16 @@ export async function createBostaDelivery(order: {
     businessReference,
     cod: codAmount,
     allowToOpenPackage: true, // ✅ السماح للعميل بفتح الشحنة والفحص
+    // ✅ بيانات الإرجاع لشحنات التبديل (Exchange type 25)
+    ...(shipmentType === 25 && {
+      returnSpecs: {
+        packageDetails: {
+          itemsCount: parseInt(order.quantity) || 1,
+          description: `إرجاع: ${order.productName || order.orderDetails || 'Order'}`,
+        },
+        size: 'SMALL',
+      },
+    }),
     notes: order.notes || undefined,
   };
 
