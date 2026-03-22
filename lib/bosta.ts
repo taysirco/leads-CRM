@@ -164,9 +164,13 @@ export async function createBostaDelivery(order: {
 
   // تنسيق رقم الهاتف الأساسي
   const formattedPhone = formatToLocalEgyptianNumber(order.phone);
+  if (!formattedPhone) {
+    return { success: false, error: `رقم الهاتف "${order.phone}" غير صالح — لا يمكن تنسيقه` };
+  }
 
-  // تنسيق رقم الهاتف الثاني (واتساب أو رقم بديل)
-  const formattedPhone2 = order.whatsapp ? formatToLocalEgyptianNumber(order.whatsapp) : undefined;
+  // تنسيق رقم الهاتف الثاني (واتساب أو رقم بديل) — يُتجاهل إذا تطابق مع الأساسي
+  const rawPhone2 = order.whatsapp ? formatToLocalEgyptianNumber(order.whatsapp) : undefined;
+  const formattedPhone2 = (rawPhone2 && rawPhone2 !== formattedPhone) ? rawPhone2 : undefined;
 
   // تحويل المحافظة
   const normalizedGov = normalizeGovernorateName(order.governorate);

@@ -22,7 +22,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  const { orderIds, fulfillmentType } = req.body;
+  const { orderIds, fulfillmentType: rawFulfillmentType } = req.body;
+
+  // التحقق من نوع الشحن — السماح بـ 10 (عادي) أو 30 (Fulfillment) فقط
+  const fulfillmentType = [10, 30].includes(Number(rawFulfillmentType)) ? Number(rawFulfillmentType) : 10;
 
   if (!Array.isArray(orderIds) || orderIds.length === 0) {
     return res.status(400).json({
@@ -31,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  console.log(`🚚 [BOSTA API] طلب إنشاء ${orderIds.length} شحنة...`);
+  console.log(`🚚 [BOSTA API] طلب إنشاء ${orderIds.length} شحنة (نوع: ${fulfillmentType === 30 ? 'مخزون بوسطة' : 'عادي'})...`);
 
   try {
     // جلب بيانات الطلبات من Google Sheets
@@ -91,7 +94,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         totalPrice: order.totalPrice,
         notes: order.notes,
         id: order.id,
-        fulfillmentType: fulfillmentType || 10,
+        fulfillmentType,
       });
 
       if (bostaResult.success && bostaResult.trackingNumber) {
