@@ -326,6 +326,118 @@ export async function smartMatchCityAndZone(
   return { city: correctedCity, zone: userArea, cityId: bestCity._id, warning };
 }
 
+/**
+ * 🧠 استخراج ذكي — يستخرج المحافظة والمنطقة من نص العنوان
+ * يعمل عندما تكون حقول المحافظة أو المنطقة فارغة
+ * يبحث في نص العنوان عن أي اسم مدينة/منطقة من قاعدة بيانات بوسطة
+ */
+export async function extractCityAndZoneFromAddress(
+  addressText: string
+): Promise<{ city?: string; zone?: string; cityId?: string; extracted: boolean; details?: string }> {
+  if (!addressText || addressText.trim().length < 3) {
+    return { extracted: false };
+  }
+
+  const normalizedAddress = normalizeArabic(addressText);
+  const cities = await fetchBostaCities();
+  if (cities.length === 0) return { extracted: false };
+
+  // --- المرحلة 1: البحث عن المحافظة في نص العنوان ---
+  // نبني قائمة بكل الأسماء الممكنة لكل مدينة (عربي + إنجليزي + alias + اسم الخريطة)
+  interface CityCandidate {
+    city: BostaCity;
+    name: string;            // الاسم الأصلي
+    normalizedName: string;  // الاسم المُطبّع
+  }
+
+  const cityCandidates: CityCandidate[] = [];
+  for (const city of cities) {
+    const names = [city.nameAr, city.name, city.alias].filter(Boolean) as string[];
+    // إضافة الأسماء المعروفة أيضاً من خريطة المحافظات
+    const govName = normalizeGovernorateName(city.nameAr);
+    if (govName && govName !== city.nameAr) names.push(govName);
+
+    for (const name of names) {
+      const norm = normalizeArabic(name);
+      if (norm.length >= 2) { // تجاهل الأسماء القصيرة جداً
+        cityCandidates.push({ city, name, normalizedName: norm });
+      }
+    }
+  }
+
+  // ترتيب بالأطول أولاً — لمنع "قنا" من تطابق قبل "الإسكندرية"
+  cityCandidates.sort((a, b) => b.normalizedName.length - a.normalizedName.length);
+
+  let matchedCity: BostaCity | null = null;
+  let matchedCityName = '';
+
+  for (const candidate of cityCandidates) {
+    // بحث بحدود الكلمة — لمنع "قنا" من التطابق داخل "قناة"
+    // نستخدم regex مع حدود كلمة عربية (فراغ أو بداية/نهاية نص)
+    const escaped = candidate.normalizedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`(?:^|\\s|[-,،/])${escaped}(?:$|\\s|[-,،/])`, 'i');
+    
+    if (pattern.test(normalizedAddress) || normalizedAddress === candidate.normalizedName) {
+      matchedCity = candidate.city;
+      matchedCityName = candidate.name;
+      break;
+    }
+  }
+
+  if (!matchedCity) {
+    return { extracted: false, details: 'لم يتم العثور على محافظة في العنوان' };
+  }
+
+  // --- المرحلة 2: البحث عن المنطقة في نص العنوان ---
+  const zones = await fetchBostaZones(matchedCity._id);
+  let matchedZone: string | undefined;
+
+  if (zones.length > 0) {
+    interface ZoneCandidate {
+      zone: BostaZone;
+      name: string;
+      normalizedName: string;
+    }
+
+    const zoneCandidates: ZoneCandidate[] = [];
+    for (const zone of zones) {
+      if (!zone.dropOffAvailability) continue;
+      const names = [zone.nameAr, zone.name].filter(Boolean) as string[];
+      for (const name of names) {
+        const norm = normalizeArabic(name);
+        if (norm.length >= 2) {
+          zoneCandidates.push({ zone, name, normalizedName: norm });
+        }
+      }
+    }
+
+    // ترتيب بالأطول أولاً
+    zoneCandidates.sort((a, b) => b.normalizedName.length - a.normalizedName.length);
+
+    for (const candidate of zoneCandidates) {
+      const escaped = candidate.normalizedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`(?:^|\\s|[-,،/])${escaped}(?:$|\\s|[-,،/])`, 'i');
+
+      if (pattern.test(normalizedAddress) || normalizedAddress.includes(candidate.normalizedName)) {
+        matchedZone = candidate.zone.nameAr;
+        break;
+      }
+    }
+  }
+
+  const details = matchedZone
+    ? `استُخرج من العنوان: المحافظة="${matchedCity.nameAr}" + المنطقة="${matchedZone}"`
+    : `استُخرج من العنوان: المحافظة="${matchedCity.nameAr}" (بدون منطقة)`;
+
+  return {
+    city: matchedCity.nameAr,
+    zone: matchedZone,
+    cityId: matchedCity._id,
+    extracted: true,
+    details,
+  };
+}
+
 // ==================== Bosta API ====================
 
 export interface BostaDeliveryRequest {
@@ -443,8 +555,36 @@ export async function createBostaDelivery(order: {
   }
 
   // 🧠 التحقق الذكي — مطابقة المحافظة والمنطقة ضد قاعدة بيانات بوسطة
-  const normalizedGov = normalizeGovernorateName(order.governorate);
-  const match = await smartMatchCityAndZone(normalizedGov, order.area);
+  let effectiveGov = order.governorate;
+  let effectiveArea = order.area;
+
+  // 🧠🧠 استخراج ذكي — إذا المحافظة أو المنطقة فارغة، نستخرجها من العنوان
+  const govMissing = !effectiveGov || effectiveGov.trim() === '';
+  const areaMissing = !effectiveArea || effectiveArea.trim() === '';
+
+  if (govMissing || areaMissing) {
+    const extraction = await extractCityAndZoneFromAddress(cleanAddress);
+    if (extraction.extracted) {
+      if (govMissing && extraction.city) {
+        effectiveGov = extraction.city;
+        console.log(`🧠 [BOSTA] استخراج ذكي: المحافظة "${extraction.city}" من العنوان "${cleanAddress}"`);
+      }
+      if (areaMissing && extraction.zone) {
+        effectiveArea = extraction.zone;
+        console.log(`🧠 [BOSTA] استخراج ذكي: المنطقة "${extraction.zone}" من العنوان "${cleanAddress}"`);
+      }
+      if (extraction.details) {
+        console.log(`🧠 [BOSTA] ${extraction.details}`);
+      }
+    } else {
+      if (govMissing) {
+        return { success: false, error: `📍 المحافظة فارغة ولم يمكن استخراجها من العنوان "${cleanAddress}"` };
+      }
+    }
+  }
+
+  const normalizedGov = normalizeGovernorateName(effectiveGov);
+  const match = await smartMatchCityAndZone(normalizedGov, effectiveArea);
   if (match.warning) {
     console.log(`🧠 [BOSTA] ${match.warning}`);
   }
