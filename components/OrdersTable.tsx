@@ -202,6 +202,101 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   };
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
+    // 🧠 تدقيق العنوان ذكياً عند التأكيد — قبل الشحن
+    if (newStatus === 'تم التأكيد') {
+      const order = orders.find(o => o.id === orderId);
+      if (order) {
+        try {
+          setLoadingOrders(prev => new Set(prev.add(orderId)));
+          const valRes = await fetch('/api/bosta-validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone: order.phone,
+              address: order.address,
+              governorate: order.governorate,
+              area: order.area,
+              totalPrice: order.totalPrice,
+            }),
+          });
+
+          if (valRes.ok) {
+            const validation = await valRes.json();
+            const hasCorrections = Object.keys(validation.corrections).length > 0;
+            const hasWarnings = validation.warnings.length > 0;
+
+            if (hasCorrections || hasWarnings) {
+              let msg = `🧠 تدقيق بوسطة للطلب #${orderId}:\n\n`;
+
+              if (validation.details.length > 0) {
+                msg += `📋 التصحيحات:\n`;
+                validation.details.forEach((d: string) => msg += `  ${d}\n`);
+                msg += '\n';
+              }
+
+              if (hasWarnings) {
+                msg += `⚠️ تحذيرات:\n`;
+                validation.warnings.forEach((w: string) => msg += `  ${w}\n`);
+                msg += '\n';
+              }
+
+              // عرض البيانات المستخرجة
+              const enr = validation.enrichments;
+              if (Object.keys(enr).length > 0) {
+                msg += `🏗️ بيانات مستخرجة:\n`;
+                if (enr.building) msg += `  🏢 مبنى: ${enr.building}\n`;
+                if (enr.floor) msg += `  🔲 دور: ${enr.floor}\n`;
+                if (enr.apartment) msg += `  🚪 شقة: ${enr.apartment}\n`;
+                if (enr.landmark) msg += `  📌 علامة: ${enr.landmark}\n`;
+                msg += '\n';
+              }
+
+              if (hasCorrections) {
+                msg += `\nهل تريد تطبيق التصحيحات وتأكيد الطلب؟`;
+              } else {
+                msg += `\nهل تريد التأكيد رغم التحذيرات؟`;
+              }
+
+              if (!confirm(msg)) {
+                setLoadingOrders(prev => {
+                  const s = new Set(prev);
+                  s.delete(orderId);
+                  return s;
+                });
+                return;
+              }
+
+              // ✅ تطبيق التصحيحات تلقائياً
+              if (hasCorrections) {
+                const updates: Partial<Order> = {};
+                if (validation.corrections.governorate) updates.governorate = validation.corrections.governorate;
+                if (validation.corrections.area) updates.area = validation.corrections.area;
+                if (validation.corrections.phone) updates.phone = validation.corrections.phone;
+
+                if (Object.keys(updates).length > 0) {
+                  try {
+                    await onUpdateOrder(orderId, updates);
+                    console.log(`🧠 [BOSTA-VALIDATE] تم تطبيق التصحيحات على الطلب #${orderId}:`, updates);
+                  } catch (err) {
+                    console.error(`❌ [BOSTA-VALIDATE] فشل في تطبيق التصحيحات:`, err);
+                  }
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error('🧠 [BOSTA-VALIDATE] خطأ في التدقيق:', err);
+          // لا نمنع التأكيد إذا فشل التدقيق
+        } finally {
+          setLoadingOrders(prev => {
+            const s = new Set(prev);
+            s.delete(orderId);
+            return s;
+          });
+        }
+      }
+    }
+
     // Optimistic update
     setOptimisticUpdates(prev => new Map(prev.set(orderId, { status: newStatus })));
     setLoadingOrders(prev => new Set(prev.add(orderId)));
@@ -231,10 +326,8 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
 
       // معالجة خاصة لأخطاء المخزون
       if (error.message && (error.message.includes('المخزون غير كافي') || error.message.includes('نفاد المخزون'))) {
-        // رسالة خطأ مفصلة للمخزون
         alert(`❌ لا يمكن شحن الطلب رقم ${orderId}\n\n${error.message}\n\n💡 يرجى:\n• التحقق من المخزون في تبويب إدارة المخزون\n• إضافة مخزون جديد إذا لزم الأمر\n• المحاولة مرة أخرى`);
       } else {
-        // رسالة خطأ عامة
         alert(`❌ فشل في تحديث حالة الطلب رقم ${orderId}\n\n${error.message || 'خطأ غير معروف'}\n\nيرجى المحاولة مرة أخرى`);
       }
     } finally {
