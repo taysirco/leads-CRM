@@ -1,8 +1,32 @@
 import { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { cleanText, getUniqueProducts } from '../lib/textCleaner';
-import { formatToLocalEgyptianNumber, normalizeGovernorateName } from '../lib/bosta';
+import { formatToLocalEgyptianNumber, normalizeGovernorateName, validateEgyptianPhone } from '../lib/bosta';
 import StatusBadge from './StatusBadge';
+
+// 🧠 تدقيق جودة الطلب قبل الشحن — يكشف مشاكل محتملة
+function getOrderWarnings(order: Order): string[] {
+  const warnings: string[] = [];
+  // محافظة فارغة
+  if (!order.governorate || order.governorate.trim() === '') warnings.push('المحافظة فارغة');
+  // عنوان قصير
+  if (!order.address || order.address.trim().length < 5) warnings.push('العنوان قصير جداً');
+  // هاتف غير صالح
+  if (order.phone) {
+    const v = validateEgyptianPhone(order.phone);
+    if (!v.valid) warnings.push('هاتف: ' + (v.error || 'غير صالح'));
+  } else {
+    warnings.push('لا يوجد هاتف');
+  }
+  // سعر صفر
+  const price = parseInt(String(order.totalPrice || '0').replace(/\D/g, '')) || 0;
+  if (price === 0) warnings.push('COD = 0');
+  // منطقة فارغة
+  if (!order.area || order.area.trim() === '') warnings.push('المنطقة فارغة');
+  // شحنة موجودة بالفعل
+  if (order.bostaTrackingNumber && order.bostaTrackingNumber.trim() !== '') warnings.push('تم الشحن مسبقاً');
+  return warnings;
+}
 
 interface Order {
   id: number;
@@ -486,7 +510,23 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                         title={'تحديد الطلب'}
                       />
                     </td>
-                    <td className="px-2 sm:px-3 py-2 text-gray-800 font-medium">{order.id}</td>
+                    <td className="px-2 sm:px-3 py-2 text-gray-800 font-medium">
+                      <div className="flex items-center gap-1">
+                        {order.id}
+                        {(() => {
+                          const warns = getOrderWarnings(order);
+                          if (warns.length === 0) return <span title="جاهز للشحن" className="text-green-500">●</span>;
+                          return (
+                            <span
+                              title={warns.join(' | ')}
+                              className={`cursor-help ${warns.some(w => w.includes('مسبقاً') || w.includes('هاتف')) ? 'text-red-500' : 'text-amber-500'}`}
+                            >
+                              {warns.some(w => w.includes('مسبقاً') || w.includes('هاتف')) ? '🔴' : '⚠️'}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </td>
                     <td className="px-2 sm:px-3 py-2">
                       <div className="flex flex-col">
                         <span className="text-gray-900 font-medium text-xs sm:text-sm">{order.name}</span>
