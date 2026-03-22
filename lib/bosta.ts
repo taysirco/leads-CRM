@@ -79,7 +79,7 @@ function normalizeGovernorateName(governorate: string): string {
 // ==================== Bosta API ====================
 
 export interface BostaDeliveryRequest {
-  type: number; // 10 = SEND (delivery), 15 = CASH_COLLECTION
+  type: number; // 10 = SEND (delivery from your warehouse), 30 = SEND (from Bosta fulfillment)
   specs: {
     packageDetails: {
       itemsCount: number;
@@ -101,6 +101,7 @@ export interface BostaDeliveryRequest {
     firstName: string;
     lastName: string;
     phone: string;
+    phone2?: string; // رقم هاتف ثاني (واتساب أو بديل)
     email?: string;
   };
   businessReference: string;
@@ -146,6 +147,7 @@ export async function createBostaDelivery(order: {
   totalPrice: string;
   notes?: string;
   id: number;
+  fulfillmentType?: number; // 10 = من مخزونك, 30 = من مخزون بوسطة (Fulfillment)
 }): Promise<{ success: boolean; trackingNumber?: string; bostaId?: string; error?: string }> {
 
   if (!BOSTA_API_KEY) {
@@ -160,8 +162,11 @@ export async function createBostaDelivery(order: {
   // استخراج مبلغ التحصيل (COD)
   const codAmount = parseInt(String(order.totalPrice).replace(/\D/g, '')) || 0;
 
-  // تنسيق رقم الهاتف
+  // تنسيق رقم الهاتف الأساسي
   const formattedPhone = formatToLocalEgyptianNumber(order.phone);
+
+  // تنسيق رقم الهاتف الثاني (واتساب أو رقم بديل)
+  const formattedPhone2 = order.whatsapp ? formatToLocalEgyptianNumber(order.whatsapp) : undefined;
 
   // تحويل المحافظة
   const normalizedGov = normalizeGovernorateName(order.governorate);
@@ -169,8 +174,11 @@ export async function createBostaDelivery(order: {
   // إنشاء مرجع فريد للطلب
   const businessReference = `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}`;
 
+  // تحديد نوع الشحن: 10 = عادي (من مخزونك), 30 = من مخزون بوسطة (Fulfillment)
+  const shipmentType = order.fulfillmentType || 10;
+
   const deliveryData: BostaDeliveryRequest = {
-    type: 10, // SEND (delivery)
+    type: shipmentType,
     specs: {
       packageDetails: {
         itemsCount: parseInt(order.quantity) || 1,
@@ -187,6 +195,7 @@ export async function createBostaDelivery(order: {
       firstName,
       lastName,
       phone: formattedPhone,
+      ...(formattedPhone2 && { phone2: formattedPhone2 }),
     },
     businessReference,
     cod: codAmount,

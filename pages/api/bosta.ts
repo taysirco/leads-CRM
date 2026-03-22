@@ -22,7 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  const { orderIds } = req.body;
+  const { orderIds, fulfillmentType } = req.body;
 
   if (!Array.isArray(orderIds) || orderIds.length === 0) {
     return res.status(400).json({
@@ -91,6 +91,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         totalPrice: order.totalPrice,
         notes: order.notes,
         id: order.id,
+        fulfillmentType: fulfillmentType || 10,
       });
 
       if (bostaResult.success && bostaResult.trackingNumber) {

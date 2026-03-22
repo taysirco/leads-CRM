@@ -48,6 +48,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   const [searchTerm, setSearchTerm] = useState('');
   const [productFilter, setProductFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+  const [fulfillmentType, setFulfillmentType] = useState<10 | 30>(10); // 10 = من مخزونك, 30 = مخزون بوسطة
 
   // Filter orders based on search and filters
   const filteredOrders = useMemo(() => {
@@ -433,8 +434,10 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       return;
     }
 
+    const shipMode = fulfillmentType === 30 ? '🏭 مخزون بوسطة (Fulfillment)' : '🏠 مخزونك الشخصي';
     const confirmShip = confirm(
       `هل أنت متأكد من إنشاء ${selectedOrders.length} شحنة على بوسطة؟\n\n` +
+      `📦 نوع الشحن: ${shipMode}\n\n` +
       `سيتم:\n• إرسال البيانات مباشرة إلى بوسطة\n• تغيير حالة الطلبات إلى "تم الشحن"\n• حفظ أرقام التتبع تلقائياً`
     );
 
@@ -448,7 +451,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       const response = await fetch('/api/bosta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderIds: selectedOrders }),
+        body: JSON.stringify({ orderIds: selectedOrders, fulfillmentType }),
       });
 
       const result = await response.json();
@@ -552,6 +555,33 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                 ))}
               </select>
             </div>
+          </div>
+        </div>
+
+        {/* خيار نوع الشحن */}
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-purple-50 border border-purple-200 rounded-lg">
+          <label className="block text-xs sm:text-sm font-semibold text-purple-800 mb-2">📦 نوع الشحن عبر Bosta API</label>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <label className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 cursor-pointer transition-all text-sm ${
+              fulfillmentType === 10 
+                ? 'border-purple-500 bg-purple-100 text-purple-800 shadow-sm' 
+                : 'border-gray-300 bg-white text-gray-600 hover:border-purple-300'
+            }`}>
+              <input type="radio" name="fulfillmentType" value={10} checked={fulfillmentType === 10}
+                onChange={() => setFulfillmentType(10)} className="accent-purple-600" />
+              <span className="font-medium">🏠 شحن من مخزوني</span>
+              <span className="text-xs text-gray-500">(بوسطة تستلم منك)</span>
+            </label>
+            <label className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 cursor-pointer transition-all text-sm ${
+              fulfillmentType === 30 
+                ? 'border-purple-500 bg-purple-100 text-purple-800 shadow-sm' 
+                : 'border-gray-300 bg-white text-gray-600 hover:border-purple-300'
+            }`}>
+              <input type="radio" name="fulfillmentType" value={30} checked={fulfillmentType === 30}
+                onChange={() => setFulfillmentType(30)} className="accent-purple-600" />
+              <span className="font-medium">🏭 شحن من مخزون بوسطة</span>
+              <span className="text-xs text-gray-500">(Fulfillment)</span>
+            </label>
           </div>
         </div>
 
