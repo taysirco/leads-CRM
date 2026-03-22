@@ -22,7 +22,7 @@ function getOrderWarnings(order: Order): string[] {
   const price = parseInt(String(order.totalPrice || '0').replace(/\D/g, '')) || 0;
   if (price === 0) warnings.push('COD = 0');
   // منطقة فارغة
-  if (!order.area || order.area.trim() === '') warnings.push('المنطقة فارغة');
+  if (!order.area || order.area.trim() === '') warnings.push('المنطقة فارغة (سيتم الاستخراج تلقائياً)');
   // شحنة موجودة بالفعل
   if (order.bostaTrackingNumber && order.bostaTrackingNumber.trim() !== '') warnings.push('تم الشحن مسبقاً');
   return warnings;

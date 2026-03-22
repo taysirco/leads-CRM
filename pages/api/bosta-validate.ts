@@ -96,7 +96,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const normalized = normalizeGovernorateName(effectiveGov);
         const match = await smartMatchCityAndZone(normalized, effectiveArea);
 
-        if (match.city && match.city !== effectiveGov) {
+        if (match.city && match.city !== normalized) {
           result.corrections['governorate'] = match.city;
           result.details.push(`✅ تصحيح المحافظة: "${effectiveGov}" → "${match.city}"`);
         }

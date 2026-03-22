@@ -207,7 +207,6 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
       const order = orders.find(o => o.id === orderId);
       if (order) {
         try {
-          setLoadingOrders(prev => new Set(prev.add(orderId)));
           const valRes = await fetch('/api/bosta-validate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -258,12 +257,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
               }
 
               if (!confirm(msg)) {
-                setLoadingOrders(prev => {
-                  const s = new Set(prev);
-                  s.delete(orderId);
-                  return s;
-                });
-                return;
+                return; // المستخدم رفض — لا نغير الحالة
               }
 
               // ✅ تطبيق التصحيحات تلقائياً
@@ -287,12 +281,6 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
         } catch (err) {
           console.error('🧠 [BOSTA-VALIDATE] خطأ في التدقيق:', err);
           // لا نمنع التأكيد إذا فشل التدقيق
-        } finally {
-          setLoadingOrders(prev => {
-            const s = new Set(prev);
-            s.delete(orderId);
-            return s;
-          });
         }
       }
     }
