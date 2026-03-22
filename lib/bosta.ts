@@ -288,13 +288,15 @@ export async function createBostaDelivery(order: {
       };
     }
 
-    const trackingNumber = String(result.trackingNumber || result._id || '');
+    // بوسطة تُغلف البيانات في result.data
+    const data = result.data || result;
+    const trackingNumber = String(data.trackingNumber || data._id || '');
     console.log(`✅ [BOSTA] تم إنشاء الشحنة بنجاح! رقم التتبع: ${trackingNumber}`);
 
     return {
       success: true,
       trackingNumber,
-      bostaId: result._id,
+      bostaId: data._id,
     };
   } catch (error: any) {
     console.error(`❌ [BOSTA] خطأ في الاتصال بـ API:`, error);
