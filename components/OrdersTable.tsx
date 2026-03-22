@@ -65,6 +65,20 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   const [isBulkLoading, setIsBulkLoading] = useState(false);
   const [bulkSuccessMessage, setBulkSuccessMessage] = useState('');
 
+  // 🧠 Smart Bosta Suggestions
+  const [govSuggestions, setGovSuggestions] = useState<{nameAr: string; name: string; _id: string}[]>([]);
+  const [zoneSuggestions, setZoneSuggestions] = useState<{nameAr: string; name: string}[]>([]);
+  const [showGovDropdown, setShowGovDropdown] = useState(false);
+  const [showZoneDropdown, setShowZoneDropdown] = useState(false);
+  const [addressAnalysis, setAddressAnalysis] = useState<{
+    governorate?: string; area?: string; matchedCity?: string; matchedZone?: string;
+    building?: string; floor?: string; apartment?: string; landmark?: string;
+  } | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const govTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const zoneTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const addressTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+
   // إعادة تعيين التحديدات عند تغيير الفلاتر
   React.useEffect(() => {
     setSelectedOrders(new Set());
@@ -78,6 +92,73 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
       }
     };
   }, [autoSaveTimer]);
+
+  // 🧠 Fetch governorate suggestions from Bosta
+  const fetchGovSuggestions = React.useCallback((query: string) => {
+    if (govTimerRef.current) clearTimeout(govTimerRef.current);
+    govTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/bosta-suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'governorate', query }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setGovSuggestions(data.suggestions || []);
+        }
+      } catch (err) {
+        console.error('Gov suggestions error:', err);
+      }
+    }, 200);
+  }, []);
+
+  // 🧠 Fetch zone suggestions from Bosta
+  const fetchZoneSuggestions = React.useCallback((query: string, gov: string) => {
+    if (zoneTimerRef.current) clearTimeout(zoneTimerRef.current);
+    zoneTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/bosta-suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'zone', query, governorate: gov }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setZoneSuggestions(data.suggestions || []);
+        }
+      } catch (err) {
+        console.error('Zone suggestions error:', err);
+      }
+    }, 200);
+  }, []);
+
+  // 🧠 Analyze address for smart suggestions
+  const analyzeAddress = React.useCallback((address: string, gov: string) => {
+    if (addressTimerRef.current) clearTimeout(addressTimerRef.current);
+    if (!address || address.trim().length < 5) {
+      setAddressAnalysis(null);
+      return;
+    }
+    addressTimerRef.current = setTimeout(async () => {
+      setIsAnalyzing(true);
+      try {
+        const res = await fetch('/api/bosta-suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'analyze-address', address, governorate: gov }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAddressAnalysis(data.suggestions);
+        }
+      } catch (err) {
+        console.error('Address analysis error:', err);
+      } finally {
+        setIsAnalyzing(false);
+      }
+    }, 500);
+  }, []);
 
   const getOrderWithUpdates = (order: Order) => {
     const updates = optimisticUpdates.get(order.id);
@@ -1016,24 +1097,94 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                   </div>
                 </div>
 
-                <div className="space-y-1 sm:space-y-2">
+                <div className="space-y-1 sm:space-y-2 relative">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">🏙️ المحافظة</label>
                   <input
                     type="text"
                     value={editingOrder.governorate}
-                    onChange={(e) => handleUpdateField('governorate', e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
+                    onChange={(e) => {
+                      handleUpdateField('governorate', e.target.value);
+                      fetchGovSuggestions(e.target.value);
+                      setShowGovDropdown(true);
+                    }}
+                    onFocus={() => {
+                      fetchGovSuggestions(editingOrder.governorate || '');
+                      setShowGovDropdown(true);
+                    }}
+                    onBlur={() => setTimeout(() => setShowGovDropdown(false), 200)}
+                    placeholder="ابدأ بكتابة اسم المحافظة..."
+                    autoComplete="off"
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-blue-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base bg-blue-50"
                   />
+                  {/* Governorate Dropdown */}
+                  {showGovDropdown && govSuggestions.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+                      {govSuggestions.map((s, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleUpdateField('governorate', s.nameAr);
+                            setShowGovDropdown(false);
+                            // إعادة تحميل المناطق عند تغيير المحافظة
+                            handleUpdateField('area', '');
+                            fetchZoneSuggestions('', s.nameAr);
+                          }}
+                          className="w-full text-right px-3 py-2 hover:bg-blue-50 transition-colors flex items-center justify-between text-sm border-b border-gray-50 last:border-0"
+                        >
+                          <span className="font-medium text-gray-900">{s.nameAr}</span>
+                          <span className="text-xs text-gray-400">{s.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-1 sm:space-y-2">
+                <div className="space-y-1 sm:space-y-2 relative">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">📍 المنطقة</label>
                   <input
                     type="text"
                     value={editingOrder.area}
-                    onChange={(e) => handleUpdateField('area', e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
+                    onChange={(e) => {
+                      handleUpdateField('area', e.target.value);
+                      fetchZoneSuggestions(e.target.value, editingOrder.governorate);
+                      setShowZoneDropdown(true);
+                    }}
+                    onFocus={() => {
+                      if (editingOrder.governorate) {
+                        fetchZoneSuggestions(editingOrder.area || '', editingOrder.governorate);
+                        setShowZoneDropdown(true);
+                      }
+                    }}
+                    onBlur={() => setTimeout(() => setShowZoneDropdown(false), 200)}
+                    placeholder={editingOrder.governorate ? 'ابدأ بكتابة اسم المنطقة...' : 'اختر المحافظة أولاً'}
+                    autoComplete="off"
+                    className={`w-full px-3 sm:px-4 py-2 sm:py-3 border rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base ${editingOrder.governorate ? 'border-blue-300 bg-blue-50' : 'border-gray-300 bg-gray-100'}`}
                   />
+                  {!editingOrder.governorate && (
+                    <p className="text-xs text-amber-600 mt-0.5">⚠️ اختر المحافظة أولاً لعرض المناطق المتاحة</p>
+                  )}
+                  {/* Zone Dropdown */}
+                  {showZoneDropdown && zoneSuggestions.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+                      {zoneSuggestions.map((s, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleUpdateField('area', s.nameAr);
+                            setShowZoneDropdown(false);
+                          }}
+                          className="w-full text-right px-3 py-2 hover:bg-blue-50 transition-colors flex items-center justify-between text-sm border-b border-gray-50 last:border-0"
+                        >
+                          <span className="font-medium text-gray-900">{s.nameAr}</span>
+                          <span className="text-xs text-gray-400">{s.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1 sm:space-y-2">
@@ -1093,10 +1244,101 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">🏠 العنوان الكامل</label>
                   <textarea
                     value={editingOrder.address}
-                    onChange={(e) => handleUpdateField('address', e.target.value)}
+                    onChange={(e) => {
+                      handleUpdateField('address', e.target.value);
+                      analyzeAddress(e.target.value, editingOrder.governorate);
+                    }}
                     rows={2}
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
                   />
+
+                  {/* 🧠 Smart Address Analysis Panel */}
+                  {isAnalyzing && (
+                    <div className="flex items-center gap-2 text-xs text-blue-600 mt-1">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                      جاري تحليل العنوان...
+                    </div>
+                  )}
+                  {addressAnalysis && !isAnalyzing && (
+                    <div className="mt-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-bold text-blue-700">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                        🧠 اقتراحات بوسطة الذكية
+                      </div>
+
+                      {/* Gov/Area suggestions */}
+                      {(addressAnalysis.governorate || addressAnalysis.matchedCity) && (
+                        <div className="flex flex-wrap gap-2">
+                          {addressAnalysis.matchedCity && addressAnalysis.matchedCity !== editingOrder.governorate && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleUpdateField('governorate', addressAnalysis.matchedCity!);
+                                fetchZoneSuggestions('', addressAnalysis.matchedCity!);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-medium hover:bg-blue-200 transition-colors border border-blue-300"
+                            >
+                              🏙️ المحافظة: {addressAnalysis.matchedCity}
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                              </svg>
+                            </button>
+                          )}
+                          {addressAnalysis.matchedZone && addressAnalysis.matchedZone !== editingOrder.area && (
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateField('area', addressAnalysis.matchedZone!)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-800 rounded-lg text-xs font-medium hover:bg-green-200 transition-colors border border-green-300"
+                            >
+                              📍 المنطقة: {addressAnalysis.matchedZone}
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Structural info */}
+                      {(addressAnalysis.building || addressAnalysis.floor || addressAnalysis.apartment || addressAnalysis.landmark) && (
+                        <div className="flex flex-wrap gap-1.5 text-xs">
+                          {addressAnalysis.building && (
+                            <span className="inline-flex items-center px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md">🏢 عمارة {addressAnalysis.building}</span>
+                          )}
+                          {addressAnalysis.floor && (
+                            <span className="inline-flex items-center px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md">🔲 الدور {addressAnalysis.floor === '0' ? 'أرضي' : addressAnalysis.floor}</span>
+                          )}
+                          {addressAnalysis.apartment && (
+                            <span className="inline-flex items-center px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md">🚪 شقة {addressAnalysis.apartment}</span>
+                          )}
+                          {addressAnalysis.landmark && (
+                            <span className="inline-flex items-center px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-md">📌 {addressAnalysis.landmark}</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Apply all button */}
+                      {(addressAnalysis.matchedCity && addressAnalysis.matchedCity !== editingOrder.governorate) || (addressAnalysis.matchedZone && addressAnalysis.matchedZone !== editingOrder.area) ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (addressAnalysis.matchedCity) {
+                              handleUpdateField('governorate', addressAnalysis.matchedCity);
+                            }
+                            if (addressAnalysis.matchedZone) {
+                              handleUpdateField('area', addressAnalysis.matchedZone);
+                            }
+                            setAddressAnalysis(null);
+                          }}
+                          className="mt-1 w-full px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-xs font-bold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm"
+                        >
+                          ✅ تطبيق جميع الاقتراحات
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1 sm:space-y-2 md:col-span-2">
