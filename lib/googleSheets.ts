@@ -198,12 +198,10 @@ async function retryWithBackoff<T>(
 }
 
 const getAuth = () => {
-  // ✅ BASE64 أولاً (أفضل لـ Netlify — لا مشاكل مع الأسطر الجديدة)
-  let rawKey = '';
-  if (process.env.GOOGLE_PRIVATE_KEY_BASE64) {
+  // GOOGLE_PRIVATE_KEY أولاً (موجود على Netlify)، BASE64 كاحتياط
+  let rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
+  if (!rawKey && process.env.GOOGLE_PRIVATE_KEY_BASE64) {
     rawKey = Buffer.from(process.env.GOOGLE_PRIVATE_KEY_BASE64, 'base64').toString('utf8');
-  } else if (process.env.GOOGLE_PRIVATE_KEY) {
-    rawKey = process.env.GOOGLE_PRIVATE_KEY;
   }
   if (!rawKey) {
     throw new Error('GOOGLE_PRIVATE_KEY or GOOGLE_PRIVATE_KEY_BASE64 must be provided');
