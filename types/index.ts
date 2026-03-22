@@ -13,7 +13,10 @@ export type OrderStatus =
     | 'لم يرد'
     | 'تم التواصل معه واتساب'
     | 'طلب مصاريف الشحن'
-    | 'تم الشحن';
+    | 'تم الشحن'
+    | 'في الطريق'
+    | 'تم التسليم'
+    | 'فشل التسليم';
 
 // ==================== الطلبات ====================
 
@@ -36,6 +39,9 @@ export interface Order {
     notes: string;
     whatsappSent: string;
     assignee?: string;
+    bostaTrackingNumber?: string;
+    bostaState?: string;
+    lastBostaUpdate?: string;
 }
 
 export interface OrderUpdate extends Partial<Order> {

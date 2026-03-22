@@ -11,6 +11,9 @@ const statusConfig: Record<string, { color: string; bgColor: string }> = {
   'تم التواصل معه واتساب': { color: 'text-purple-700', bgColor: 'bg-purple-100' },
   'طلب مصاريف الشحن': { color: 'text-orange-700', bgColor: 'bg-orange-100' },
   'تم الشحن': { color: 'text-indigo-700', bgColor: 'bg-indigo-100' },
+  'في الطريق': { color: 'text-teal-700', bgColor: 'bg-teal-100' },
+  'تم التسليم': { color: 'text-emerald-800', bgColor: 'bg-emerald-100' },
+  'فشل التسليم': { color: 'text-rose-700', bgColor: 'bg-rose-100' },
 };
 
 export default function StatusBadge({ status }: StatusBadgeProps) {

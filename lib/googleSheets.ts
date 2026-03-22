@@ -29,6 +29,9 @@ export type LeadRow = {
   source: string;
   whatsappSent: string; // ارسال واتس اب
   assignee?: string; // المسؤول (Q column - الفهرس 16)
+  bostaTrackingNumber?: string; // رقم تتبع بوسطة (S column - الفهرس 18)
+  bostaState?: string; // حالة بوسطة (T column - الفهرس 19)
+  lastBostaUpdate?: string; // آخر تحديث بوسطة (U column - الفهرس 20)
 };
 
 export type StockItem = {
@@ -1893,7 +1896,10 @@ export async function fetchLeads() {
       notes: row[12] || '', // العمود M
       source: row[13] || '', // العمود N
       whatsappSent: row[14] || '', // العمود O
-      assignee: row[16] || '' // العمود Q (الفهرس 16)
+      assignee: row[16] || '', // العمود Q (الفهرس 16)
+      bostaTrackingNumber: row[18] || '', // العمود S (الفهرس 18)
+      bostaState: row[19] || '', // العمود T (الفهرس 19)
+      lastBostaUpdate: row[20] || '' // العمود U (الفهرس 20)
     };
   });
 }
@@ -1905,7 +1911,7 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const headers = ['تاريخ الطلب', 'الاسم', 'رقم الهاتف', 'رقم الواتساب', 'المحافظة', 'المنطقة', 'العنوان', 'تفاصيل الطلب', 'الكمية', 'إجمالي السعر', 'اسم المنتج', 'الحالة', 'ملاحظات', 'المصدر', 'ارسال واتس اب', 'عمود P', 'المسؤول'];
+  const headers = ['تاريخ الطلب', 'الاسم', 'رقم الهاتف', 'رقم الواتساب', 'المحافظة', 'المنطقة', 'العنوان', 'تفاصيل الطلب', 'الكمية', 'إجمالي السعر', 'اسم المنتج', 'الحالة', 'ملاحظات', 'المصدر', 'ارسال واتس اب', 'عمود P', 'المسؤول', 'TikTok Lead ID', 'رقم تتبع بوسطة', 'حالة بوسطة', 'آخر تحديث بوسطة'];
   const range = `leads!A${rowNumber}:${String.fromCharCode(64 + headers.length)}${rowNumber}`;
 
   // جلب البيانات الحالية مع إعادة المحاولة
@@ -1918,6 +1924,11 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   );
 
   const currentRow = currentData.data.values?.[0] || [];
+  // ضمان أن المصفوفة بطول الأعمدة الكامل لتجنب المصفوفات المتفرقة
+  // Google Sheets لا تُرجع الخلايا الفارغة في نهاية الصف
+  while (currentRow.length < headers.length) {
+    currentRow.push('');
+  }
   const updatedRow = [...currentRow];
 
   console.log(`📋 البيانات الحالية للصف ${rowNumber}:`, currentRow);
@@ -1971,6 +1982,15 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   }
   if (updates.assignee !== undefined) {
     updatedRow[16] = updates.assignee; // المسؤول
+  }
+  if (updates.bostaTrackingNumber !== undefined) {
+    updatedRow[18] = updates.bostaTrackingNumber; // رقم تتبع بوسطة
+  }
+  if (updates.bostaState !== undefined) {
+    updatedRow[19] = updates.bostaState; // حالة بوسطة
+  }
+  if (updates.lastBostaUpdate !== undefined) {
+    updatedRow[20] = updates.lastBostaUpdate; // آخر تحديث بوسطة
   }
 
   console.log(`✏️ البيانات الجديدة للصف ${rowNumber}:`, updatedRow);
@@ -2051,7 +2071,9 @@ export async function getOrderStatistics() {
       confirmed: leads.filter(lead => lead.status === 'تم التأكيد').length, // فقط تم التأكيد (الشحن منفصل)
       pending: leads.filter(lead => ['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)).length,
       rejected: leads.filter(lead => lead.status === 'رفض التأكيد').length,
-      shipped: leads.filter(lead => lead.status === 'تم الشحن').length,
+      shipped: leads.filter(lead => ['تم الشحن', 'في الطريق'].includes(lead.status)).length,
+      delivered: leads.filter(lead => lead.status === 'تم التسليم').length,
+      deliveryFailed: leads.filter(lead => lead.status === 'فشل التسليم').length,
       new: leads.filter(lead => lead.status === 'جديد').length,
       noAnswer: leads.filter(lead => lead.status === 'لم يرد').length,
       contacted: leads.filter(lead => lead.status === 'تم التواصل معه واتساب').length
@@ -2067,7 +2089,9 @@ export async function getOrderStatistics() {
           confirmed: 0, // فقط "تم التأكيد"
           pending: 0,
           rejected: 0,
-          shipped: 0, // فقط "تم الشحن"
+          shipped: 0, // "تم الشحن" + "في الطريق"
+          delivered: 0,
+          deliveryFailed: 0,
           new: 0,
           noAnswer: 0,
           contacted: 0
@@ -2079,8 +2103,12 @@ export async function getOrderStatistics() {
       // حساب دقيق بدون تداخل
       if (lead.status === 'تم التأكيد') {
         productStats[product].confirmed++;
-      } else if (lead.status === 'تم الشحن') {
+      } else if (['تم الشحن', 'في الطريق'].includes(lead.status)) {
         productStats[product].shipped++;
+      } else if (lead.status === 'تم التسليم') {
+        productStats[product].delivered++;
+      } else if (lead.status === 'فشل التسليم') {
+        productStats[product].deliveryFailed++;
       } else if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
         productStats[product].pending++;
       } else if (lead.status === 'رفض التأكيد') {
@@ -2107,7 +2135,9 @@ export async function getOrderStatistics() {
           confirmed: 0, // فقط "تم التأكيد"
           pending: 0,
           rejected: 0,
-          shipped: 0, // فقط "تم الشحن"
+          shipped: 0, // "تم الشحن" + "في الطريق"
+          delivered: 0,
+          deliveryFailed: 0,
           new: 0,
           noAnswer: 0,
           contacted: 0
@@ -2119,8 +2149,12 @@ export async function getOrderStatistics() {
       // حساب دقيق بدون تداخل
       if (lead.status === 'تم التأكيد') {
         sourceStats[source].confirmed++;
-      } else if (lead.status === 'تم الشحن') {
+      } else if (['تم الشحن', 'في الطريق'].includes(lead.status)) {
         sourceStats[source].shipped++;
+      } else if (lead.status === 'تم التسليم') {
+        sourceStats[source].delivered++;
+      } else if (lead.status === 'فشل التسليم') {
+        sourceStats[source].deliveryFailed++;
       } else if (['جديد', 'لم يرد', 'في انتظار تأكيد العميل', 'تم التواصل معه واتساب'].includes(lead.status)) {
         sourceStats[source].pending++;
       } else if (lead.status === 'رفض التأكيد') {

@@ -21,6 +21,9 @@ interface Order {
   status: string;
   notes: string;
   whatsappSent: string;
+  bostaTrackingNumber?: string;
+  bostaState?: string;
+  lastBostaUpdate?: string;
 }
 
 interface BostaExportProps {
@@ -37,6 +40,8 @@ interface BostaExportProps {
 export default function BostaExport({ orders, selectedOrders, onSelectOrder, onSelectAll, onDeselectAll, onUpdateOrder, onArchiveStart, onArchiveEnd }: BostaExportProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
+  const [isShippingViaBosta, setIsShippingViaBosta] = useState(false);
+  const [bostaShipResults, setBostaShipResults] = useState<Array<{orderId: number; success: boolean; trackingNumber?: string; error?: string}>>([]);
   const [loadingOrders, setLoadingOrders] = useState<Set<number>>(new Set());
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -421,6 +426,72 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
     }
   };
 
+  // إنشاء شحنات مباشرة عبر Bosta API
+  const handleBostaApiShip = async () => {
+    if (selectedOrders.length === 0) {
+      alert('يرجى تحديد طلب واحد على الأقل لإنشاء شحنة.');
+      return;
+    }
+
+    const confirmShip = confirm(
+      `هل أنت متأكد من إنشاء ${selectedOrders.length} شحنة على بوسطة؟\n\n` +
+      `سيتم:\n• إرسال البيانات مباشرة إلى بوسطة\n• تغيير حالة الطلبات إلى "تم الشحن"\n• حفظ أرقام التتبع تلقائياً`
+    );
+
+    if (!confirmShip) return;
+
+    setIsShippingViaBosta(true);
+    setBostaShipResults([]);
+    onArchiveStart?.();
+
+    try {
+      const response = await fetch('/api/bosta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderIds: selectedOrders }),
+      });
+
+      const result = await response.json();
+
+      if (result.results) {
+        setBostaShipResults(result.results);
+      }
+
+      const successCount = result.summary?.success || 0;
+      const failedCount = result.summary?.failed || 0;
+
+      let message = '';
+      if (successCount > 0) {
+        message += `✅ تم إنشاء ${successCount} شحنة بنجاح على بوسطة\n`;
+        const successResults = (result.results || []).filter((r: any) => r.success);
+        successResults.forEach((r: any) => {
+          message += `  📦 طلب #${r.orderId} → تتبع: ${r.trackingNumber}\n`;
+        });
+      }
+      if (failedCount > 0) {
+        message += `\n❌ فشل في إنشاء ${failedCount} شحنة:\n`;
+        const failedResults = (result.results || []).filter((r: any) => !r.success);
+        failedResults.forEach((r: any) => {
+          message += `  • طلب #${r.orderId}: ${r.error}\n`;
+        });
+      }
+
+      alert(message);
+
+      if (successCount > 0) {
+        onDeselectAll();
+        onArchiveEnd?.();
+        // إعادة جلب البيانات لعرض التحديثات
+        await onUpdateOrder(0, {});
+      }
+    } catch (error: any) {
+      alert(`❌ خطأ في الاتصال بسيرفر بوسطة: ${error.message}`);
+    } finally {
+      setIsShippingViaBosta(false);
+      onArchiveEnd?.();
+    }
+  };
+
   return (
     <>
       <div className="bg-white shadow-lg rounded-lg p-3 sm:p-6">
@@ -577,8 +648,8 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full sm:w-auto">
             <button
               onClick={handleArchiveSelected}
-              disabled={selectedOrders.length === 0 || isArchiving}
-              className="px-4 sm:px-6 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50 flex items-center justify-center gap-2 text-sm order-2 sm:order-1"
+              disabled={selectedOrders.length === 0 || isArchiving || isShippingViaBosta}
+              className="px-4 sm:px-6 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50 flex items-center justify-center gap-2 text-sm order-3 sm:order-1"
             >
               {isArchiving && <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white"></div>}
               <span className="hidden sm:inline">أرشفة ما تم تصديره (تم الشحن)</span>
@@ -586,8 +657,8 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
             </button>
             <button
               onClick={handleExport}
-              disabled={selectedOrders.length === 0 || isExporting}
-              className="px-4 sm:px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm order-1 sm:order-2"
+              disabled={selectedOrders.length === 0 || isExporting || isShippingViaBosta}
+              className="px-4 sm:px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm order-2 sm:order-2"
             >
               {isExporting && (
                 <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white"></div>
@@ -596,7 +667,20 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               <span className="hidden sm:inline">تصدير ملف بوسطة</span>
-              <span className="sm:hidden">تصدير</span>
+              <span className="sm:hidden">تصدير Excel</span>
+            </button>
+            <button
+              onClick={handleBostaApiShip}
+              disabled={selectedOrders.length === 0 || isShippingViaBosta || isArchiving}
+              className="px-4 sm:px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm order-1 sm:order-3 font-semibold shadow-md"
+              title="إنشاء شحنة مباشرة عبر Bosta API — يتم إرسال البيانات تلقائياً وحفظ أرقام التتبع"
+            >
+              {isShippingViaBosta && (
+                <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white"></div>
+              )}
+              <span>🚀</span>
+              <span className="hidden sm:inline">إنشاء شحنة مباشرة (Bosta API)</span>
+              <span className="sm:hidden">شحن مباشر</span>
             </button>
           </div>
         </div>

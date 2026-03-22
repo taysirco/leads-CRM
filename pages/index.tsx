@@ -299,7 +299,12 @@ export default function Home() {
         filteredOrders = orders.filter((order: any) => order.status === 'تم التأكيد');
         break;
       case 'archive':
-        filteredOrders = orders.filter((order: any) => order.status === 'تم الشحن');
+        filteredOrders = orders.filter((order: any) =>
+          order.status === 'تم الشحن' ||
+          order.status === 'في الطريق' ||
+          order.status === 'تم التسليم' ||
+          order.status === 'فشل التسليم'
+        );
         break;
       case 'rejected':
         filteredOrders = orders.filter((order: any) => order.status === 'رفض التأكيد');
