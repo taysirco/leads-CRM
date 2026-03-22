@@ -270,13 +270,21 @@ export async function createBostaDelivery(order: {
       body: JSON.stringify(deliveryData),
     });
 
-    const result = await response.json();
+    const responseText = await response.text();
+    let result: any;
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      console.error(`❌ [BOSTA] رد غير صالح (ليس JSON):`, responseText.substring(0, 500));
+      return { success: false, error: `رد غير صالح من بوسطة: ${response.status}` };
+    }
 
     if (!response.ok) {
-      console.error(`❌ [BOSTA] فشل في إنشاء الشحنة:`, result);
+      console.error(`❌ [BOSTA] فشل (${response.status}):`, JSON.stringify(result));
+      console.error(`❌ [BOSTA] البيانات المرسلة:`, JSON.stringify(deliveryData));
       return {
         success: false,
-        error: result.message || result.error || `خطأ من بوسطة: ${response.status}`,
+        error: result.message || result.error || JSON.stringify(result) || `خطأ من بوسطة: ${response.status}`,
       };
     }
 
