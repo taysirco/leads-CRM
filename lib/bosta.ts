@@ -82,6 +82,104 @@ export function sanitizeAddress(address: string): string {
     .trim();
 }
 
+/**
+ * 🏗️ تحليل بنية العنوان — استخراج رقم المبنى والدور والشقة
+ * يكتشف الأنماط المصرية الشائعة مثل:
+ * "عمارة 5 الدور 3 شقة 12" أو "برج 7 ط 2 ش 15" أو "مبنى أ دور أرضي"
+ */
+export function parseAddressStructure(address: string): {
+  buildingNumber?: string;
+  floor?: string;
+  apartment?: string;
+  landmark?: string;
+  cleanedAddress: string;
+} {
+  if (!address) return { cleanedAddress: '' };
+
+  let text = address;
+  let buildingNumber: string | undefined;
+  let floor: string | undefined;
+  let apartment: string | undefined;
+  let landmark: string | undefined;
+
+  // --- استخراج رقم المبنى / العمارة / البرج ---
+  const buildingPatterns = [
+    /(?:عمار[ةه]|برج|مبن[يى]|بناي[ةه]|بلوك|block)\s*[#:.]?\s*([\dأ-ي\w]+)/i,
+    /(?:عقار|منزل|فيلا|بيت)\s*[#:.]?\s*([\dأ-ي\w]+)/i,
+  ];
+  for (const pat of buildingPatterns) {
+    const m = text.match(pat);
+    if (m) {
+      buildingNumber = m[1].trim();
+      text = text.replace(m[0], ' ').trim();
+      break;
+    }
+  }
+
+  // --- استخراج الدور / الطابق ---
+  const floorPatterns = [
+    /(?:الدور|دور|الطابق|طابق|ط)\s*[#:.]?\s*([\dأ-ي\w]+)/i,
+    /(?:أرضي|الأرضي|ground)/i,
+  ];
+  const groundMatch = text.match(floorPatterns[1]);
+  if (groundMatch) {
+    floor = '0';
+    text = text.replace(groundMatch[0], ' ').trim();
+  } else {
+    const m = text.match(floorPatterns[0]);
+    if (m) {
+      floor = m[1].trim();
+      text = text.replace(m[0], ' ').trim();
+    }
+  }
+
+  // --- استخراج رقم الشقة ---
+  const aptPatterns = [
+    /(?:شق[ةه]|ش|apt|apartment|وحد[ةه])\s*[#:.]?\s*([\dأ-ي\w]+)/i,
+  ];
+  for (const pat of aptPatterns) {
+    const m = text.match(pat);
+    if (m) {
+      apartment = m[1].trim();
+      text = text.replace(m[0], ' ').trim();
+      break;
+    }
+  }
+
+  // --- استخراج علامة مميزة (بجوار / أمام / خلف) ---
+  const landmarkMatch = text.match(/(?:بجوار|أمام|خلف|قريب من|بالقرب من|بجانب)\s+(.+?)(?:$|[,،-])/i);
+  if (landmarkMatch) {
+    landmark = landmarkMatch[1].trim();
+  }
+
+  return {
+    buildingNumber,
+    floor,
+    apartment,
+    landmark,
+    cleanedAddress: text.replace(/\s+/g, ' ').trim(),
+  };
+}
+
+/**
+ * 📦 تقدير حجم الشحنة بذكاء من الكمية ونوع المنتج
+ */
+export function estimatePackageSize(quantity: number, productDesc?: string): 'SMALL' | 'MEDIUM' | 'LARGE' {
+  // كلمات تدل على منتج كبير
+  const largeKeywords = /ثلاج[ةه]|غسال[ةه]|تلفزيون|شاش[ةه]|تكييف|سرير|كنب[ةه]|مكتب|دولاب/i;
+  // كلمات تدل على منتج متوسط
+  const mediumKeywords = /جهاز|لابتوب|laptop|طابع[ةه]|مايكرو|خلاط|مكنس[ةه]|حقيب[ةه]/i;
+
+  if (productDesc) {
+    if (largeKeywords.test(productDesc)) return 'LARGE';
+    if (mediumKeywords.test(productDesc)) return 'MEDIUM';
+  }
+
+  if (quantity >= 5) return 'LARGE';
+  if (quantity >= 3) return 'MEDIUM';
+  return 'SMALL';
+}
+
 // Bosta API يقبل أسماء المحافظات بالعربية مباشرة
 
 // تحويل اسم المحافظة إلى الاسم الذي يتعرف عليه بوسطة
@@ -596,6 +694,9 @@ export async function createBostaDelivery(order: {
   // تحديد نوع الشحن: 10 = عادي, 25 = تبديل, 30 = Fulfillment
   const shipmentType = order.fulfillmentType || 10;
 
+  // 🏗️ تحليل بنية العنوان — استخراج المبنى والدور والشقة تلقائياً
+  const addressParts = parseAddressStructure(cleanAddress);
+
   const deliveryData: BostaDeliveryRequest = {
     type: shipmentType,
     specs: {
@@ -603,12 +704,15 @@ export async function createBostaDelivery(order: {
         itemsCount: parseInt(order.quantity) || 1,
         description: order.productName || order.orderDetails || 'Order',
       },
-      size: 'SMALL',
+      size: estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails),
     },
     dropOffAddress: {
       city: match.city,           // ✅ المدينة المصححة من بوسطة
       zone: match.zone || undefined, // ✅ المنطقة المصححة من بوسطة
       firstLine: cleanAddress,    // ✅ العنوان المنظف
+      ...(addressParts.buildingNumber && { buildingNumber: addressParts.buildingNumber }),
+      ...(addressParts.floor && { floor: addressParts.floor }),
+      ...(addressParts.apartment && { apartment: addressParts.apartment }),
     },
     receiver: {
       firstName,
@@ -626,14 +730,23 @@ export async function createBostaDelivery(order: {
           itemsCount: parseInt(order.quantity) || 1,
           description: `إرجاع: ${order.productName || order.orderDetails || 'Order'}`,
         },
-        size: 'SMALL',
+        size: estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails),
       },
     }),
     notes: order.notes || undefined,
   };
 
+  // 🏗️ لوج تفاصيل العنوان المستخرجة
+  if (addressParts.buildingNumber || addressParts.floor || addressParts.apartment) {
+    console.log(`🏗️ [BOSTA] عنوان مُحلل: مبنى=${addressParts.buildingNumber || '-'} دور=${addressParts.floor || '-'} شقة=${addressParts.apartment || '-'}`);
+  }
+  if (addressParts.landmark) {
+    console.log(`📍 [BOSTA] علامة مميزة: ${addressParts.landmark}`);
+  }
+
+  const pkgSize = estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails);
   const typeLabel = shipmentType === 30 ? 'Fulfillment' : shipmentType === 25 ? 'تبديل' : 'عادي';
-  console.log(`🚚 [BOSTA] إنشاء شحنة للطلب #${order.id} → ${match.city}/${match.zone || '-'} | COD: ${codAmount} | نوع: ${typeLabel}`);
+  console.log(`🚚 [BOSTA] إنشاء شحنة للطلب #${order.id} → ${match.city}/${match.zone || '-'} | COD: ${codAmount} | نوع: ${typeLabel} | حجم: ${pkgSize}`);
   // لا نطبع البيانات الكاملة في الإنتاج (خصوصية أرقام الهاتف)
   if (process.env.NODE_ENV === 'development') {
     console.log(`📦 [BOSTA] البيانات:`, JSON.stringify(deliveryData, null, 2));
