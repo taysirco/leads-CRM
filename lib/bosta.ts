@@ -265,7 +265,7 @@ export async function createBostaDelivery(order: {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${BOSTA_API_KEY}`,
+        'Authorization': BOSTA_API_KEY,
       },
       body: JSON.stringify(deliveryData),
     });
