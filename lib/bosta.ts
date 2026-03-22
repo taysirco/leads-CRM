@@ -697,6 +697,22 @@ export async function createBostaDelivery(order: {
   // 🏗️ تحليل بنية العنوان — استخراج المبنى والدور والشقة تلقائياً
   const addressParts = parseAddressStructure(cleanAddress);
 
+  // 🧠 إنشاء السطر الثاني ذكياً من البيانات المستخرجة
+  const secondLineParts: string[] = [];
+  if (addressParts.buildingNumber) secondLineParts.push(`عمارة ${addressParts.buildingNumber}`);
+  if (addressParts.floor) secondLineParts.push(addressParts.floor === '0' ? 'دور أرضي' : `الدور ${addressParts.floor}`);
+  if (addressParts.apartment) secondLineParts.push(`شقة ${addressParts.apartment}`);
+  const secondLine = secondLineParts.length > 0 ? secondLineParts.join(' - ') : undefined;
+
+  // 🧠 ملاحظات ذكية للسائق — تجمع كل المعلومات المفيدة
+  const smartNotesParts: string[] = [];
+  if (order.notes) smartNotesParts.push(order.notes);
+  if (addressParts.landmark) smartNotesParts.push(`📍 ${addressParts.landmark}`);
+  const qty = parseInt(order.quantity) || 1;
+  if (qty > 1) smartNotesParts.push(`📦 ${qty} قطع`);
+  if (shipmentType === 25) smartNotesParts.push('🔄 تبديل — استلام المنتج القديم');
+  const smartNotes = smartNotesParts.length > 0 ? smartNotesParts.join(' | ') : undefined;
+
   const deliveryData: BostaDeliveryRequest = {
     type: shipmentType,
     specs: {
@@ -707,9 +723,10 @@ export async function createBostaDelivery(order: {
       size: estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails),
     },
     dropOffAddress: {
-      city: match.city,           // ✅ المدينة المصححة من بوسطة
-      zone: match.zone || undefined, // ✅ المنطقة المصححة من بوسطة
-      firstLine: cleanAddress,    // ✅ العنوان المنظف
+      city: match.city,
+      zone: match.zone || undefined,
+      firstLine: cleanAddress,
+      ...(secondLine && { secondLine }),
       ...(addressParts.buildingNumber && { buildingNumber: addressParts.buildingNumber }),
       ...(addressParts.floor && { floor: addressParts.floor }),
       ...(addressParts.apartment && { apartment: addressParts.apartment }),
@@ -717,13 +734,12 @@ export async function createBostaDelivery(order: {
     receiver: {
       firstName,
       lastName,
-      phone: phoneValidation.formatted, // ✅ رقم الهاتف المتحقق منه
+      phone: phoneValidation.formatted,
       ...(formattedPhone2 && { phone2: formattedPhone2 }),
     },
     businessReference,
     cod: codAmount,
-    allowToOpenPackage: true, // ✅ السماح للعميل بفتح الشحنة والفحص
-    // ✅ بيانات الإرجاع لشحنات التبديل (Exchange type 25)
+    allowToOpenPackage: true,
     ...(shipmentType === 25 && {
       returnSpecs: {
         packageDetails: {
@@ -733,12 +749,12 @@ export async function createBostaDelivery(order: {
         size: estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails),
       },
     }),
-    notes: order.notes || undefined,
+    notes: smartNotes,
   };
 
   // 🏗️ لوج تفاصيل العنوان المستخرجة
   if (addressParts.buildingNumber || addressParts.floor || addressParts.apartment) {
-    console.log(`🏗️ [BOSTA] عنوان مُحلل: مبنى=${addressParts.buildingNumber || '-'} دور=${addressParts.floor || '-'} شقة=${addressParts.apartment || '-'}`);
+    console.log(`🏗️ [BOSTA] عنوان مُحلل: مبنى=${addressParts.buildingNumber || '-'} دور=${addressParts.floor || '-'} شقة=${addressParts.apartment || '-'}${secondLine ? ` → secondLine="${secondLine}"` : ''}`);
   }
   if (addressParts.landmark) {
     console.log(`📍 [BOSTA] علامة مميزة: ${addressParts.landmark}`);

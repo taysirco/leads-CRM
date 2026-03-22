@@ -311,14 +311,45 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       return;
     }
 
+    // 🧠 كشف تكرار أرقام الهاتف
     const shipMode = fulfillmentType === 30 ? '🏭 مخزون بوسطة (Fulfillment)' : fulfillmentType === 25 ? '🔄 تبديل (Exchange)' : '🏠 مخزونك الشخصي';
-    const confirmShip = confirm(
-      `هل أنت متأكد من إنشاء ${selectedOrders.length} شحنة على بوسطة؟\n\n` +
-      `📦 نوع الشحن: ${shipMode}\n\n` +
-      `سيتم:\n• إرسال البيانات مباشرة إلى بوسطة\n• تغيير حالة الطلبات إلى "تم الشحن"\n• حفظ أرقام التتبع تلقائياً`
-    );
+    const selectedOrdersData = orders.filter(o => selectedOrders.includes(o.id));
+    const phoneMap = new Map<string, number[]>();
+    selectedOrdersData.forEach(o => {
+      const phone = o.phone?.replace(/\D/g, '').slice(-10) || '';
+      if (phone) {
+        if (!phoneMap.has(phone)) phoneMap.set(phone, []);
+        phoneMap.get(phone)!.push(o.id);
+      }
+    });
+    const duplicatePhones = [...phoneMap.entries()].filter(([, ids]) => ids.length > 1);
+    
+    // 🧠 تدقيق جودة قبل الشحن
+    const allWarnings = selectedOrdersData.map(o => ({ id: o.id, warnings: getOrderWarnings(o) }));
+    const criticalOrders = allWarnings.filter(w => w.warnings.some(m => m.includes('هاتف') || m.includes('مسبقاً')));
+    const warningOrders = allWarnings.filter(w => w.warnings.length > 0 && !w.warnings.some(m => m.includes('هاتف') || m.includes('مسبقاً')));
 
-    if (!confirmShip) return;
+    let confirmMsg = `هل أنت متأكد من إنشاء ${selectedOrders.length} شحنة على بوسطة؟\n\n`;
+    confirmMsg += `📦 نوع الشحن: ${shipMode}\n`;
+    
+    if (criticalOrders.length > 0) {
+      confirmMsg += `\n🔴 ${criticalOrders.length} طلب به مشكلة حرجة:\n`;
+      criticalOrders.slice(0, 3).forEach(w => confirmMsg += `  • #${w.id}: ${w.warnings.join(', ')}\n`);
+      if (criticalOrders.length > 3) confirmMsg += `  ... و${criticalOrders.length - 3} طلبات أخرى\n`;
+    }
+    if (warningOrders.length > 0) {
+      confirmMsg += `\n⚠️ ${warningOrders.length} طلب به تحذيرات خفيفة\n`;
+    }
+    if (duplicatePhones.length > 0) {
+      confirmMsg += `\n📱 تكرار أرقام هاتف:\n`;
+      duplicatePhones.forEach(([phone, ids]) => {
+        confirmMsg += `  • ${phone.slice(0,3)}****${phone.slice(-3)} ← طلبات: ${ids.join(', ')}\n`;
+      });
+    }
+    
+    confirmMsg += `\nسيتم:\n• إرسال البيانات مباشرة إلى بوسطة\n• تغيير حالة الطلبات إلى "تم الشحن"\n• حفظ أرقام التتبع تلقائياً`;
+
+    if (!confirm(confirmMsg)) return;
 
     setIsShippingViaBosta(true);
     setBostaShipResults([]);
@@ -345,7 +376,9 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
         message += `✅ تم إنشاء ${successCount} شحنة بنجاح على بوسطة\n`;
         const successResults = (result.results || []).filter((r: any) => r.success);
         successResults.forEach((r: any) => {
-          message += `  📦 طلب #${r.orderId} → تتبع: ${r.trackingNumber}\n`;
+          message += `  📦 طلب #${r.orderId} → تتبع: ${r.trackingNumber}`;
+          if (r.trackingUrl) message += ` (🔗 ${r.trackingUrl})`;
+          message += '\n';
         });
       }
       if (failedCount > 0) {
