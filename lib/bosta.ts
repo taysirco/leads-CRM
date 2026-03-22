@@ -36,7 +36,8 @@ export function mapBostaStateToCRM(stateCode: number): { crmStatus: string; bost
 // ==================== تنسيق البيانات ====================
 
 // تحويل رقم الهاتف إلى الصيغة المحلية المصرية (01xxxxxxxxx)
-function formatToLocalEgyptianNumber(phone: string): string {
+// مُصدّرة لاستخدامها في BostaExport.tsx أيضاً (DRY)
+export function formatToLocalEgyptianNumber(phone: string): string {
   if (!phone) return '';
   let cleaned = phone.replace(/\D/g, '');
 
@@ -58,22 +59,67 @@ function formatToLocalEgyptianNumber(phone: string): string {
 // Bosta API يقبل أسماء المحافظات بالعربية مباشرة
 
 // تحويل اسم المحافظة إلى الاسم الذي يتعرف عليه بوسطة
-function normalizeGovernorateName(governorate: string): string {
+// مُصدّرة لاستخدامها في BostaExport.tsx أيضاً (DRY)
+// قاموس شامل: عربي + إنجليزي + متغيرات شائعة
+export function normalizeGovernorateName(governorate: string): string {
   if (!governorate) return '';
   const cleaned = governorate.trim();
 
-  // قاموس الأسماء البديلة
   const aliasMap: Record<string, string> = {
+    // === الأسماء العربية الكاملة ===
+    'القاهرة': 'القاهرة', 'الجيزة': 'الجيزة', 'الإسكندرية': 'الإسكندرية',
+    'الشرقية': 'الشرقية', 'القليوبية': 'القليوبية', 'المنوفية': 'المنوفية',
+    'الغربية': 'الغربية', 'الدقهلية': 'الدقهلية', 'البحيرة': 'البحيرة',
+    'المنيا': 'المنيا', 'الفيوم': 'الفيوم', 'الإسماعيلية': 'الإسماعيلية',
+    'السويس': 'السويس', 'الأقصر': 'الأقصر', 'البحر الأحمر': 'البحر الأحمر',
+    'الوادي الجديد': 'الوادي الجديد', 'شمال سيناء': 'شمال سيناء',
+    'جنوب سيناء': 'جنوب سيناء', 'بني سويف': 'بني سويف',
+    'كفر الشيخ': 'كفر الشيخ', 'دمياط': 'دمياط', 'سوهاج': 'سوهاج',
+    'أسيوط': 'أسيوط', 'أسوان': 'أسوان', 'قنا': 'قنا',
+    'بور سعيد': 'بور سعيد', 'مرسى مطروح': 'مرسى مطروح',
+
+    // === متغيرات عربية شائعة (بدون ال التعريف / أخطاء إملائية) ===
     'قاهرة': 'القاهرة', 'جيزة': 'الجيزة', 'اسكندرية': 'الإسكندرية',
     'اسماعيلية': 'الإسماعيلية', 'إسماعيلية': 'الإسماعيلية',
     'شرقية': 'الشرقية', 'قليوبية': 'القليوبية', 'منوفية': 'المنوفية',
     'غربية': 'الغربية', 'دقهلية': 'الدقهلية', 'بحيرة': 'البحيرة',
     'منيا': 'المنيا', 'فيوم': 'الفيوم', 'اسيوط': 'أسيوط',
     'اسوان': 'أسوان', 'بورسعيد': 'بور سعيد', 'مطروح': 'مرسى مطروح',
-    'اقصر': 'الأقصر', 'أقصر': 'الأقصر', 'بنى سويف': 'بني سويف',
+    'اقصر': 'الأقصر', 'أقصر': 'الأقصر', 'لوكسور': 'الأقصر',
+    'بنى سويف': 'بني سويف',
+    'سيناء الجنوبية': 'جنوب سيناء', 'جنوب سينا': 'جنوب سيناء',
+    'سينا الجنوبية': 'جنوب سيناء', 'سيناء الشمالية': 'شمال سيناء',
+    'شمال سينا': 'شمال سيناء', 'سينا الشمالية': 'شمال سيناء',
+
+    // === الأسماء الإنجليزية ===
+    'cairo': 'القاهرة', 'giza': 'الجيزة', 'alexandria': 'الإسكندرية',
+    'ash sharqia': 'الشرقية', 'qalyubia': 'القليوبية', 'menofia': 'المنوفية',
+    'gharbia': 'الغربية', 'dakahlia': 'الدقهلية', 'beheira': 'البحيرة',
+    'minya': 'المنيا', 'faiyum': 'الفيوم', 'ismailia': 'الإسماعيلية',
+    'suez': 'السويس', 'luxor': 'الأقصر', 'red sea': 'البحر الأحمر',
+    'new valley': 'الوادي الجديد', 'north sinai': 'شمال سيناء',
+    'south sinai': 'جنوب سيناء', 'beni suef': 'بني سويف',
+    'kafr el sheikh': 'كفر الشيخ', 'damietta': 'دمياط', 'sohag': 'سوهاج',
+    'assiut': 'أسيوط', 'aswan': 'أسوان', 'qena': 'قنا',
+    'port said': 'بور سعيد', 'matrouh': 'مرسى مطروح',
   };
 
-  return aliasMap[cleaned] || cleaned;
+  // بحث مباشر
+  const directMatch = aliasMap[cleaned];
+  if (directMatch) return directMatch;
+
+  // بحث case-insensitive (للأسماء الإنجليزية)
+  const lowerMatch = aliasMap[cleaned.toLowerCase()];
+  if (lowerMatch) return lowerMatch;
+
+  // بحث جزئي ذكي
+  for (const [key, value] of Object.entries(aliasMap)) {
+    if (cleaned.includes(key) || key.includes(cleaned)) {
+      return value;
+    }
+  }
+
+  return cleaned;
 }
 
 // ==================== Bosta API ====================
@@ -175,8 +221,9 @@ export async function createBostaDelivery(order: {
   // تحويل المحافظة
   const normalizedGov = normalizeGovernorateName(order.governorate);
 
-  // إنشاء مرجع فريد للطلب
-  const businessReference = `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}`;
+  // إنشاء مرجع فريد للطلب (مع لاحقة عشوائية لتجنب التكرار عند إعادة الشحن بنفس اليوم)
+  const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const businessReference = `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}-${randomSuffix}`;
 
   // تحديد نوع الشحن: 10 = عادي (من مخزونك), 30 = من مخزون بوسطة (Fulfillment)
   const shipmentType = order.fulfillmentType || 10;

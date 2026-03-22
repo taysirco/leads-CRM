@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { cleanText, getUniqueProducts } from '../lib/textCleaner';
+import { formatToLocalEgyptianNumber, normalizeGovernorateName } from '../lib/bosta';
 import StatusBadge from './StatusBadge';
 
 interface Order {
@@ -210,174 +211,25 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   };
 
   const mapOrderToBosta = (order: Order) => {
-    // دالة لتحويل رقم الهاتف إلى الصيغة المحلية المصرية (01xxxxxxxxx)
-    const formatToLocalEgyptianNumber = (phone: string): string => {
-      if (!phone) return '';
-      
-      // إزالة كل ما هو ليس رقماً
-      let cleaned = phone.replace(/\D/g, '');
-      
-      // إذا كان الرقم يبدأ بـ 20 (مفتاح مصر) وطوله 12 رقم
-      if (cleaned.startsWith('20') && cleaned.length === 12) {
-        // إزالة الـ 20 وإضافة 0 في البداية
-        return '0' + cleaned.substring(2);
-      }
-      
-      // إذا كان الرقم يبدأ بـ 2 فقط (بدون الصفر) وطوله 11 رقم
-      if (cleaned.startsWith('2') && cleaned.length === 11) {
-        // إزالة الـ 2 وإضافة 0 في البداية
-        return '0' + cleaned.substring(1);
-      }
-      
-      // إذا كان الرقم يبدأ بـ 1 وطوله 10 أرقام (رقم مصري بدون الصفر)
-      if (cleaned.startsWith('1') && cleaned.length === 10) {
-        // إضافة 0 في البداية
-        return '0' + cleaned;
-      }
-      
-      // إذا كان الرقم بالفعل يبدأ بـ 01 وطوله 11 رقم
-      if (cleaned.startsWith('01') && cleaned.length === 11) {
-        return cleaned;
-      }
-      
-      // إذا لم يطابق أي من الحالات، إرجاع الرقم كما هو بعد التنظيف
-      return cleaned;
-    };
-
-    // دالة لتحويل أسماء المحافظات إلى الأسماء العربية الصحيحة
-    const normalizeGovernorateName = (governorate: string): string => {
-      if (!governorate) return '';
-      
-      // تنظيف النص من المسافات الزائدة والأحرف الخاصة
-      const cleaned = governorate.trim();
-      
-      // قاموس التحويل للمحافظات - الأسماء العربية الدقيقة فقط
-      const governorateMap: { [key: string]: string } = {
-        // الأسماء الصحيحة المطلوبة (تبقى كما هي)
-        'الشرقية': 'الشرقية',
-        'بني سويف': 'بني سويف',
-        'الإسماعيلية': 'الإسماعيلية',
-        'جنوب سيناء': 'جنوب سيناء',
-        'سوهاج': 'سوهاج',
-        'كفر الشيخ': 'كفر الشيخ',
-        'القليوبية': 'القليوبية',
-        'الجيزة': 'الجيزة',
-        'شمال سيناء': 'شمال سيناء',
-        'القاهرة': 'القاهرة',
-        'الأقصر': 'الأقصر',
-        'السويس': 'السويس',
-        'مرسى مطروح': 'مرسى مطروح',
-        'البحيرة': 'البحيرة',
-        'الغربية': 'الغربية',
-        'الدقهلية': 'الدقهلية',
-        'دمياط': 'دمياط',
-        'المنيا': 'المنيا',
-        'بور سعيد': 'بور سعيد',
-        'الوادي الجديد': 'الوادي الجديد',
-        'الإسكندرية': 'الإسكندرية',
-        'أسيوط': 'أسيوط',
-        'الفيوم': 'الفيوم',
-        'قنا': 'قنا',
-        'المنوفية': 'المنوفية',
-        'البحر الأحمر': 'البحر الأحمر',
-        'أسوان': 'أسوان',
-        
-        // الأسماء الإنجليزية
-        'ash sharqia': 'الشرقية',
-        'beni suef': 'بني سويف',
-        'ismailia': 'الإسماعيلية',
-        'south sinai': 'جنوب سيناء',
-        'sohag': 'سوهاج',
-        'kafr el sheikh': 'كفر الشيخ',
-        'qalyubia': 'القليوبية',
-        'giza': 'الجيزة',
-        'north sinai': 'شمال سيناء',
-        'cairo': 'القاهرة',
-        'luxor': 'الأقصر',
-        'suez': 'السويس',
-        'matrouh': 'مرسى مطروح',
-        'beheira': 'البحيرة',
-        'gharbia': 'الغربية',
-        'dakahlia': 'الدقهلية',
-        'damietta': 'دمياط',
-        'minya': 'المنيا',
-        'port said': 'بور سعيد',
-        'new valley': 'الوادي الجديد',
-        'alexandria': 'الإسكندرية',
-        'assiut': 'أسيوط',
-        'faiyum': 'الفيوم',
-        'qena': 'قنا',
-        'menofia': 'المنوفية',
-        'red sea': 'البحر الأحمر',
-        'aswan': 'أسوان',
-        
-        // أسماء مشابهة أو متغيرات شائعة
-        'شرقية': 'الشرقية',
-        'بنى سويف': 'بني سويف',
-        'اسماعيلية': 'الإسماعيلية',
-        'إسماعيلية': 'الإسماعيلية',
-        'سيناء الجنوبية': 'جنوب سيناء',
-        'جنوب سينا': 'جنوب سيناء',
-        'سينا الجنوبية': 'جنوب سيناء',
-        'قليوبية': 'القليوبية',
-        'جيزة': 'الجيزة',
-        'سيناء الشمالية': 'شمال سيناء',
-        'شمال سينا': 'شمال سيناء',
-        'سينا الشمالية': 'شمال سيناء',
-        'قاهرة': 'القاهرة',
-        'اقصر': 'الأقصر',
-        'أقصر': 'الأقصر',
-        'لوكسور': 'الأقصر',
-        'مطروح': 'مرسى مطروح',
-        'بحيرة': 'البحيرة',
-        'غربية': 'الغربية',
-        'دقهلية': 'الدقهلية',
-        'منيا': 'المنيا',
-        'بورسعيد': 'بور سعيد',
-        'اسكندرية': 'الإسكندرية',
-        'اسيوط': 'أسيوط',
-        'فيوم': 'الفيوم',
-        'منوفية': 'المنوفية',
-        'اسوان': 'أسوان'
-      };
-      
-      // البحث المباشر
-      const directMatch = governorateMap[cleaned];
-      if (directMatch) return directMatch;
-      
-      // البحث بدون حساسية للحروف الكبيرة والصغيرة
-      const lowerCaseMatch = governorateMap[cleaned.toLowerCase()];
-      if (lowerCaseMatch) return lowerCaseMatch;
-      
-      // البحث الذكي للأسماء المشابهة
-      for (const [key, value] of Object.entries(governorateMap)) {
-        if (cleaned.includes(key) || key.includes(cleaned)) {
-          return value;
-        }
-      }
-      
-      // إذا لم يتم العثور على تطابق، إرجاع النص الأصلي
-      return cleaned;
-    };
-    
+    // ✅ يستخدم الدوال المشتركة من bosta.ts (DRY — مصدر واحد للحقيقة)
     return {
       'Full Name': order.name,
       'Phone': formatToLocalEgyptianNumber(order.phone),
       'Second Phone': order.whatsapp ? formatToLocalEgyptianNumber(order.whatsapp) : '',
       'City': normalizeGovernorateName(order.governorate),
-      'Area': order.area || 'منطقة أخرى', // Default value if area is missing
+      'Area': order.area || 'منطقة أخرى',
       'Street Name': order.address,
-      'Building#, Floor#, and Apartment#': '', // Optional, leave empty
-      'Work address': '', // Optional, leave empty
+      'Building#, Floor#, and Apartment#': '',
+      'Work address': '',
       'Delivery notes': order.notes || '',
 
       // --- Order Details ---
-      'Type': 'Cash Collection', // Default type as per requirement
+      'Type': 'Cash Collection',
       'Cash Amount': order.totalPrice ? String(order.totalPrice).replace(/\D/g, '') || '0' : '0',
       '#Items': order.quantity || '1',
       'Package Description': order.productName || order.orderDetails || 'Order',
-      'Order Reference': `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}`, // Unique reference
-      'Allow opening package': '', // Optional, leave empty
+      'Order Reference': `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}`,
+      'Allow opening package': '',
 
       // --- Exchange / Large Deliveries (Optional) ---
       'Return #Items': '',
