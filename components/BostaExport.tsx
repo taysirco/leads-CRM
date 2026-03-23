@@ -289,13 +289,9 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   const mapOrderToBosta = (order: Order, shipType: number) => {
     // ✅ يستخدم الدوال المشتركة من bosta.ts (DRY — مصدر واحد للحقيقة)
     
-    // 🧠 Bug #1 Fix: تحديد نوع الشحنة بذكاء
-    // أولاً: الحالة (تبديل/استبدال) لها أولوية
-    const isExchangeByStatus = /تبديل|استبدال|exchange/i.test(order.status || '');
-    // ثانياً: اختيار المستخدم
-    const effectiveType = isExchangeByStatus ? 25 : shipType;
+    // ✅ نوع الشحن يعتمد فقط على اختيار المستخدم (الراديو بوتن)
     // Bosta Excel يقبل: Deliver, Exchange, Return, Cash Collection
-    const typeValue = effectiveType === 25 ? 'Exchange' : 'Deliver';
+    const typeValue = shipType === 25 ? 'Exchange' : 'Deliver';
 
     // 🧠 Bug #2 Fix: تحويل المحافظة إلى الاسم الإنجليزي المعتمد في بوسطة
     const bostaCity = getBostaCity(order.governorate);
@@ -345,8 +341,8 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       'Allow to open package': 'yes',
 
       // --- Exchange / Large Deliveries (Optional) ---
-      'Return #Items': effectiveType === 25 ? (order.quantity || '1') : '',
-      'Return Package Description': effectiveType === 25 ? (order.productName || order.orderDetails || 'Return') : '',
+      'Return #Items': shipType === 25 ? (order.quantity || '1') : '',
+      'Return Package Description': shipType === 25 ? (order.productName || order.orderDetails || 'Return') : '',
       'Package Type': '',
     };
   };

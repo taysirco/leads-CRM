@@ -99,12 +99,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         continue;
       }
 
-      // 🧠 ذكاء: كشف تلقائي لنوع التبديل من حالة الطلب
-      const isExchangeByStatus = /تبديل|استبدال|exchange/i.test(order.status || '');
-      const effectiveFulfillment = isExchangeByStatus ? 25 : fulfillmentType;
-      if (isExchangeByStatus && fulfillmentType !== 25) {
-        console.log(`🧠 [BOSTA API] كشف تلقائي: الطلب #${orderId} حالته "${order.status}" → تبديل (25)`);
-      }
+      // ✅ نوع الشحن يعتمد فقط على اختيار المستخدم (الراديو بوتن)
+      const effectiveFulfillment = fulfillmentType;
 
       // ⚠️ تحذير COD = 0 (ربما خطأ في البيانات)
       const codValue = parseInt(String(order.totalPrice || '0').replace(/\D/g, '')) || 0;
