@@ -80,7 +80,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  // ── 2. اقتراح المنطقة ──
+  // ── 2. اقتراح المنطقة (مع تحليل العنوان الذكي) ──
   if (type === 'zone') {
     if (!governorate) {
       return res.status(200).json({ suggestions: [] });
@@ -94,62 +94,115 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return names.some(n => norm(n) === govNorm || normalizeGovernorateName(n) === normalizeGovernorateName(governorate));
     });
 
-    if (!matchedCity) {
-      // fallback: استخدم smartMatch
+    let cityId: string | undefined;
+    if (matchedCity) {
+      cityId = matchedCity._id;
+    } else {
       const match = await smartMatchCityAndZone(normalizeGovernorateName(governorate));
-      if (!match.cityId) return res.status(200).json({ suggestions: [] });
-      const zones = await fetchBostaZones(match.cityId);
-      const q = norm(query || '');
-
-      const scoredZones = zones
-        .filter((z: any) => z.dropOffAvailability)
-        .map((z: any) => {
-          const zn = norm(z.nameAr || '');
-          let score = 0;
-          if (q.length === 0) score = 1;
-          else if (zn === q) score = 1;
-          else if (zn.startsWith(q) || q.startsWith(zn)) score = 0.8;
-          else if (zn.includes(q) || q.includes(zn)) score = 0.6;
-          return { nameAr: z.nameAr, name: z.name, score };
-        });
-
-      scoredZones.sort((a: any, b: any) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return a.nameAr.localeCompare(b.nameAr, 'ar');
-      });
-
-      return res.status(200).json({
-        suggestions: scoredZones.filter((s: any) => s.score > 0.2).slice(0, 15).map((s: any) => ({
-          nameAr: s.nameAr,
-          name: s.name,
-        })),
-      });
+      cityId = match.cityId;
     }
 
-    const zones = await fetchBostaZones(matchedCity._id);
-    const q = norm(query || '');
+    if (!cityId) return res.status(200).json({ suggestions: [] });
 
+    const zones = await fetchBostaZones(cityId);
+    const q = norm(query || '');
+    const addr = norm(address || '');
+
+    // 🧠 دالة تسجيل المنطقة بناءً على العنوان
+    // تبحث عن تطابقات بين اسم المنطقة ونص العنوان
+    const scoreZoneByAddress = (zoneNameAr: string, zoneNameEn: string): number => {
+      if (!addr || addr.length < 3) return 0;
+
+      const znAr = norm(zoneNameAr || '');
+      const znEn = (zoneNameEn || '').toLowerCase().trim();
+      let bestScore = 0;
+
+      // 1. تطابق كامل: اسم المنطقة موجود كلمة كاملة في العنوان
+      if (znAr.length >= 3 && addr.includes(znAr)) {
+        // كلما كان الاسم أطول كلما كان التطابق أدق
+        bestScore = Math.max(bestScore, 0.9 + (znAr.length / 100));
+      }
+
+      // 2. تطابق إنجليزي
+      if (znEn.length >= 3 && addr.includes(znEn)) {
+        bestScore = Math.max(bestScore, 0.85);
+      }
+
+      // 3. تحقق من كلمات العنوان المنفردة
+      const addrWords = addr.split(/[\s,،\-\/\.]+/).filter(w => w.length >= 2);
+      for (const word of addrWords) {
+        if (word.length < 2) continue;
+
+        // كلمة كاملة من العنوان تطابق اسم المنطقة
+        if (znAr === word) {
+          bestScore = Math.max(bestScore, 0.95);
+        }
+        // كلمة من العنوان تبدأ باسم المنطقة أو العكس
+        else if (znAr.startsWith(word) || word.startsWith(znAr)) {
+          bestScore = Math.max(bestScore, 0.7);
+        }
+        // كلمة من العنوان تحتوي على اسم المنطقة (3+ حروف)
+        else if (word.length >= 3 && znAr.length >= 3 && (word.includes(znAr) || znAr.includes(word))) {
+          bestScore = Math.max(bestScore, 0.5);
+        }
+      }
+
+      return bestScore;
+    };
+
+    // تسجيل كل منطقة
     const scoredZones = zones
       .filter((z: any) => z.dropOffAvailability)
       .map((z: any) => {
         const zn = norm(z.nameAr || '');
-        let score = 0;
-        if (q.length === 0) score = 1;
-        else if (zn === q) score = 1;
-        else if (zn.startsWith(q) || q.startsWith(zn)) score = 0.8;
-        else if (zn.includes(q) || q.includes(zn)) score = 0.6;
-        return { nameAr: z.nameAr, name: z.name, score };
+
+        // نقاط البحث النصي (ما كتبه المستخدم في خانة المنطقة)
+        let queryScore = 0;
+        if (q.length === 0) queryScore = 0; // لا bonus if no query
+        else if (zn === q) queryScore = 1;
+        else if (zn.startsWith(q) || q.startsWith(zn)) queryScore = 0.8;
+        else if (zn.includes(q) || q.includes(zn)) queryScore = 0.6;
+        else {
+          // تشابه حرفي
+          let matches = 0;
+          for (let i = 0; i < Math.min(zn.length, q.length); i++) {
+            if (zn[i] === q[i]) matches++;
+          }
+          queryScore = q.length > 0 ? (matches / Math.max(zn.length, q.length)) * 0.4 : 0;
+        }
+
+        // نقاط تحليل العنوان (ذكاء إضافي)
+        const addressScore = scoreZoneByAddress(z.nameAr, z.name);
+
+        // الدرجة النهائية: الأعلى من الاثنين + bonus إذا كلاهما موجود
+        const finalScore = Math.max(queryScore, addressScore)
+          + (queryScore > 0 && addressScore > 0 ? 0.1 : 0);
+
+        return {
+          nameAr: z.nameAr,
+          name: z.name,
+          score: finalScore,
+          isAddressMatch: addressScore > 0.5, // علامة للعرض في UI
+        };
       });
 
+    // ترتيب: الأعلى تطابقاً أولاً
     scoredZones.sort((a: any, b: any) => {
       if (b.score !== a.score) return b.score - a.score;
       return a.nameAr.localeCompare(b.nameAr, 'ar');
     });
 
+    // إرجاع النتائج
+    const results = q.length > 0
+      ? scoredZones.filter((s: any) => s.score > 0.15).slice(0, 15)
+      : scoredZones.slice(0, 20);
+
     return res.status(200).json({
-      suggestions: q.length > 0
-        ? scoredZones.filter((s: any) => s.score > 0.2).slice(0, 15)
-        : scoredZones.slice(0, 20),
+      suggestions: results.map((s: any) => ({
+        nameAr: s.nameAr,
+        name: s.name,
+        isAddressMatch: s.isAddressMatch || false,
+      })),
     });
   }
 

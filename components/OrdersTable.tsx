@@ -67,7 +67,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
 
   // 🧠 Smart Bosta Suggestions
   const [govSuggestions, setGovSuggestions] = useState<{nameAr: string; name: string; _id: string}[]>([]);
-  const [zoneSuggestions, setZoneSuggestions] = useState<{nameAr: string; name: string}[]>([]);
+  const [zoneSuggestions, setZoneSuggestions] = useState<{nameAr: string; name: string; isAddressMatch?: boolean}[]>([]);
   const [showGovDropdown, setShowGovDropdown] = useState(false);
   const [showZoneDropdown, setShowZoneDropdown] = useState(false);
   const [addressAnalysis, setAddressAnalysis] = useState<{
@@ -122,15 +122,15 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
     }, 200);
   }, []);
 
-  // 🧠 Fetch zone suggestions from Bosta
-  const fetchZoneSuggestions = React.useCallback((query: string, gov: string) => {
+  // 🧠 Fetch zone suggestions from Bosta (with address analysis)
+  const fetchZoneSuggestions = React.useCallback((query: string, gov: string, addr?: string) => {
     if (zoneTimerRef.current) clearTimeout(zoneTimerRef.current);
     zoneTimerRef.current = setTimeout(async () => {
       try {
         const res = await fetch('/api/bosta-suggest', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'zone', query, governorate: gov }),
+          body: JSON.stringify({ type: 'zone', query, governorate: gov, address: addr || '' }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -1158,7 +1158,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                             e.preventDefault();
                             handleUpdateMultipleFields({ governorate: s.nameAr, area: '' });
                             setShowGovDropdown(false);
-                            fetchZoneSuggestions('', s.nameAr);
+                            fetchZoneSuggestions('', s.nameAr, editingOrder.address);
                           }}
                           className="w-full text-right px-3 py-2 hover:bg-blue-50 transition-colors flex items-center justify-between text-sm border-b border-gray-50 last:border-0"
                         >
@@ -1177,12 +1177,12 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     value={editingOrder.area}
                     onChange={(e) => {
                       handleUpdateField('area', e.target.value);
-                      fetchZoneSuggestions(e.target.value, editingOrder.governorate);
+                      fetchZoneSuggestions(e.target.value, editingOrder.governorate, editingOrder.address);
                       setShowZoneDropdown(true);
                     }}
                     onFocus={() => {
                       if (editingOrder.governorate) {
-                        fetchZoneSuggestions(editingOrder.area || '', editingOrder.governorate);
+                        fetchZoneSuggestions(editingOrder.area || '', editingOrder.governorate, editingOrder.address);
                         setShowZoneDropdown(true);
                       }
                     }}
@@ -1206,10 +1206,15 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                             handleUpdateField('area', s.nameAr);
                             setShowZoneDropdown(false);
                           }}
-                          className="w-full text-right px-3 py-2 hover:bg-blue-50 transition-colors flex items-center justify-between text-sm border-b border-gray-50 last:border-0"
+                          className={`w-full text-right px-3 py-2 hover:bg-blue-50 transition-colors flex items-center justify-between text-sm border-b border-gray-50 last:border-0 ${s.isAddressMatch ? 'bg-green-50 border-l-2 border-l-green-400' : ''}`}
                         >
-                          <span className="font-medium text-gray-900">{s.nameAr}</span>
-                          <span className="text-xs text-gray-400">{s.name}</span>
+                          <span className="font-medium text-gray-900 flex items-center gap-1">
+                            {s.isAddressMatch && <span className="text-green-600 text-xs">✨</span>}
+                            {s.nameAr}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {s.isAddressMatch ? '📍 مطابق للعنوان' : s.name}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -1309,7 +1314,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                               type="button"
                               onClick={() => {
                                 handleUpdateMultipleFields({ governorate: addressAnalysis.matchedCity! });
-                                fetchZoneSuggestions('', addressAnalysis.matchedCity!);
+                                fetchZoneSuggestions('', addressAnalysis.matchedCity!, editingOrder.address);
                               }}
                               className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-medium hover:bg-blue-200 transition-colors border border-blue-300"
                             >
