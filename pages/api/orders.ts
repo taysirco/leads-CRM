@@ -286,12 +286,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const productName = cachedTargetLead.productName?.trim();
           const quantityStr = cachedTargetLead.quantity?.toString().trim();
 
+          // 📝 طلب يدوي بدون بيانات المنتج — أرشفة مباشرة بدون خصم مخزون
           if (!productName || !quantityStr) {
-            console.error(`❌ بيانات ناقصة للطلب ${rowNumber}: منتج=${productName}, كمية=${quantityStr}`);
-            return res.status(400).json({
-              error: 'لا يمكن الشحن',
-              stockError: true,
-              message: 'بيانات الطلب غير مكتملة (اسم المنتج أو الكمية مفقود)'
+            console.log(`📝 [INDIVIDUAL] الطلب ${rowNumber} — بيانات المنتج غير مكتملة (المنتج: "${productName || ''}", الكمية: "${quantityStr || ''}") — أرشفة مباشرة بدون خصم مخزون`);
+            await updateLead(Number(rowNumber), updates);
+            return res.status(200).json({
+              success: true,
+              message: '✅ تم أرشفة الطلب بنجاح (بدون خصم مخزون — بيانات المنتج غير مكتملة)'
             });
           }
         }
