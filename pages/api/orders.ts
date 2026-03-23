@@ -218,10 +218,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(200).json(response);
         }
 
-        // للحالات الأخرى (غير "تم الشحن") - تحديث عادي
+        // للحالات الأخرى (غير "تم الشحن") - تحديث عادي عبر batch
         console.log('🔄 تحديث حالة الطلبات (غير شحن)...');
-        const updatePromises = orders.map((orderId: number) => updateLead(Number(orderId), { status }));
-        await Promise.all(updatePromises);
+        const batchUpdates = orders.map((orderId: number) => ({
+          rowNumber: Number(orderId),
+          updates: { status }
+        }));
+        await updateLeadsBatch(batchUpdates);
         console.log('✅ تم تحديث جميع الطلبات بنجاح');
 
         return res.status(200).json({

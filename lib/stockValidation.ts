@@ -216,7 +216,7 @@ export async function withStockLock<T>(
 // Atomic Shipping Operation
 // ========================
 
-import { updateLead, updateLeadsBatch, deductStockBulk, fetchLeads } from './googleSheets';
+import { updateLead, updateLeadsBatch, deductStockBulk, fetchLeads, addOrUpdateStockItem, addStockMovement } from './googleSheets';
 
 export interface AtomicShippingResult {
     success: boolean;
@@ -473,6 +473,30 @@ export async function atomicBulkShipping(
                 } catch (updateError) {
                     console.error(`❌ [ATOMIC] فشل تحديث الطلب ${item.orderId}:`, updateError);
                     failedOrders.push(item.orderId);
+                    
+                    // 🛡️ إرجاع المخزون المخصوم — الطلب لم يُشحن لكن المخزون خُصم
+                    console.log(`🔄 [ATOMIC] إرجاع ${item.quantity} وحدة من "${item.productName}" للمخزون...`);
+                    try {
+                        const { stockItems } = await fetchStock(true);
+                        const stockItem = findProductBySynonyms(item.productName, stockItems);
+                        if (stockItem) {
+                            await addOrUpdateStockItem({
+                                ...stockItem,
+                                currentQuantity: stockItem.currentQuantity + item.quantity
+                            });
+                            await addStockMovement({
+                                productName: stockItem.productName,
+                                type: 'return',
+                                quantity: item.quantity,
+                                orderId: item.orderId,
+                                reason: 'إرجاع مخزون — فشل تحديث حالة الطلب'
+                            });
+                            console.log(`✅ [ATOMIC] تم إرجاع ${item.quantity} وحدة من "${item.productName}"`);
+                        }
+                    } catch (rollbackError) {
+                        console.error(`❌ [ATOMIC] فشل إرجاع المخزون للطلب ${item.orderId}:`, rollbackError);
+                        revertedOrders.push(item.orderId);
+                    }
                 }
                 // تأخير صغير لتجنب تجاوز الحد
                 await new Promise(resolve => setTimeout(resolve, 200));

@@ -604,13 +604,19 @@ export function findProductBySynonyms(productName: string, stockItems: StockItem
     }
   }
 
-  // النتيجة النهائية
-  if (bestMatch) {
+  // النتيجة النهائية — يجب أن تكون نسبة التطابق 50% على الأقل
+  const MIN_MATCH_THRESHOLD = 50;
+  
+  if (bestMatch && bestScore >= MIN_MATCH_THRESHOLD) {
     console.log(`\n✅ تم العثور على المنتج بنجاح!`);
     console.log(`📦 المنتج المطابق: "${bestMatch.productName}"`);
     console.log(`🎯 تفاصيل المطابقة: ${bestMatchDetails}`);
-    console.log(`📊 نسبة التطابق: ${bestScore}%`);
+    console.log(`📊 نسبة التطابق: ${bestScore}% (الحد الأدنى: ${MIN_MATCH_THRESHOLD}%)`);
     console.log(`💰 الكمية المتاحة: ${bestMatch.currentQuantity}`);
+  } else if (bestMatch && bestScore < MIN_MATCH_THRESHOLD) {
+    console.log(`\n⚠️ وُجد تطابق جزئي "${bestMatch.productName}" لكن النسبة (${bestScore}%) أقل من الحد الأدنى (${MIN_MATCH_THRESHOLD}%)`);
+    console.log(`📝 كلمات البحث المستخدمة: [${searchWords.join(', ')}]`);
+    bestMatch = null; // رفض التطابق الضعيف
   } else {
     console.log(`\n❌ لم يتم العثور على أي مطابقة للمنتج "${productName}"`);
     console.log(`📝 كلمات البحث المستخدمة: [${searchWords.join(', ')}]`);
