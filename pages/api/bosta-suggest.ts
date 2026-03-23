@@ -5,56 +5,15 @@ import {
   extractCityAndZoneFromAddress,
   sanitizeAddress,
   parseAddressStructure,
+  fetchBostaCities,
+  fetchBostaZones,
 } from '../../lib/bosta';
 
 // ==================== Bosta Suggest API ====================
 // يقدم اقتراحات ذكية للمحافظة والمنطقة بناءً على بيانات بوسطة الفعلية
 // يُستخدم في نافذة التعديل (Edit Modal) لمساعدة موظف الكول سنتر
-
-// 📦 كاش داخلي للمدن — يتم تحميله مرة واحدة فقط
-let cachedCitiesList: { nameAr: string; name: string; _id: string; alias?: string }[] = [];
-let cachedCitiesTimestamp = 0;
-const CACHE_TTL = 60 * 60 * 1000; // ساعة
-
-async function getCitiesList() {
-  if (cachedCitiesList.length > 0 && Date.now() - cachedCitiesTimestamp < CACHE_TTL) {
-    return cachedCitiesList;
-  }
-  try {
-    const res = await fetch('https://app.bosta.co/api/v2/cities', {
-      headers: { 'Authorization': process.env.BOSTA_API_KEY || '' },
-    });
-    const json = await res.json();
-    cachedCitiesList = json?.data?.list || [];
-    cachedCitiesTimestamp = Date.now();
-    return cachedCitiesList;
-  } catch {
-    return cachedCitiesList;
-  }
-}
-
-// 📦 كاش المناطق — يتم تحميلها لكل مدينة مرة واحدة
-const cachedZones: Map<string, { data: any[]; timestamp: number }> = new Map();
-const ZONES_CACHE_TTL = 30 * 60 * 1000; // 30 دقيقة
-
-async function getZonesForCity(cityId: string) {
-  // تحقق من الكاش
-  const cached = cachedZones.get(cityId);
-  if (cached && Date.now() - cached.timestamp < ZONES_CACHE_TTL) {
-    return cached.data;
-  }
-  try {
-    const res = await fetch(`https://app.bosta.co/api/v2/cities/${cityId}/zones`, {
-      headers: { 'Authorization': process.env.BOSTA_API_KEY || '' },
-    });
-    const json = await res.json();
-    const zones = (json?.data || []).filter((z: any) => z.dropOffAvailability);
-    cachedZones.set(cityId, { data: zones, timestamp: Date.now() });
-    return zones;
-  } catch {
-    return cached?.data || [];
-  }
-}
+//
+// ⚠️ يستخدم الكاش المشترك من lib/bosta.ts — بدون تكرار
 
 /** تطبيع بسيط للمقارنة */
 function norm(text: string): string {
@@ -76,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // ── 1. اقتراح المحافظة ──
   if (type === 'governorate') {
-    const cities = await getCitiesList();
+    const cities = await fetchBostaCities();
     const q = norm(query || '');
 
     // إرجاع كل المحافظات مرتبة بالأقرب للإدخال
@@ -128,7 +87,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // ابحث عن المدينة أولاً
-    const cities = await getCitiesList();
+    const cities = await fetchBostaCities();
     const govNorm = norm(governorate);
     const matchedCity = cities.find(c => {
       const names = [c.nameAr, c.name, c.alias].filter(Boolean) as string[];
@@ -139,18 +98,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // fallback: استخدم smartMatch
       const match = await smartMatchCityAndZone(normalizeGovernorateName(governorate));
       if (!match.cityId) return res.status(200).json({ suggestions: [] });
-      const zones = await getZonesForCity(match.cityId);
+      const zones = await fetchBostaZones(match.cityId);
       const q = norm(query || '');
 
-      const scoredZones = zones.map((z: any) => {
-        const zn = norm(z.nameAr || '');
-        let score = 0;
-        if (q.length === 0) score = 1;
-        else if (zn === q) score = 1;
-        else if (zn.startsWith(q) || q.startsWith(zn)) score = 0.8;
-        else if (zn.includes(q) || q.includes(zn)) score = 0.6;
-        return { nameAr: z.nameAr, name: z.name, score };
-      });
+      const scoredZones = zones
+        .filter((z: any) => z.dropOffAvailability)
+        .map((z: any) => {
+          const zn = norm(z.nameAr || '');
+          let score = 0;
+          if (q.length === 0) score = 1;
+          else if (zn === q) score = 1;
+          else if (zn.startsWith(q) || q.startsWith(zn)) score = 0.8;
+          else if (zn.includes(q) || q.includes(zn)) score = 0.6;
+          return { nameAr: z.nameAr, name: z.name, score };
+        });
 
       scoredZones.sort((a: any, b: any) => {
         if (b.score !== a.score) return b.score - a.score;
@@ -165,18 +126,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const zones = await getZonesForCity(matchedCity._id);
+    const zones = await fetchBostaZones(matchedCity._id);
     const q = norm(query || '');
 
-    const scoredZones = zones.map((z: any) => {
-      const zn = norm(z.nameAr || '');
-      let score = 0;
-      if (q.length === 0) score = 1;
-      else if (zn === q) score = 1;
-      else if (zn.startsWith(q) || q.startsWith(zn)) score = 0.8;
-      else if (zn.includes(q) || q.includes(zn)) score = 0.6;
-      return { nameAr: z.nameAr, name: z.name, score };
-    });
+    const scoredZones = zones
+      .filter((z: any) => z.dropOffAvailability)
+      .map((z: any) => {
+        const zn = norm(z.nameAr || '');
+        let score = 0;
+        if (q.length === 0) score = 1;
+        else if (zn === q) score = 1;
+        else if (zn.startsWith(q) || q.startsWith(zn)) score = 0.8;
+        else if (zn.includes(q) || q.includes(zn)) score = 0.6;
+        return { nameAr: z.nameAr, name: z.name, score };
+      });
 
     scoredZones.sort((a: any, b: any) => {
       if (b.score !== a.score) return b.score - a.score;

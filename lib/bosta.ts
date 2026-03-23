@@ -269,7 +269,7 @@ let cachedCitiesTimestamp = 0;
 let cachedZones: Map<string, { data: BostaZone[]; timestamp: number }> = new Map();
 
 /** جلب قائمة المدن من بوسطة (مع كاش + TTL) */
-async function fetchBostaCities(): Promise<BostaCity[]> {
+export async function fetchBostaCities(): Promise<BostaCity[]> {
   if (cachedCities && (Date.now() - cachedCitiesTimestamp) < CACHE_TTL_MS) return cachedCities;
   try {
     const res = await fetch(`${BOSTA_BASE_URL}/cities`, {
@@ -287,7 +287,7 @@ async function fetchBostaCities(): Promise<BostaCity[]> {
 }
 
 /** جلب مناطق مدينة معينة من بوسطة (مع كاش + TTL) */
-async function fetchBostaZones(cityId: string): Promise<BostaZone[]> {
+export async function fetchBostaZones(cityId: string): Promise<BostaZone[]> {
   const cached = cachedZones.get(cityId);
   if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) return cached.data;
   try {
