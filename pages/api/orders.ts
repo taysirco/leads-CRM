@@ -297,16 +297,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         }
 
-        // الخطوة 2: تحديث الطلب أولاً
-        console.log('🔄 الخطوة 2: تحديث حالة الطلب...');
-        await updateLead(Number(rowNumber), updates);
-        console.log('✅ تم تحديث الطلب بنجاح');
-
-        // الخطوة 3: إذا تم تغيير الحالة إلى "تم الشحن"، اخصم من المخزون بعد التحديث
+        // الخطوة 2: خصم المخزون أولاً (قبل تحديث الشيت) — الترتيب الصحيح
         if (updates.status === 'تم الشحن') {
-          console.log('🚚 الخطوة 3: خصم المخزون بعد تأكيد الشحن...');
+          console.log('🚚 الخطوة 2: خصم المخزون قبل تحديث الحالة...');
           try {
-            // 🚀 استخدام البيانات المحفوظة مسبقاً بدلاً من fetchLeads مرة أخرى (أسرع)
             const productName = cachedTargetLead.productName?.trim();
             const quantityStr = cachedTargetLead.quantity?.toString().trim();
             const orderId = cachedTargetLead.id;
@@ -314,64 +308,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
             console.log(`🚚 محاولة خصم مخزون الطلب ${rowNumber}: ${quantity} × ${productName}`);
 
-            // خصم المخزون وتسجيل النتيجة
             stockResult = await deductStock(productName!, quantity, orderId);
 
-            if (stockResult.success) {
-              console.log(`✅ تم خصم المخزون بنجاح: ${stockResult.message}`);
-            } else {
+            if (!stockResult.success) {
               console.error(`❌ فشل خصم المخزون: ${stockResult.message}`);
 
-              // الخطوة 4: إرجاع الطلب إلى حالته الأصلية في حالة فشل خصم المخزون
-              console.log(`🔄 الخطوة 4: إرجاع الطلب ${rowNumber} إلى الحالة الأصلية "${originalStatus}"...`);
-              try {
-                await updateLead(Number(rowNumber), { status: originalStatus });
-                console.log('✅ تم إرجاع الطلب إلى حالته الأصلية بنجاح');
-              } catch (revertError) {
-                console.error('❌ خطأ في إرجاع الطلب:', revertError);
-              }
-
-              // في حالة عدم توفر المخزون، إرجاع خطأ مع تفاصيل الإرجاع
               if (stockResult.message.includes('المخزون غير كافي')) {
                 return res.status(400).json({
                   error: 'لا يمكن الشحن',
                   stockError: true,
-                  message: `⚠️ ${stockResult.message}\n\n🔄 تم إرجاع الطلب إلى حالة "${originalStatus}"`,
+                  message: `⚠️ ${stockResult.message}`,
                   availableQuantity: stockResult.availableQuantity,
                   requiredQuantity: quantity,
-                  productName: productName,
-                  revertedToStatus: originalStatus
+                  productName: productName
                 });
               }
 
-              // في حالة أخطاء أخرى في المخزون
               return res.status(500).json({
                 error: 'خطأ في نظام المخزون',
                 stockError: true,
-                message: `فشل في معالجة المخزون: ${stockResult.message}\n\n🔄 تم إرجاع الطلب إلى حالة "${originalStatus}"`,
-                revertedToStatus: originalStatus
+                message: `فشل في معالجة المخزون: ${stockResult.message}`
               });
             }
-          } catch (stockError) {
+
+            console.log(`✅ تم خصم المخزون بنجاح: ${stockResult.message}`);
+          } catch (stockError: any) {
             console.error(`❌ خطأ في خصم المخزون للطلب ${rowNumber}:`, stockError);
-
-            // إرجاع الطلب إلى حالته الأصلية في حالة خطأ النظام
-            console.log(`🔄 إرجاع الطلب ${rowNumber} إلى الحالة الأصلية "${originalStatus}" بسبب خطأ في النظام...`);
-            try {
-              await updateLead(Number(rowNumber), { status: originalStatus });
-              console.log('✅ تم إرجاع الطلب إلى حالته الأصلية بنجاح');
-            } catch (revertError) {
-              console.error('❌ خطأ في إرجاع الطلب:', revertError);
-            }
-
             return res.status(500).json({
               error: 'خطأ في نظام المخزون',
               stockError: true,
-              message: `حدث خطأ أثناء التحقق من المخزون. تم إرجاع الطلب إلى حالة "${originalStatus}". يرجى المحاولة مرة أخرى أو التحقق من المخزون يدوياً.`,
-              revertedToStatus: originalStatus
+              message: `حدث خطأ أثناء التحقق من المخزون. يرجى المحاولة مرة أخرى.`
             });
           }
         }
+
+        // الخطوة 3: تحديث حالة الطلب (بعد نجاح خصم المخزون)
+        console.log('🔄 الخطوة 3: تحديث حالة الطلب...');
+        await updateLead(Number(rowNumber), updates);
+        console.log('✅ تم تحديث الطلب بنجاح');
 
         // إرسال النتيجة مع معلومات المخزون إذا كانت متوفرة
         const response: any = {
