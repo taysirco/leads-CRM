@@ -1380,23 +1380,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     <p className="text-xs text-amber-600 mt-0.5">⚠️ اختر المحافظة أولاً لعرض المناطق المتاحة</p>
                   )}
 
-                  {/* ✅ Delivery Validation Badge */}
-                  {deliveryValidation.status !== 'idle' && editingOrder.governorate && editingOrder.area && (
-                    <div className={`flex items-center gap-1.5 mt-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-300 ${
-                      deliveryValidation.status === 'checking' ? 'bg-blue-50 text-blue-600' :
-                      deliveryValidation.status === 'valid' ? 'bg-green-50 text-green-700 border border-green-200' :
-                      deliveryValidation.status === 'warning' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
-                      'bg-red-50 text-red-700 border border-red-200'
-                    }`}>
-                      {deliveryValidation.status === 'checking' ? (
-                        <><div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div> جاري التحقق...</>
-                      ) : (
-                        deliveryValidation.message
-                      )}
-                    </div>
-                  )}
-
-                  {/* Zone Dropdown with keyboard navigation */}
+                  {/* Zone Dropdown with keyboard navigation — BEFORE validation badge to avoid layout shift */}
                   {showZoneDropdown && zoneSuggestions.length > 0 && (
                     <div ref={zoneDropdownRef} className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
                       {zoneSuggestions.map((s, i) => (
@@ -1426,6 +1410,24 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       ))}
                     </div>
                   )}
+
+                  {/* ✅ Delivery Validation Badge — AFTER dropdown to prevent layout shift */}
+                  {deliveryValidation.status !== 'idle' && editingOrder.governorate && editingOrder.area && (
+                    <div className={`flex items-center gap-1.5 mt-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-300 ${
+                      deliveryValidation.status === 'checking' ? 'bg-blue-50 text-blue-600' :
+                      deliveryValidation.status === 'valid' ? 'bg-green-50 text-green-700 border border-green-200' :
+                      deliveryValidation.status === 'warning' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                      'bg-red-50 text-red-700 border border-red-200'
+                    }`}>
+                      {deliveryValidation.status === 'checking' ? (
+                        <><div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div> جاري التحقق...</>
+                      ) : (
+                        deliveryValidation.message
+                      )}
+                    </div>
+                  )}
+
+
                 </div>
 
                 <div className="space-y-1 sm:space-y-2">
@@ -1522,6 +1524,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                               onClick={() => {
                                 handleUpdateMultipleFields({ governorate: addressAnalysis.matchedCity! });
                                 fetchZoneSuggestions('', addressAnalysis.matchedCity!, editingOrder.address);
+                                validateDelivery(addressAnalysis.matchedCity!, editingOrder.area);
                               }}
                               className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-medium hover:bg-blue-200 transition-colors border border-blue-300"
                             >
@@ -1534,7 +1537,10 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                           {addressAnalysis.matchedZone && addressAnalysis.matchedZone !== editingOrder.area && (
                             <button
                               type="button"
-                              onClick={() => handleUpdateMultipleFields({ area: addressAnalysis.matchedZone! })}
+                              onClick={() => {
+                                handleUpdateMultipleFields({ area: addressAnalysis.matchedZone! });
+                                validateDelivery(editingOrder.governorate, addressAnalysis.matchedZone!);
+                              }}
                               className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-800 rounded-lg text-xs font-medium hover:bg-green-200 transition-colors border border-green-300"
                             >
                               📍 المنطقة: {addressAnalysis.matchedZone}
@@ -1578,6 +1584,12 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                             }
                             handleUpdateMultipleFields(updates);
                             setAddressAnalysis(null);
+                            // Validate delivery with applied values
+                            const finalGov = updates.governorate || editingOrder.governorate;
+                            const finalArea = updates.area || editingOrder.area;
+                            if (finalGov && finalArea) {
+                              validateDelivery(finalGov, finalArea);
+                            }
                           }}
                           className="mt-1 w-full px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-xs font-bold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm"
                         >
