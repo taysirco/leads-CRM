@@ -107,7 +107,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (effectiveFulfillment === 30) {
         const productName = (order.productName || order.orderDetails || '').trim();
         if (productName) {
-          const { stockItems } = await fetchStock();
+          const { stockItems } = await fetchStock(true); // 🛡️ forceFresh — لأن BostaSKU قد يكون أُضيف حديثاً
           const stockMatch = findProductBySynonyms(productName, stockItems);
           if (stockMatch?.bostaSku) {
             bostaSku = stockMatch.bostaSku;

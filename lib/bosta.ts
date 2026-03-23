@@ -723,7 +723,7 @@ export async function createBostaDelivery(order: {
     specs: {
       packageDetails: {
         itemsCount: parseInt(order.quantity) || 1,
-        description: (numericType === 30 && order.bostaSku) ? order.bostaSku : (order.productName || order.orderDetails || 'Order'),
+        description: order.productName || order.orderDetails || 'Order',
         ...(numericType === 30 && order.bostaSku && {
           items: [{
             name: order.productName || order.orderDetails || 'Order',
@@ -763,10 +763,10 @@ export async function createBostaDelivery(order: {
       },
     }),
     notes: smartNotes,
-    // ✅ موقع الاستلام/الإرجاع حسب نوع الشحن
+    // ✅ موقع الاستلام/الإرجاع حسب نوع الشحن — قابل للتعديل عبر ENV
     pickupAddress: numericType === 30
-      ? { _id: 'hFkb9kXv1' }  // Bosta Fulfillment New Cairo Warehouse
-      : { _id: '6hbvJbsxM' }, // المكتب الرئسي - دمياط
+      ? { _id: process.env.BOSTA_FULFILLMENT_PICKUP_ID || 'hFkb9kXv1' }  // Bosta Fulfillment New Cairo Warehouse
+      : { _id: process.env.BOSTA_DEFAULT_PICKUP_ID || '6hbvJbsxM' }, // المكتب الرئسي - دمياط
   };
 
   // 🏗️ لوج تفاصيل العنوان المستخرجة
