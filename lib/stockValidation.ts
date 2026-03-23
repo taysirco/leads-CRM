@@ -252,23 +252,38 @@ export async function atomicBulkShipping(
         console.log('📋 [ATOMIC] الخطوة 1: جلب بيانات الطلبات...');
         const leads = await fetchLeads();
         const orderItems: Array<{ productName: string; quantity: number; orderId: number; rowIndex: number; originalStatus: string }> = [];
+        const skipStockOrders: Array<{ orderId: number; rowIndex: number }> = []; // 📝 طلبات يدوية بدون بيانات منتج — أرشفة مباشرة
         const orderStatusMap = new Map<number, { rowIndex: number; status: string }>();
 
         for (const orderId of orderIds) {
             const targetLead = leads.find(lead => lead.id === Number(orderId));
-            if (targetLead && targetLead.productName && targetLead.quantity) {
-                // 🛡️ حماية من الخصم المزدوج — تخطي الطلبات المشحونة مسبقاً
-                if ((targetLead.status || '').trim() === 'تم الشحن') {
-                    console.log(`⚠️ [ATOMIC GUARD] الطلب ${orderId} مشحون مسبقاً — تخطي خصم المخزون`);
-                    shippedOrders.push(orderId); // اعتبره ناجحاً لأنه مشحون بالفعل
-                    stockResults.push({
-                        orderId,
-                        success: true,
-                        message: 'مشحون مسبقاً — لم يتم خصم المخزون مرة أخرى'
-                    });
-                    continue;
-                }
 
+            // ❌ الطلب غير موجود في النظام
+            if (!targetLead) {
+                console.error(`❌ [ATOMIC] الطلب ${orderId} غير موجود في النظام`);
+                failedOrders.push(orderId);
+                stockResults.push({
+                    orderId,
+                    success: false,
+                    message: 'الطلب غير موجود في النظام'
+                });
+                continue;
+            }
+
+            // 🛡️ حماية من الخصم المزدوج — تخطي الطلبات المشحونة مسبقاً
+            if ((targetLead.status || '').trim() === 'تم الشحن') {
+                console.log(`⚠️ [ATOMIC GUARD] الطلب ${orderId} مشحون مسبقاً — تخطي خصم المخزون`);
+                shippedOrders.push(orderId);
+                stockResults.push({
+                    orderId,
+                    success: true,
+                    message: 'مشحون مسبقاً — لم يتم خصم المخزون مرة أخرى'
+                });
+                continue;
+            }
+
+            // ✅ طلب كامل البيانات — يمر بخصم المخزون
+            if (targetLead.productName?.trim() && targetLead.quantity?.toString().trim()) {
                 const quantity = parseInt(targetLead.quantity) || 1;
                 orderItems.push({
                     productName: targetLead.productName.trim(),
@@ -279,17 +294,19 @@ export async function atomicBulkShipping(
                 });
                 orderStatusMap.set(targetLead.id, { rowIndex: targetLead.rowIndex, status: targetLead.status || 'تم التأكيد' });
             } else {
-                console.error(`❌ [ATOMIC] الطلب ${orderId} - بيانات ناقصة (المنتج: ${targetLead?.productName}, الكمية: ${targetLead?.quantity})`);
-                failedOrders.push(orderId);
+                // 📝 طلب يدوي بدون بيانات المنتج — أرشفة مباشرة بدون خصم مخزون
+                console.log(`📝 [ATOMIC] الطلب ${orderId} — بيانات المنتج غير مكتملة (المنتج: "${targetLead.productName || ''}", الكمية: "${targetLead.quantity || ''}") — سيتم أرشفته مباشرة بدون خصم مخزون`);
+                skipStockOrders.push({ orderId: targetLead.id, rowIndex: targetLead.rowIndex });
                 stockResults.push({
                     orderId,
-                    success: false,
-                    message: 'بيانات الطلب ناقصة (اسم المنتج أو الكمية)'
+                    success: true,
+                    message: 'أرشفة مباشرة — بدون خصم مخزون (بيانات المنتج غير مكتملة)'
                 });
             }
         }
 
-        if (orderItems.length === 0) {
+        // التحقق: هل يوجد طلبات تحتاج معالجة؟
+        if (orderItems.length === 0 && skipStockOrders.length === 0) {
             // 🛡️ إذا كانت جميع الطلبات مشحونة مسبقاً — نعتبرها نجاح
             if (shippedOrders.length > 0) {
                 console.log(`✅ [ATOMIC] جميع الطلبات (${shippedOrders.length}) مشحونة مسبقاً — لا حاجة لخصم إضافي`);
@@ -307,6 +324,48 @@ export async function atomicBulkShipping(
                 message: 'لا توجد طلبات صالحة للشحن',
                 shippedOrders: [],
                 failedOrders: orderIds,
+                revertedOrders: [],
+                stockResults
+            };
+        }
+
+        // ✨ معالجة الطلبات اليدوية (بدون خصم مخزون) — أرشفة مباشرة
+        if (skipStockOrders.length > 0) {
+            console.log(`📝 [ATOMIC] أرشفة ${skipStockOrders.length} طلب يدوي مباشرة (بدون خصم مخزون)...`);
+            try {
+                const skipBatchUpdates = skipStockOrders.map(item => ({
+                    rowNumber: item.rowIndex,
+                    updates: { status: 'تم الشحن' }
+                }));
+                await updateLeadsBatch(skipBatchUpdates);
+                for (const item of skipStockOrders) {
+                    shippedOrders.push(item.orderId);
+                }
+                console.log(`✅ [ATOMIC] تم أرشفة ${skipStockOrders.length} طلب يدوي بنجاح`);
+            } catch (skipError: any) {
+                console.error(`❌ [ATOMIC] فشل أرشفة الطلبات اليدوية:`, skipError);
+                // محاولة فردية كخطة بديلة
+                for (const item of skipStockOrders) {
+                    try {
+                        await updateLead(item.rowIndex, { status: 'تم الشحن' });
+                        shippedOrders.push(item.orderId);
+                    } catch (e) {
+                        console.error(`❌ [ATOMIC] فشل أرشفة الطلب اليدوي ${item.orderId}:`, e);
+                        failedOrders.push(item.orderId);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+            }
+        }
+
+        // إذا لم يتبقَ طلبات تحتاج خصم مخزون، ننتهي هنا
+        if (orderItems.length === 0) {
+            console.log(`✅ [ATOMIC] لا توجد طلبات تحتاج خصم مخزون — تمت الأرشفة`);
+            return {
+                success: failedOrders.length === 0,
+                message: `✅ تم أرشفة ${shippedOrders.length} طلب بنجاح (بدون خصم مخزون)`,
+                shippedOrders,
+                failedOrders,
                 revertedOrders: [],
                 stockResults
             };
@@ -338,7 +397,7 @@ export async function atomicBulkShipping(
             return {
                 success: false,
                 message: formatValidationError(validation),
-                shippedOrders: [],
+                shippedOrders,
                 failedOrders,
                 revertedOrders: [],
                 stockResults
@@ -351,12 +410,14 @@ export async function atomicBulkShipping(
         console.log('📦 [ATOMIC] الخطوة 3: خصم المخزون...');
         
         const bulkResult = await deductStockBulkWithoutLock(orderItems);
-        stockResults = bulkResult.results;
+        // دمج نتائج المخزون مع نتائج الطلبات اليدوية السابقة
+        const skipStockResults = stockResults.filter(r => r.message?.includes('أرشفة مباشرة') || r.message?.includes('مشحون مسبقاً'));
+        stockResults = [...skipStockResults, ...bulkResult.results];
         stockSummary = bulkResult.summary;
 
         // التحقق من نجاح خصم المخزون
-        const successfulDeductions = stockResults.filter(r => r.success);
-        const failedDeductions = stockResults.filter(r => !r.success);
+        const successfulDeductions = bulkResult.results.filter((r: any) => r.success);
+        const failedDeductions = bulkResult.results.filter((r: any) => !r.success);
 
         if (failedDeductions.length > 0) {
             console.log(`❌ [ATOMIC] فشل خصم المخزون لـ ${failedDeductions.length} طلب - لن يتم تحديث أي طلب`);
@@ -371,7 +432,7 @@ export async function atomicBulkShipping(
             return {
                 success: false,
                 message: `فشل في خصم المخزون`,
-                shippedOrders: [],
+                shippedOrders,
                 failedOrders,
                 revertedOrders: [],
                 stockResults,
