@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createBostaDelivery, getTrackingUrl } from '../../lib/bosta';
-import { fetchLeads, updateLead } from '../../lib/googleSheets';
+import { fetchLeads, updateLead, deductStock } from '../../lib/googleSheets';
 import { checkRateLimitByType, getClientIP } from '../../lib/rateLimit';
 
 // معالجة متوازية مع حد للتزامن — يمنع إغراق بوسطة بطلبات متزامنة
@@ -145,11 +145,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
 
           console.log(`✅ [BOSTA API] تم الشحن وتحديث الطلب ${orderId} بنجاح`);
+
+          // 📦 خصم المخزون المحلي بعد نجاح الشحن عبر بوسطة
+          let stockWarning: string | undefined;
+          const productName = order.productName?.trim();
+          const quantity = parseInt(String(order.quantity || '1')) || 1;
+
+          if (productName) {
+            try {
+              const stockResult = await deductStock(productName, quantity, orderId);
+              if (stockResult.success) {
+                console.log(`📦 [BOSTA API] تم خصم ${quantity} × "${productName}" من المخزون المحلي`);
+              } else {
+                stockWarning = stockResult.message;
+                console.warn(`⚠️ [BOSTA API] فشل خصم المخزون للطلب ${orderId}: ${stockResult.message}`);
+              }
+            } catch (stockErr: any) {
+              stockWarning = stockErr.message || 'خطأ في خصم المخزون';
+              console.error(`❌ [BOSTA API] خطأ في خصم المخزون للطلب ${orderId}:`, stockErr);
+            }
+          }
+
           return {
             orderId,
             success: true,
             trackingNumber: bostaResult.trackingNumber,
             trackingUrl,
+            ...(stockWarning ? { stockWarning } : {}),
           };
         } catch (updateError: any) {
           console.error(`⚠️ [BOSTA API] تم إنشاء الشحنة لكن فشل تحديث الشيت:`, updateError);
