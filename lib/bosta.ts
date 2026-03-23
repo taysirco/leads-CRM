@@ -539,17 +539,18 @@ export async function extractCityAndZoneFromAddress(
 // ==================== Bosta API ====================
 
 export interface BostaDeliveryRequest {
-  type: number; // 10 = إرسال عادي, 25 = تبديل (Exchange), 30 = Fulfillment
-  specs: {
+  deliveryType: number; // 10 = إرسال عادي, 25 = تبديل (Exchange), 30 = Fulfillment
+  deliverySpecs: {
     packageDetails: {
       itemsCount: number;
       description: string;
     };
     size: string; // "SMALL" | "MEDIUM" | "LARGE"
     weight?: number;
+    allowToOpenPackage?: boolean; // ✅ يجب أن يكون داخل deliverySpecs
   };
   dropOffAddress: {
-    city: string;
+    city: string;     // اسم المدينة
     zone?: string;
     firstLine: string;
     secondLine?: string;
@@ -566,7 +567,6 @@ export interface BostaDeliveryRequest {
   };
   businessReference: string;
   cod: number;
-  allowToOpenPackage?: boolean;
   returnSpecs?: { // مطلوب لنوع 25 (تبديل/Exchange)
     packageDetails: {
       itemsCount: number;
@@ -714,13 +714,14 @@ export async function createBostaDelivery(order: {
   const smartNotes = smartNotesParts.length > 0 ? smartNotesParts.join(' | ') : undefined;
 
   const deliveryData: BostaDeliveryRequest = {
-    type: shipmentType,
-    specs: {
+    deliveryType: shipmentType,
+    deliverySpecs: {
       packageDetails: {
         itemsCount: parseInt(order.quantity) || 1,
         description: order.productName || order.orderDetails || 'Order',
       },
       size: estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails),
+      allowToOpenPackage: true, // ✅ داخل deliverySpecs كما تتوقع بوسطة
     },
     dropOffAddress: {
       city: match.city,
@@ -739,7 +740,6 @@ export async function createBostaDelivery(order: {
     },
     businessReference,
     cod: codAmount,
-    allowToOpenPackage: true,
     ...(shipmentType === 25 && {
       returnSpecs: {
         packageDetails: {
