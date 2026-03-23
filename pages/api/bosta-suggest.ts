@@ -117,7 +117,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const znEn = (zoneNameEn || '').toLowerCase().trim();
       let bestScore = 0;
 
-      // 1. تطابق كامل: اسم المنطقة موجود كلمة كاملة في العنوان
+      // 1. تطابق كامل: اسم المنطقة بالكامل موجود في العنوان
       if (znAr.length >= 3 && addr.includes(znAr)) {
         // كلما كان الاسم أطول كلما كان التطابق أدق
         bestScore = Math.max(bestScore, 0.9 + (znAr.length / 100));
@@ -128,21 +128,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         bestScore = Math.max(bestScore, 0.85);
       }
 
-      // 3. تحقق من كلمات العنوان المنفردة
+      // 3. مطابقة كلمات — فقط للكلمات الطويلة بما يكفي (4+ أحرف)
+      // لمنع كلمات قصيرة شائعة مثل "مدينه" من إنتاج تطابقات خاطئة
+      const znWords = znAr.split(/\s+/).filter(w => w.length >= 2);
       const addrWords = addr.split(/[\s,،\-\/\.]+/).filter(w => w.length >= 2);
+      
       for (const word of addrWords) {
-        if (word.length < 2) continue;
-
-        // كلمة كاملة من العنوان تطابق اسم المنطقة
-        if (znAr === word) {
+        // كلمة من العنوان تطابق اسم المنطقة بالكامل (كلمة واحدة)
+        if (znWords.length === 1 && znAr === word) {
           bestScore = Math.max(bestScore, 0.95);
         }
-        // كلمة من العنوان تبدأ باسم المنطقة أو العكس
-        else if (znAr.startsWith(word) || word.startsWith(znAr)) {
-          bestScore = Math.max(bestScore, 0.7);
+        // منطقة من كلمة واحدة: بداية مشتركة (4+ حروف فقط)
+        else if (znWords.length === 1 && word.length >= 4 && znAr.length >= 4) {
+          if (znAr.startsWith(word) || word.startsWith(znAr)) {
+            bestScore = Math.max(bestScore, 0.7);
+          }
         }
-        // كلمة من العنوان تحتوي على اسم المنطقة (3+ حروف)
-        else if (word.length >= 3 && znAr.length >= 3 && (word.includes(znAr) || znAr.includes(word))) {
+        // كلمة طويلة (4+) من العنوان تحتوي جزء مهم من اسم المنطقة
+        else if (word.length >= 4 && znAr.length >= 4 && (word.includes(znAr) || znAr.includes(word))) {
           bestScore = Math.max(bestScore, 0.5);
         }
       }
