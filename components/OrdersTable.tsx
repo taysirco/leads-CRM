@@ -470,6 +470,21 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
     // الحفظ يتم يدوياً فقط عند الضغط على زر الحفظ
   };
 
+  // 🔧 تحديث عدة حقول في وقت واحد (يحل مشكلة الـ stale state)
+  const handleUpdateMultipleFields = (updates: Partial<Order>) => {
+    if (!editingOrder || !originalOrder) return;
+
+    const updatedOrder = { ...editingOrder, ...updates };
+    setEditingOrder(updatedOrder);
+
+    const hasChanges = Object.keys(updatedOrder).some(key => {
+      const orderKey = key as keyof Order;
+      return updatedOrder[orderKey] !== originalOrder[orderKey];
+    });
+
+    setHasUnsavedChanges(hasChanges);
+  };
+
   // دالة الحفظ الداخلية المرنة
   const saveOrderInternal = async (closeModal = true) => {
     if (!editingOrder) return;
@@ -1141,10 +1156,8 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                           type="button"
                           onMouseDown={(e) => {
                             e.preventDefault();
-                            handleUpdateField('governorate', s.nameAr);
+                            handleUpdateMultipleFields({ governorate: s.nameAr, area: '' });
                             setShowGovDropdown(false);
-                            // إعادة تحميل المناطق عند تغيير المحافظة
-                            handleUpdateField('area', '');
                             fetchZoneSuggestions('', s.nameAr);
                           }}
                           className="w-full text-right px-3 py-2 hover:bg-blue-50 transition-colors flex items-center justify-between text-sm border-b border-gray-50 last:border-0"
@@ -1295,7 +1308,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                             <button
                               type="button"
                               onClick={() => {
-                                handleUpdateField('governorate', addressAnalysis.matchedCity!);
+                                handleUpdateMultipleFields({ governorate: addressAnalysis.matchedCity! });
                                 fetchZoneSuggestions('', addressAnalysis.matchedCity!);
                               }}
                               className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-medium hover:bg-blue-200 transition-colors border border-blue-300"
@@ -1309,7 +1322,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                           {addressAnalysis.matchedZone && addressAnalysis.matchedZone !== editingOrder.area && (
                             <button
                               type="button"
-                              onClick={() => handleUpdateField('area', addressAnalysis.matchedZone!)}
+                              onClick={() => handleUpdateMultipleFields({ area: addressAnalysis.matchedZone! })}
                               className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-800 rounded-lg text-xs font-medium hover:bg-green-200 transition-colors border border-green-300"
                             >
                               📍 المنطقة: {addressAnalysis.matchedZone}
@@ -1344,12 +1357,14 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                         <button
                           type="button"
                           onClick={() => {
+                            const updates: Partial<Order> = {};
                             if (addressAnalysis.matchedCity) {
-                              handleUpdateField('governorate', addressAnalysis.matchedCity);
+                              updates.governorate = addressAnalysis.matchedCity;
                             }
                             if (addressAnalysis.matchedZone) {
-                              handleUpdateField('area', addressAnalysis.matchedZone);
+                              updates.area = addressAnalysis.matchedZone;
                             }
+                            handleUpdateMultipleFields(updates);
                             setAddressAnalysis(null);
                           }}
                           className="mt-1 w-full px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-xs font-bold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm"
