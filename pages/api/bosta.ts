@@ -139,7 +139,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       validOrders.push({ order, orderId, effectiveFulfillment, bostaSku });
     }
 
-    // ✅ معالجة متوازية — 3 طلبات في نفس الوقت
+    // ✅ معالجة الطلبات — تتابعية لمنع race condition في خصم المخزون
+    // ⚠️ لا نستخدم concurrency > 1 لأن deductStock يقرأ ويكتب المخزون بدون mutex
     const batchResults = await processBatch(validOrders, async ({ order, orderId, effectiveFulfillment, bostaSku }) => {
       const bostaResult = await createBostaDelivery({
         name: order.name,
@@ -226,7 +227,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           error: bostaResult.error || 'خطأ غير معروف من بوسطة',
         };
       }
-    }, 3);
+    }, 1);
 
     results.push(...batchResults);
 

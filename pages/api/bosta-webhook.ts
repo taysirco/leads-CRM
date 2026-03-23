@@ -139,11 +139,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // تحديث الطلب في Google Sheet
+    const existingNotes = targetLead.notes || '';
+    let newNotes = `${existingNotes ? existingNotes + ' | ' : ''}‏[${now}] ${statusNote}`;
+    
+    // 🛡️ حماية من تضخم الملاحظات — الاحتفاظ بآخر 500 حرف فقط
+    if (newNotes.length > 500) {
+      const parts = newNotes.split(' | ');
+      // حذف أقدم الإدخالات حتى يصبح النص أقل من 500 حرف
+      while (parts.length > 1 && parts.join(' | ').length > 500) {
+        parts.shift();
+      }
+      newNotes = parts.join(' | ');
+    }
+
     const updates: Record<string, string> = {
       status: crmStatus,
       bostaState: bostaStateAr,
       lastBostaUpdate: now,
-      notes: `${targetLead.notes ? targetLead.notes + ' | ' : ''}‏[${now}] ${statusNote}`,
+      notes: newNotes,
     };
 
     // حفظ رقم التتبع إذا لم يكن محفوظاً بالفعل

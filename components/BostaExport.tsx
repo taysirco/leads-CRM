@@ -100,7 +100,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
     setLoadingOrders(prev => new Set(prev.add(orderId)));
     try {
       await onUpdateOrder(orderId, { 
-        status: 'تم التاكيد',
+        status: 'تم التأكيد',
         bostaTrackingNumber: '',  // مسح رقم التتبع ليُسمح بإعادة الشحن
         bostaState: '',
         lastBostaUpdate: '',
