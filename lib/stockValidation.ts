@@ -290,6 +290,18 @@ export async function atomicBulkShipping(
         }
 
         if (orderItems.length === 0) {
+            // 🛡️ إذا كانت جميع الطلبات مشحونة مسبقاً — نعتبرها نجاح
+            if (shippedOrders.length > 0) {
+                console.log(`✅ [ATOMIC] جميع الطلبات (${shippedOrders.length}) مشحونة مسبقاً — لا حاجة لخصم إضافي`);
+                return {
+                    success: true,
+                    message: `جميع الطلبات مشحونة مسبقاً (${shippedOrders.length} طلب) — لم يتم خصم المخزون مجدداً`,
+                    shippedOrders,
+                    failedOrders,
+                    revertedOrders: [],
+                    stockResults
+                };
+            }
             return {
                 success: false,
                 message: 'لا توجد طلبات صالحة للشحن',

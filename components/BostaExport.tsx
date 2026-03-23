@@ -234,15 +234,84 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
     }
   };
 
-  const mapOrderToBosta = (order: Order) => {
+  // 🗺️ خريطة المحافظات → اسم المدينة الإنجليزي في بوسطة (للتصدير Excel)
+  const govToBostaCity: Record<string, string> = {
+    'القاهرة': 'Cairo', 'القاهره': 'Cairo', 'قاهرة': 'Cairo', 'قاهره': 'Cairo',
+    'الجيزة': 'Giza', 'الجيزه': 'Giza', 'جيزة': 'Giza', 'جيزه': 'Giza',
+    'الإسكندرية': 'Alexandria', 'الاسكندرية': 'Alexandria', 'الاسكندريه': 'Alexandria', 'اسكندرية': 'Alexandria', 'اسكندريه': 'Alexandria',
+    'الشرقية': 'Sharqia', 'الشرقيه': 'Sharqia', 'شرقية': 'Sharqia', 'شرقيه': 'Sharqia',
+    'القليوبية': 'Qalyubia', 'القليوبيه': 'Qalyubia', 'قليوبية': 'Qalyubia', 'قليوبيه': 'Qalyubia',
+    'المنوفية': 'Monufia', 'المنوفيه': 'Monufia', 'منوفية': 'Monufia', 'منوفيه': 'Monufia',
+    'الغربية': 'Gharbia', 'الغربيه': 'Gharbia', 'غربية': 'Gharbia', 'غربيه': 'Gharbia',
+    'الدقهلية': 'Dakahlia', 'الدقهليه': 'Dakahlia', 'دقهلية': 'Dakahlia', 'دقهليه': 'Dakahlia',
+    'البحيرة': 'Beheira', 'البحيره': 'Beheira', 'بحيرة': 'Beheira', 'بحيره': 'Beheira',
+    'المنيا': 'Minya', 'منيا': 'Minya',
+    'الفيوم': 'Faiyum', 'فيوم': 'Faiyum',
+    'الإسماعيلية': 'Ismailia', 'الاسماعيلية': 'Ismailia', 'الاسماعيليه': 'Ismailia', 'اسماعيلية': 'Ismailia',
+    'السويس': 'Suez', 'سويس': 'Suez',
+    'الأقصر': 'Luxor', 'الاقصر': 'Luxor', 'أقصر': 'Luxor', 'اقصر': 'Luxor', 'لوكسور': 'Luxor',
+    'البحر الأحمر': 'Red Sea', 'البحر الاحمر': 'Red Sea',
+    'الوادي الجديد': 'New Valley',
+    'شمال سيناء': 'North Sinai', 'سيناء الشمالية': 'North Sinai',
+    'جنوب سيناء': 'South Sinai', 'سيناء الجنوبية': 'South Sinai',
+    'بني سويف': 'Beni Suef', 'بنى سويف': 'Beni Suef',
+    'كفر الشيخ': 'Kafr El Sheikh',
+    'دمياط': 'Damietta',
+    'سوهاج': 'Sohag',
+    'أسيوط': 'Assiut', 'اسيوط': 'Assiut',
+    'أسوان': 'Aswan', 'اسوان': 'Aswan',
+    'قنا': 'Qena',
+    'بور سعيد': 'Port Said', 'بورسعيد': 'Port Said',
+    'مرسى مطروح': 'Matrouh', 'مطروح': 'Matrouh',
+  };
+
+  // تحويل اسم المحافظة إلى اسم بوسطة الإنجليزي
+  const getBostaCity = (gov: string): string => {
+    if (!gov) return '';
+    const trimmed = gov.trim();
+    // بحث مباشر
+    if (govToBostaCity[trimmed]) return govToBostaCity[trimmed];
+    // بحث مع تطبيع (بدون ال التعريف)
+    const normalized = normalizeGovernorateName(trimmed);
+    if (govToBostaCity[normalized]) return govToBostaCity[normalized];
+    // بحث جزئي
+    for (const [key, value] of Object.entries(govToBostaCity)) {
+      if (trimmed.includes(key) || key.includes(trimmed)) return value;
+    }
+    return trimmed; // fallback — إرجاع الأصلي
+  };
+
+  const mapOrderToBosta = (order: Order, shipType: number) => {
     // ✅ يستخدم الدوال المشتركة من bosta.ts (DRY — مصدر واحد للحقيقة)
-    const isExchange = /تبديل|استبدال|exchange/i.test(order.status || '');
+    
+    // 🧠 Bug #1 Fix: تحديد نوع الشحنة بذكاء
+    // أولاً: الحالة (تبديل/استبدال) لها أولوية
+    const isExchangeByStatus = /تبديل|استبدال|exchange/i.test(order.status || '');
+    // ثانياً: اختيار المستخدم
+    const effectiveType = isExchangeByStatus ? 25 : shipType;
+    // Bosta Excel يقبل: Deliver, Exchange, Return, Cash Collection
+    const typeValue = effectiveType === 25 ? 'Exchange' : 'Deliver';
+
+    // 🧠 Bug #2 Fix: تحويل المحافظة إلى الاسم الإنجليزي المعتمد في بوسطة
+    const bostaCity = getBostaCity(order.governorate);
+
+    // 🧠 Bug #4 Fix: تنسيق الهواتف ثم مقارنتهما
+    const formattedPhone = formatToLocalEgyptianNumber(order.phone);
+    let secondPhone = '';
+    if (order.whatsapp && order.whatsapp.trim()) {
+      const formattedWhatsapp = formatToLocalEgyptianNumber(order.whatsapp);
+      // فقط إذا كان مختلفاً عن الرقم الأساسي وصالح
+      if (formattedWhatsapp && formattedWhatsapp !== formattedPhone && formattedWhatsapp.length === 11) {
+        secondPhone = formattedWhatsapp;
+      }
+    }
+
     return {
       'Full Name': order.name,
-      'Phone': formatToLocalEgyptianNumber(order.phone),
-      'Second Phone': order.whatsapp ? formatToLocalEgyptianNumber(order.whatsapp) : '',
-      'City': normalizeGovernorateName(order.governorate),
-      'Area': order.area || 'منطقة أخرى',
+      'Phone': formattedPhone,
+      'Second Phone': secondPhone,
+      'City': bostaCity,
+      'Area': order.area || '',
       'Street Name': order.address,
       'Building#, Floor#, and Apartment#': (() => {
         const parts = parseAddressStructure(order.address || '');
@@ -262,16 +331,17 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       })(),
 
       // --- Order Details ---
-      'Type': isExchange ? 'Exchange' : 'Cash Collection',
+      'Type': typeValue,
       'Cash Amount': order.totalPrice ? String(order.totalPrice).replace(/\D/g, '') || '0' : '0',
       '#Items': order.quantity || '1',
       'Package Description': order.productName || order.orderDetails || 'Order',
       'Order Reference': `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}`,
-      'Allow opening package': 'yes',
+      // 🧠 Bug #3 Fix: اسم العمود الصحيح المعتمد في Bosta
+      'Allow to open package': 'yes',
 
       // --- Exchange / Large Deliveries (Optional) ---
-      'Return #Items': isExchange ? (order.quantity || '1') : '',
-      'Return Package Description': isExchange ? (order.productName || order.orderDetails || 'Return') : '',
+      'Return #Items': effectiveType === 25 ? (order.quantity || '1') : '',
+      'Return Package Description': effectiveType === 25 ? (order.productName || order.orderDetails || 'Return') : '',
       'Package Type': '',
     };
   };
@@ -287,7 +357,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
         return;
       }
       
-      const bostaData = selectedOrdersData.map(mapOrderToBosta);
+      const bostaData = selectedOrdersData.map(o => mapOrderToBosta(o, fulfillmentType));
       
       // Create a new workbook and a worksheet, forcing phone columns to be text
       const ws = XLSX.utils.json_to_sheet(bostaData);
