@@ -577,6 +577,7 @@ export interface BostaDeliveryRequest {
   };
   notes?: string;
   webhookUrl?: string;
+  pickupAddress?: string; // اسم موقع الإرجاع/الاستلام المُسجل في بوسطة
 }
 
 export interface BostaDeliveryResponse {
@@ -753,6 +754,8 @@ export async function createBostaDelivery(order: {
       },
     }),
     notes: smartNotes,
+    // ✅ موقع إرجاع الشحنة حسب مصدر الشحن
+    pickupAddress: numericType === 30 ? 'Bosta Fulfillment New Cairo Warehouse' : 'المكتب الرئيسي',
   };
 
   // 🏗️ لوج تفاصيل العنوان المستخرجة

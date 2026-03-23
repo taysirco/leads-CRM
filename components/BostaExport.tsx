@@ -344,6 +344,8 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       'Return #Items': shipType === 25 ? (order.quantity || '1') : '',
       'Return Package Description': shipType === 25 ? (order.productName || order.orderDetails || 'Return') : '',
       'Package Type': '',
+      // ✅ موقع إرجاع الشحنة
+      'Pickup Location': shipType === 30 ? 'Bosta Fulfillment New Cairo Warehouse' : 'المكتب الرئيسي',
     };
   };
 
