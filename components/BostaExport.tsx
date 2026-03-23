@@ -317,7 +317,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
       'Second Phone': secondPhone,
       'City': bostaCity,
       'Area': order.area || '',
-      'Street Name': order.address,
+      'Street Name': order.area ? `${order.area} - ${order.address}` : order.address,
       'Building#, Floor#, and Apartment#': (() => {
         const parts = parseAddressStructure(order.address || '');
         const segs: string[] = [];

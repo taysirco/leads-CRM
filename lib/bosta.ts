@@ -726,7 +726,7 @@ export async function createBostaDelivery(order: {
     dropOffAddress: {
       city: match.city,
       zone: match.zone || undefined,
-      firstLine: addressParts.cleanedAddress || cleanAddress,
+      firstLine: effectiveArea ? `${effectiveArea} - ${cleanAddress}` : cleanAddress,
       ...(secondLine && { secondLine }),
       ...(addressParts.buildingNumber && { buildingNumber: addressParts.buildingNumber }),
       ...(addressParts.floor && { floor: addressParts.floor }),
