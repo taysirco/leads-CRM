@@ -539,18 +539,18 @@ export async function extractCityAndZoneFromAddress(
 // ==================== Bosta API ====================
 
 export interface BostaDeliveryRequest {
-  deliveryType: number; // 10 = إرسال عادي, 25 = تبديل (Exchange), 30 = Fulfillment
-  deliverySpecs: {
+  type: number; // 10 = إرسال عادي, 25 = تبديل (Exchange), 30 = Fulfillment
+  specs: {
     packageDetails: {
       itemsCount: number;
       description: string;
     };
     size: string; // "SMALL" | "MEDIUM" | "LARGE"
     weight?: number;
-    allowToOpenPackage?: boolean; // ✅ يجب أن يكون داخل deliverySpecs
+    allowToOpenPackage?: boolean;
   };
   dropOffAddress: {
-    city: string;     // اسم المدينة
+    city: string;
     zone?: string;
     firstLine: string;
     secondLine?: string;
@@ -562,12 +562,13 @@ export interface BostaDeliveryRequest {
     firstName: string;
     lastName: string;
     phone: string;
-    phone2?: string; // رقم هاتف ثاني (واتساب أو بديل)
+    phone2?: string;
     email?: string;
   };
   businessReference: string;
   cod: number;
-  returnSpecs?: { // مطلوب لنوع 25 (تبديل/Exchange)
+  allowToOpenPackage?: boolean; // في الجذر أيضاً للتوافق
+  returnSpecs?: {
     packageDetails: {
       itemsCount: number;
       description: string;
@@ -714,14 +715,14 @@ export async function createBostaDelivery(order: {
   const smartNotes = smartNotesParts.length > 0 ? smartNotesParts.join(' | ') : undefined;
 
   const deliveryData: BostaDeliveryRequest = {
-    deliveryType: shipmentType,
-    deliverySpecs: {
+    type: shipmentType,
+    specs: {
       packageDetails: {
         itemsCount: parseInt(order.quantity) || 1,
         description: order.productName || order.orderDetails || 'Order',
       },
       size: estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails),
-      allowToOpenPackage: true, // ✅ داخل deliverySpecs كما تتوقع بوسطة
+      allowToOpenPackage: true,
     },
     dropOffAddress: {
       city: match.city,
@@ -740,6 +741,7 @@ export async function createBostaDelivery(order: {
     },
     businessReference,
     cod: codAmount,
+    allowToOpenPackage: true, // في الجذر أيضاً للتأكد
     ...(shipmentType === 25 && {
       returnSpecs: {
         packageDetails: {
