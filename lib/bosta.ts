@@ -711,8 +711,9 @@ export async function createBostaDelivery(order: {
   const businessReference = `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}-${randomSuffix}`;
 
   // ✅ تحديد نوع الشحن — بوسطة تقبل: 'Deliver' أو 'SEND' أو 'EXCHANGE' (حساس لحالة الأحرف! تم التحقق بالفعل من API)
+  // ⚠️ مخزون بوسطة (30) يجب أن يكون 'SEND' — لأن isExternalFulfillmentOrder لا يعمل مع 'Deliver'!
   const numericType = order.fulfillmentType || 10;
-  const shipmentType: string = numericType === 25 ? 'EXCHANGE' : 'Deliver';
+  const shipmentType: string = numericType === 25 ? 'EXCHANGE' : numericType === 30 ? 'SEND' : 'Deliver';
 
   // 🏗️ تحليل بنية العنوان — استخراج المبنى والدور والشقة تلقائياً
   const addressParts = parseAddressStructure(cleanAddress);
