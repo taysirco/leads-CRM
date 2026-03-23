@@ -99,7 +99,12 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
   const handleRevertStatus = async (orderId: number) => {
     setLoadingOrders(prev => new Set(prev.add(orderId)));
     try {
-      await onUpdateOrder(orderId, { status: 'جديد' });
+      await onUpdateOrder(orderId, { 
+        status: 'جديد',
+        bostaTrackingNumber: '',  // مسح رقم التتبع ليُسمح بإعادة الشحن
+        bostaState: '',
+        lastBostaUpdate: '',
+      });
       // The parent component will handle the re-fetch, and this order will disappear.
     } catch (error) {
       console.error(`Failed to revert order ${orderId}:`, error);
