@@ -593,6 +593,7 @@ export interface BostaDeliveryRequest {
   notes?: string;
   webhookUrl?: string;
   pickupAddress?: { _id: string; firstLine: string; city: string }; // ⚠️ API يطلب firstLine + city مع _id
+  isExternalFulfillmentOrder?: boolean; // ⚠️ حقل حرج! يجب true لشحنات مخزون بوسطة
 }
 
 export interface BostaDeliveryResponse {
@@ -779,7 +780,10 @@ export async function createBostaDelivery(order: {
     notes: smartNotes,
     // ✅ موقع الاستلام حسب نوع الشحن — تم التحقق من API: {_id} وحده لا يكفي! يجب إرسال firstLine + city
     // للطلبات العادية: لا نرسل pickupAddress نهائياً — بوسطة تستخدم العنوان الافتراضي تلقائياً
+    // ✅ شحن من مخزون بوسطة: يجب إرسال isExternalFulfillmentOrder: true + pickupAddress
+    // ⚠️ بدون isExternalFulfillmentOrder — الطلب يظهر كشحن عادي على داشبورد بوسطة!
     ...(numericType === 30 ? {
+      isExternalFulfillmentOrder: true,
       pickupAddress: {
         _id: process.env.BOSTA_FULFILLMENT_PICKUP_ID || 'hFkb9kXv1',
         firstLine: 'Bosta Fulfillment, Industrial Area, New Cairo 3',
