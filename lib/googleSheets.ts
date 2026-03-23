@@ -43,6 +43,7 @@ export type StockItem = {
   lastUpdate: string;
   synonyms?: string; // المتردفات مفصولة بفاصلة
   minThreshold?: number; // الحد الأدنى للتنبيه (افتراضي 10)
+  bostaSku?: string; // كود SKU في مخازن بوسطة
 };
 
 export interface StockMovement {
@@ -459,7 +460,8 @@ export async function fetchStock(forceFresh = false): Promise<{ stockItems: Stoc
         currentQuantity: parseInt(row[3]) || parseInt(row[2]) || 0,
         lastUpdate: row[4]?.toString() || getCurrentEgyptianDate(),
         synonyms: row[5]?.toString() || '',
-        minThreshold: parseInt(row[6]) || 10
+        minThreshold: parseInt(row[6]) || 10,
+        bostaSku: row[8]?.toString().trim() || '' // العمود I (الفهرس 8) — BostaSKU
       };
 
       // التحقق من صحة اسم المنتج
@@ -637,7 +639,7 @@ export async function addOrUpdateStockItem(stockItem: Partial<StockItem>): Promi
       const rowIndex = existingItem.rowIndex;
       await sheets.spreadsheets.values.update({
         spreadsheetId: SHEET_ID,
-        range: `${STOCK_SHEET_NAME}!A${rowIndex}:H${rowIndex}`,
+        range: `${STOCK_SHEET_NAME}!A${rowIndex}:I${rowIndex}`,
         valueInputOption: 'RAW',
         requestBody: {
           values: [[
@@ -648,7 +650,8 @@ export async function addOrUpdateStockItem(stockItem: Partial<StockItem>): Promi
             currentDate,
             stockItem.synonyms ?? existingItem.synonyms,
             stockItem.minThreshold ?? existingItem.minThreshold,
-            existingItem.lastUpdate // تاريخ الإنشاء الأصلي
+            existingItem.lastUpdate, // تاريخ الإنشاء الأصلي
+            stockItem.bostaSku ?? existingItem.bostaSku ?? '' // BostaSKU
           ]]
         }
       });
@@ -666,14 +669,15 @@ export async function addOrUpdateStockItem(stockItem: Partial<StockItem>): Promi
         currentDate,
         stockItem.synonyms || '',
         stockItem.minThreshold || 10,
-        currentDate
+        currentDate,
+        stockItem.bostaSku || '' // BostaSKU
       ];
 
       console.log(`📦 إضافة منتج جديد بـ ID: ${newId}، البيانات:`, newRow);
 
       await sheets.spreadsheets.values.append({
         spreadsheetId: SHEET_ID,
-        range: `${STOCK_SHEET_NAME}!A:H`,
+        range: `${STOCK_SHEET_NAME}!A:I`,
         valueInputOption: 'RAW',
         requestBody: {
           values: [newRow]

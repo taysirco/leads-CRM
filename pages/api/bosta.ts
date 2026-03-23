@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createBostaDelivery, getTrackingUrl } from '../../lib/bosta';
-import { fetchLeads, updateLead, deductStock } from '../../lib/googleSheets';
+import { fetchLeads, updateLead, deductStock, fetchStock, findProductBySynonyms } from '../../lib/googleSheets';
 import { checkRateLimitByType, getClientIP } from '../../lib/rateLimit';
 
 // معالجة متوازية مع حد للتزامن — يمنع إغراق بوسطة بطلبات متزامنة
@@ -65,7 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }> = [];
 
     // 🧠 فلترة وتحضير الطلبات قبل الإرسال
-    const validOrders: Array<{ order: any; orderId: number; effectiveFulfillment: number }> = [];
+    const validOrders: Array<{ order: any; orderId: number; effectiveFulfillment: number; bostaSku?: string }> = [];
 
     for (const orderId of orderIds) {
       const order = leads.find((l) => l.id === Number(orderId));
@@ -102,17 +102,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // ✅ نوع الشحن يعتمد فقط على اختيار المستخدم (الراديو بوتن)
       const effectiveFulfillment = fulfillmentType;
 
+      // 🏭 إذا كان شحن من مخزون بوسطة — ابحث عن BostaSKU للمنتج
+      let bostaSku: string | undefined;
+      if (effectiveFulfillment === 30) {
+        const productName = order.productName?.trim();
+        if (productName) {
+          const { stockItems } = await fetchStock();
+          const stockMatch = findProductBySynonyms(productName, stockItems);
+          if (stockMatch?.bostaSku) {
+            bostaSku = stockMatch.bostaSku;
+            console.log(`🏭 [BOSTA API] منتج "${productName}" → BostaSKU: ${bostaSku}`);
+          } else {
+            results.push({
+              orderId,
+              success: false,
+              error: `المنتج "${productName}" ليس له BostaSKU في نظام المخزون. أضف الكود في عمود BostaSKU في شيت المخزون.`,
+            });
+            continue;
+          }
+        }
+      }
+
       // ⚠️ تحذير COD = 0 (ربما خطأ في البيانات)
       const codValue = parseInt(String(order.totalPrice || '0').replace(/\D/g, '')) || 0;
       if (codValue === 0) {
         console.warn(`⚠️ [BOSTA API] الطلب #${orderId} مبلغ التحصيل = 0 — تأكد من صحة السعر`);
       }
 
-      validOrders.push({ order, orderId, effectiveFulfillment });
+      validOrders.push({ order, orderId, effectiveFulfillment, bostaSku });
     }
 
     // ✅ معالجة متوازية — 3 طلبات في نفس الوقت
-    const batchResults = await processBatch(validOrders, async ({ order, orderId, effectiveFulfillment }) => {
+    const batchResults = await processBatch(validOrders, async ({ order, orderId, effectiveFulfillment, bostaSku }) => {
       const bostaResult = await createBostaDelivery({
         name: order.name,
         phone: order.phone,
@@ -127,6 +148,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         notes: order.notes,
         id: order.id,
         fulfillmentType: effectiveFulfillment,
+        bostaSku,
       });
 
       if (bostaResult.success && bostaResult.trackingNumber) {
@@ -142,24 +164,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
           console.log(`✅ [BOSTA API] تم الشحن وتحديث الطلب ${orderId} بنجاح`);
 
-          // 📦 خصم المخزون المحلي بعد نجاح الشحن عبر بوسطة
+          // 📦 خصم المخزون المحلي — فقط إذا كان شحن من مخزوني (ليس من مخزون بوسطة)
           let stockWarning: string | undefined;
-          const productName = order.productName?.trim();
-          const quantity = parseInt(String(order.quantity || '1')) || 1;
 
-          if (productName) {
-            try {
-              const stockResult = await deductStock(productName, quantity, orderId);
-              if (stockResult.success) {
-                console.log(`📦 [BOSTA API] تم خصم ${quantity} × "${productName}" من المخزون المحلي`);
-              } else {
-                stockWarning = stockResult.message;
-                console.warn(`⚠️ [BOSTA API] فشل خصم المخزون للطلب ${orderId}: ${stockResult.message}`);
+          if (effectiveFulfillment !== 30) {
+            // ✅ شحن من مخزوني → خصم من المخزون المحلي
+            const productName = order.productName?.trim();
+            const quantity = parseInt(String(order.quantity || '1')) || 1;
+
+            if (productName) {
+              try {
+                const stockResult = await deductStock(productName, quantity, orderId);
+                if (stockResult.success) {
+                  console.log(`📦 [BOSTA API] تم خصم ${quantity} × "${productName}" من المخزون المحلي`);
+                } else {
+                  stockWarning = stockResult.message;
+                  console.warn(`⚠️ [BOSTA API] فشل خصم المخزون للطلب ${orderId}: ${stockResult.message}`);
+                }
+              } catch (stockErr: any) {
+                stockWarning = stockErr.message || 'خطأ في خصم المخزون';
+                console.error(`❌ [BOSTA API] خطأ في خصم المخزون للطلب ${orderId}:`, stockErr);
               }
-            } catch (stockErr: any) {
-              stockWarning = stockErr.message || 'خطأ في خصم المخزون';
-              console.error(`❌ [BOSTA API] خطأ في خصم المخزون للطلب ${orderId}:`, stockErr);
             }
+          } else {
+            console.log(`🏭 [BOSTA API] شحن من مخزون بوسطة — لن يتم خصم المخزون المحلي للطلب ${orderId}`);
           }
 
           return {

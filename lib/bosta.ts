@@ -577,6 +577,7 @@ export interface BostaDeliveryRequest {
   };
   notes?: string;
   webhookUrl?: string;
+  pickupAddress?: { _id: string }; // موقع الاستلام/الإرجاع المُسجل في بوسطة
 }
 
 export interface BostaDeliveryResponse {
@@ -617,6 +618,7 @@ export async function createBostaDelivery(order: {
   notes?: string;
   id: number;
   fulfillmentType?: number; // 10 = عادي, 25 = تبديل (Exchange), 30 = Fulfillment
+  bostaSku?: string; // كود SKU في مخازن بوسطة
 }): Promise<{ success: boolean; trackingNumber?: string; bostaId?: string; error?: string }> {
 
   if (!BOSTA_API_KEY) {
@@ -720,7 +722,7 @@ export async function createBostaDelivery(order: {
     specs: {
       packageDetails: {
         itemsCount: parseInt(order.quantity) || 1,
-        description: order.productName || order.orderDetails || 'Order',
+        description: (numericType === 30 && order.bostaSku) ? order.bostaSku : (order.productName || order.orderDetails || 'Order'),
       },
       size: estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails),
       allowToOpenPackage: true,
@@ -753,6 +755,10 @@ export async function createBostaDelivery(order: {
       },
     }),
     notes: smartNotes,
+    // ✅ موقع الاستلام/الإرجاع حسب نوع الشحن
+    pickupAddress: numericType === 30
+      ? { _id: 'hFkb9kXv1' }  // Bosta Fulfillment New Cairo Warehouse
+      : { _id: '6hbvJbsxM' }, // المكتب الرئسي - دمياط
   };
 
   // 🏗️ لوج تفاصيل العنوان المستخرجة
