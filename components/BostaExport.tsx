@@ -295,7 +295,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
     
     // ✅ نوع الشحن يعتمد فقط على اختيار المستخدم (الراديو بوتن)
     // Bosta Excel يقبل: Deliver, Exchange, Return, Cash Collection
-    const typeValue = shipType === 25 ? 'Exchange' : 'Deliver';
+    const typeValue = shipType === 25 ? 'EXCHANGE' : 'Deliver'; // ⚠️ حساس لحالة الأحرف! تم التحقق من API
 
     // 🧠 Bug #2 Fix: تحويل المحافظة إلى الاسم الإنجليزي المعتمد في بوسطة
     const bostaCity = getBostaCity(order.governorate);

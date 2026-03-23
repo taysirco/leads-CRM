@@ -553,7 +553,7 @@ export async function extractCityAndZoneFromAddress(
 // ==================== Bosta API ====================
 
 export interface BostaDeliveryRequest {
-  type: string; // 'Deliver' | 'Exchange'
+  type: string; // 'Deliver' | 'SEND' | 'EXCHANGE' (حساس لحالة الأحرف — تم التحقق من API)
   specs: {
     packageDetails: {
       itemsCount: number;
@@ -709,9 +709,9 @@ export async function createBostaDelivery(order: {
   const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
   const businessReference = `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}-${randomSuffix}`;
 
-  // ✅ تحديد نوع الشحن — بوسطة تقبل: 'Deliver' أو 'Exchange'
+  // ✅ تحديد نوع الشحن — بوسطة تقبل: 'Deliver' أو 'SEND' أو 'EXCHANGE' (حساس لحالة الأحرف! تم التحقق بالفعل من API)
   const numericType = order.fulfillmentType || 10;
-  const shipmentType: string = numericType === 25 ? 'Exchange' : 'Deliver';
+  const shipmentType: string = numericType === 25 ? 'EXCHANGE' : 'Deliver';
 
   // 🏗️ تحليل بنية العنوان — استخراج المبنى والدور والشقة تلقائياً
   const addressParts = parseAddressStructure(cleanAddress);
@@ -729,7 +729,7 @@ export async function createBostaDelivery(order: {
   if (addressParts.landmark) smartNotesParts.push(`📍 ${addressParts.landmark}`);
   const qty = parseQuantity(order.quantity);
   if (qty > 1) smartNotesParts.push(`📦 ${qty} قطع`);
-  if (shipmentType === 'Exchange') smartNotesParts.push('🔄 تبديل — استلام المنتج القديم');
+  if (shipmentType === 'EXCHANGE') smartNotesParts.push('🔄 تبديل — استلام المنتج القديم');
   const smartNotes = smartNotesParts.length > 0 ? smartNotesParts.join(' | ') : undefined;
 
   const deliveryData: BostaDeliveryRequest = {
@@ -767,7 +767,7 @@ export async function createBostaDelivery(order: {
     businessReference,
     cod: codAmount,
     allowToOpenPackage: true, // في الجذر أيضاً للتأكد
-    ...(shipmentType === 'Exchange' && {
+    ...(shipmentType === 'EXCHANGE' && {
       returnSpecs: {
         packageDetails: {
           itemsCount: qty,
