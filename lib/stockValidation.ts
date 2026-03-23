@@ -257,6 +257,18 @@ export async function atomicBulkShipping(
         for (const orderId of orderIds) {
             const targetLead = leads.find(lead => lead.id === Number(orderId));
             if (targetLead && targetLead.productName && targetLead.quantity) {
+                // 🛡️ حماية من الخصم المزدوج — تخطي الطلبات المشحونة مسبقاً
+                if ((targetLead.status || '').trim() === 'تم الشحن') {
+                    console.log(`⚠️ [ATOMIC GUARD] الطلب ${orderId} مشحون مسبقاً — تخطي خصم المخزون`);
+                    shippedOrders.push(orderId); // اعتبره ناجحاً لأنه مشحون بالفعل
+                    stockResults.push({
+                        orderId,
+                        success: true,
+                        message: 'مشحون مسبقاً — لم يتم خصم المخزون مرة أخرى'
+                    });
+                    continue;
+                }
+
                 const quantity = parseInt(targetLead.quantity) || 1;
                 orderItems.push({
                     productName: targetLead.productName.trim(),

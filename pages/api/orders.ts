@@ -252,14 +252,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log(`🚀 بدء تحديث الطلب ${rowNumber}...`);
         let stockResult = null;
         let originalStatus = null;
+        let cachedTargetLead: any = null;
 
         // الخطوة 1: حفظ الحالة الأصلية إذا كان التحديث إلى "تم الشحن"
         if (updates.status === 'تم الشحن') {
           console.log('🔍 الخطوة 1: جلب الحالة الأصلية للطلب...');
           const leads = await fetchLeads();
-          const targetLead = leads.find(lead => lead.id === Number(rowNumber));
+          cachedTargetLead = leads.find(lead => lead.id === Number(rowNumber));
 
-          if (!targetLead) {
+          if (!cachedTargetLead) {
             console.error(`❌ لم يتم العثور على الطلب ${rowNumber}`);
             return res.status(400).json({
               error: 'لا يمكن الشحن',
@@ -268,12 +269,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             });
           }
 
-          originalStatus = targetLead.status || 'جديد';
+          originalStatus = cachedTargetLead.status || 'جديد';
           console.log(`📋 الحالة الأصلية للطلب ${rowNumber}: "${originalStatus}"`);
 
+          // 🛡️ حماية من الخصم المزدوج — إذا كان الطلب بالفعل "تم الشحن" لا نخصم مرة أخرى
+          if (originalStatus === 'تم الشحن') {
+            console.log(`⚠️ [GUARD] الطلب ${rowNumber} بالفعل في حالة "تم الشحن" — لن يتم خصم المخزون مجدداً`);
+            await updateLead(Number(rowNumber), updates);
+            return res.status(200).json({
+              success: true,
+              message: 'الطلب محدث بالفعل — لم يتم خصم المخزون لأنه مشحون مسبقاً'
+            });
+          }
+
           // التحقق من وجود البيانات المطلوبة للشحن
-          const productName = targetLead!.productName?.trim();
-          const quantityStr = targetLead!.quantity?.toString().trim();
+          const productName = cachedTargetLead.productName?.trim();
+          const quantityStr = cachedTargetLead.quantity?.toString().trim();
 
           if (!productName || !quantityStr) {
             console.error(`❌ بيانات ناقصة للطلب ${rowNumber}: منتج=${productName}, كمية=${quantityStr}`);
@@ -294,13 +305,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (updates.status === 'تم الشحن') {
           console.log('🚚 الخطوة 3: خصم المخزون بعد تأكيد الشحن...');
           try {
-            // جلب بيانات الطلب المحدثة
-            const leads = await fetchLeads();
-            const targetLead = leads.find(lead => lead.id === Number(rowNumber));
-
-            const productName = targetLead!.productName?.trim();
-            const quantityStr = targetLead!.quantity?.toString().trim();
-            const orderId = targetLead!.id;
+            // 🚀 استخدام البيانات المحفوظة مسبقاً بدلاً من fetchLeads مرة أخرى (أسرع)
+            const productName = cachedTargetLead.productName?.trim();
+            const quantityStr = cachedTargetLead.quantity?.toString().trim();
+            const orderId = cachedTargetLead.id;
             const quantity = parseInt(quantityStr!) || 1;
 
             console.log(`🚚 محاولة خصم مخزون الطلب ${rowNumber}: ${quantity} × ${productName}`);

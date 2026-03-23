@@ -307,23 +307,36 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
     setBulkStatusModalOpen(false);
 
     try {
-      // تحديث جميع الطلبات المحددة
-      const updatePromises = Array.from(selectedOrders).map(orderId =>
-        onUpdateOrder(orderId, { status: newStatus })
-      );
+      // ✨ استخدام الـ bulk API endpoint مباشرة بدلاً من طلبات فردية
+      // هذا يمنع Race Conditions ويضمن العملية الذرية عند الشحن
+      const response = await fetch('/api/orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders: Array.from(selectedOrders), status: newStatus }),
+      });
 
-      await Promise.all(updatePromises);
+      const result = await response.json();
 
-      // إظهار رسالة نجاح
-      setBulkSuccessMessage(`تم تحديث ${selectedOrders.size} طلب بنجاح إلى حالة "${newStatus}"`);
-      setTimeout(() => setBulkSuccessMessage(''), 5000);
+      if (!response.ok) {
+        if (result.stockError) {
+          alert(result.message || 'المخزون غير كافي لإتمام الشحن');
+        } else {
+          throw new Error(result.message || 'فشل في التحديث');
+        }
+      } else {
+        // إظهار رسالة نجاح
+        setBulkSuccessMessage(result.message || `تم تحديث ${selectedOrders.size} طلب بنجاح إلى حالة "${newStatus}"`);
+        setTimeout(() => setBulkSuccessMessage(''), 5000);
+      }
 
-      // إلغاء التحديد
+      // إلغاء التحديد وإعادة جلب البيانات
       setSelectedOrders(new Set());
+      // Force re-fetch via parent — orderId 0 triggers mutate() in index.tsx
+      await onUpdateOrder(0, {});
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update orders:', error);
-      alert('فشل في تحديث بعض الطلبات. حاول مرة أخرى.');
+      alert(`فشل في تحديث الطلبات: ${error.message || 'خطأ غير معروف'}`);
     } finally {
       setIsBulkLoading(false);
     }
