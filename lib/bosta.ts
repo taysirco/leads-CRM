@@ -539,7 +539,7 @@ export async function extractCityAndZoneFromAddress(
 // ==================== Bosta API ====================
 
 export interface BostaDeliveryRequest {
-  type: number; // 10 = إرسال عادي, 25 = تبديل (Exchange), 30 = Fulfillment
+  type: string; // 'Deliver' | 'Exchange'
   specs: {
     packageDetails: {
       itemsCount: number;
@@ -692,8 +692,9 @@ export async function createBostaDelivery(order: {
   const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
   const businessReference = `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}-${randomSuffix}`;
 
-  // تحديد نوع الشحن: 10 = عادي, 25 = تبديل, 30 = Fulfillment
-  const shipmentType = order.fulfillmentType || 10;
+  // ✅ تحديد نوع الشحن — بوسطة تقبل: 'Deliver' أو 'Exchange'
+  const numericType = order.fulfillmentType || 10;
+  const shipmentType: string = numericType === 25 ? 'Exchange' : 'Deliver';
 
   // 🏗️ تحليل بنية العنوان — استخراج المبنى والدور والشقة تلقائياً
   const addressParts = parseAddressStructure(cleanAddress);
@@ -711,7 +712,7 @@ export async function createBostaDelivery(order: {
   if (addressParts.landmark) smartNotesParts.push(`📍 ${addressParts.landmark}`);
   const qty = parseInt(order.quantity) || 1;
   if (qty > 1) smartNotesParts.push(`📦 ${qty} قطع`);
-  if (shipmentType === 25) smartNotesParts.push('🔄 تبديل — استلام المنتج القديم');
+  if (shipmentType === 'Exchange') smartNotesParts.push('🔄 تبديل — استلام المنتج القديم');
   const smartNotes = smartNotesParts.length > 0 ? smartNotesParts.join(' | ') : undefined;
 
   const deliveryData: BostaDeliveryRequest = {
@@ -742,7 +743,7 @@ export async function createBostaDelivery(order: {
     businessReference,
     cod: codAmount,
     allowToOpenPackage: true, // في الجذر أيضاً للتأكد
-    ...(shipmentType === 25 && {
+    ...(shipmentType === 'Exchange' && {
       returnSpecs: {
         packageDetails: {
           itemsCount: parseInt(order.quantity) || 1,
@@ -763,12 +764,10 @@ export async function createBostaDelivery(order: {
   }
 
   const pkgSize = estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails);
-  const typeLabel = shipmentType === 30 ? 'Fulfillment' : shipmentType === 25 ? 'تبديل' : 'عادي';
-  console.log(`🚚 [BOSTA] إنشاء شحنة للطلب #${order.id} → ${match.city}/${match.zone || '-'} | COD: ${codAmount} | نوع: ${typeLabel} | حجم: ${pkgSize}`);
-  // لا نطبع البيانات الكاملة في الإنتاج (خصوصية أرقام الهاتف)
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`📦 [BOSTA] البيانات:`, JSON.stringify(deliveryData, null, 2));
-  }
+  console.log(`🚚 [BOSTA] إنشاء شحنة للطلب #${order.id} → ${match.city}/${match.zone || '-'} | COD: ${codAmount} | نوع: ${shipmentType} | حجم: ${pkgSize}`);
+  // 🔍 DEBUG: طباعة البيانات الكاملة لتشخيص المشكلة
+  console.log(`🔍 [BOSTA DEBUG] type=${deliveryData.type}, allowToOpenPackage_root=${deliveryData.allowToOpenPackage}, allowToOpenPackage_specs=${deliveryData.specs?.allowToOpenPackage}`);
+  console.log(`📦 [BOSTA DEBUG] Full payload:`, JSON.stringify(deliveryData, null, 2));
 
   // ✅ Retry مع exponential backoff — 3 محاولات
   const MAX_RETRIES = 3;
