@@ -386,12 +386,13 @@ async function createStockSheet(): Promise<void> {
       'آخر تحديث',
       'المتردفات',
       'الحد الأدنى',
-      'تاريخ الإنشاء'
+      'تاريخ الإنشاء',
+      'BostaSKU'
     ];
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: `${STOCK_SHEET_NAME}!A1:H1`,
+      range: `${STOCK_SHEET_NAME}!A1:I1`,
       valueInputOption: 'RAW',
       requestBody: {
         values: [headers]
@@ -433,7 +434,7 @@ export async function fetchStock(forceFresh = false): Promise<{ stockItems: Stoc
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `${STOCK_SHEET_NAME}!A:G`,
+      range: `${STOCK_SHEET_NAME}!A:I`, // ⚠️ يجب أن يشمل عمود I للـ BostaSKU
     });
 
     const rows = response.data.values || [];
@@ -467,7 +468,7 @@ export async function fetchStock(forceFresh = false): Promise<{ stockItems: Stoc
       // التحقق من صحة اسم المنتج
       if (stockItem.productName && stockItem.productName.length > 0) {
         stockItems.push(stockItem);
-        console.log(`✅ تم تحليل المنتج: ${stockItem.productName} (الكمية: ${stockItem.currentQuantity})`);
+        console.log(`✅ تم تحليل المنتج: ${stockItem.productName} (الكمية: ${stockItem.currentQuantity})${stockItem.bostaSku ? ` | BostaSKU: ${stockItem.bostaSku}` : ''}`);
       } else {
         console.log(`⚠️ تم تجاهل صف ${rowIndex} - اسم منتج غير صحيح`);
       }
@@ -1338,7 +1339,7 @@ export async function diagnoseGoogleSheets(): Promise<{ success: boolean; messag
 
     const stockData = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `${STOCK_SHEET_NAME}!A:H`,
+      range: `${STOCK_SHEET_NAME}!A:I`, // يشمل عمود BostaSKU
       valueRenderOption: 'UNFORMATTED_VALUE'
     });
 
