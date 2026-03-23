@@ -544,6 +544,7 @@ export interface BostaDeliveryRequest {
     packageDetails: {
       itemsCount: number;
       description: string;
+      items?: Array<{ name: string; sku: string; quantity: number }>;
     };
     size: string; // "SMALL" | "MEDIUM" | "LARGE"
     weight?: number;
@@ -723,6 +724,13 @@ export async function createBostaDelivery(order: {
       packageDetails: {
         itemsCount: parseInt(order.quantity) || 1,
         description: (numericType === 30 && order.bostaSku) ? order.bostaSku : (order.productName || order.orderDetails || 'Order'),
+        ...(numericType === 30 && order.bostaSku && {
+          items: [{
+            name: order.productName || order.orderDetails || 'Order',
+            sku: order.bostaSku,
+            quantity: parseInt(order.quantity) || 1
+          }]
+        }),
       },
       size: estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails),
       allowToOpenPackage: true,

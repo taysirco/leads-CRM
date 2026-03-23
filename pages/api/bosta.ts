@@ -105,7 +105,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // 🏭 إذا كان شحن من مخزون بوسطة — ابحث عن BostaSKU للمنتج
       let bostaSku: string | undefined;
       if (effectiveFulfillment === 30) {
-        const productName = order.productName?.trim();
+        const productName = (order.productName || order.orderDetails || '').trim();
         if (productName) {
           const { stockItems } = await fetchStock();
           const stockMatch = findProductBySynonyms(productName, stockItems);
@@ -116,10 +116,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             results.push({
               orderId,
               success: false,
-              error: `المنتج "${productName}" ليس له BostaSKU في نظام المخزون. أضف الكود في عمود BostaSKU في شيت المخزون.`,
+              error: `المنتج "${productName}" ليس له BostaSKU في نظام المخزون. أضف الكود في شيت المخزون.`,
             });
             continue;
           }
+        } else {
+          results.push({
+            orderId,
+            success: false,
+            error: `تعذر جلب SKU من بوسطة: اسم المنتج فارغ للطلب ${orderId}`,
+          });
+          continue;
         }
       }
 
