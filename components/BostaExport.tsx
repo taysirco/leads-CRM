@@ -5,7 +5,7 @@ import { formatToLocalEgyptianNumber, normalizeGovernorateName, validateEgyptian
 import StatusBadge from './StatusBadge';
 
 // 🧠 تدقيق جودة الطلب قبل الشحن — يكشف مشاكل محتملة
-function getOrderWarnings(order: Order): string[] {
+function getOrderWarnings(order: Order, currentFulfillmentType?: number): string[] {
   const warnings: string[] = [];
   // محافظة فارغة
   if (!order.governorate || order.governorate.trim() === '') warnings.push('المحافظة فارغة (سيتم الاستخراج تلقائياً)');
@@ -25,6 +25,10 @@ function getOrderWarnings(order: Order): string[] {
   if (!order.area || order.area.trim() === '') warnings.push('المنطقة فارغة (سيتم الاستخراج تلقائياً)');
   // شحنة موجودة بالفعل
   if (order.bostaTrackingNumber && order.bostaTrackingNumber.trim() !== '') warnings.push('تم الشحن مسبقاً');
+  // 🏭 مخزون بوسطة — يجب وجود اسم المنتج لجلب BostaSKU
+  if (currentFulfillmentType === 30 && (!order.productName || order.productName.trim() === '')) {
+    warnings.push('⚠️ اسم المنتج فارغ — مطلوب لجلب BostaSKU');
+  }
   return warnings;
 }
 
@@ -411,8 +415,8 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
     const duplicatePhones = [...phoneMap.entries()].filter(([, ids]) => ids.length > 1);
     
     // 🧠 تدقيق جودة قبل الشحن
-    const allWarnings = selectedOrdersData.map(o => ({ id: o.id, warnings: getOrderWarnings(o) }));
-    const criticalOrders = allWarnings.filter(w => w.warnings.some(m => m.includes('هاتف') || m.includes('مسبقاً')));
+    const allWarnings = selectedOrdersData.map(o => ({ id: o.id, warnings: getOrderWarnings(o, fulfillmentType) }));
+    const criticalOrders = allWarnings.filter(w => w.warnings.some(m => m.includes('هاتف') || m.includes('مسبقاً') || m.includes('BostaSKU')));
     const warningOrders = allWarnings.filter(w => w.warnings.length > 0 && !w.warnings.some(m => m.includes('هاتف') || m.includes('مسبقاً')));
 
     let confirmMsg = `هل أنت متأكد من إنشاء ${selectedOrders.length} شحنة على بوسطة؟\n\n`;
@@ -482,7 +486,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
         onDeselectAll();
         onArchiveEnd?.();
         // إعادة جلب البيانات لعرض التحديثات
-        await onUpdateOrder(0, {});
+        window.location.reload();
       }
     } catch (error: any) {
       alert(`❌ خطأ في الاتصال بسيرفر بوسطة: ${error.message}`);
@@ -634,14 +638,14 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
                       <div className="flex items-center gap-1">
                         {order.id}
                         {(() => {
-                          const warns = getOrderWarnings(order);
+                          const warns = getOrderWarnings(order, fulfillmentType);
                           if (warns.length === 0) return <span title="جاهز للشحن" className="text-green-500">●</span>;
                           return (
                             <span
                               title={warns.join(' | ')}
-                              className={`cursor-help ${warns.some(w => w.includes('مسبقاً') || w.includes('هاتف')) ? 'text-red-500' : 'text-amber-500'}`}
+                              className={`cursor-help ${warns.some(w => w.includes('مسبقاً') || w.includes('هاتف') || w.includes('BostaSKU')) ? 'text-red-500' : 'text-amber-500'}`}
                             >
-                              {warns.some(w => w.includes('مسبقاً') || w.includes('هاتف')) ? '🔴' : '⚠️'}
+                              {warns.some(w => w.includes('مسبقاً') || w.includes('هاتف') || w.includes('BostaSKU')) ? '🔴' : '⚠️'}
                             </span>
                           );
                         })()}

@@ -162,6 +162,20 @@ export function parseAddressStructure(address: string): {
 }
 
 /**
+ * 🔢 استخراج الكمية من نص — يدعم "2 قطعة"، "عدد 3"، "3x"، "٢"، إلخ
+ */
+export function parseQuantity(raw: string | number | undefined | null): number {
+  if (typeof raw === 'number') return raw > 0 ? Math.floor(raw) : 1;
+  if (!raw) return 1;
+  const str = String(raw)
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))) // أرقام عربية → لاتينية
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06F0)); // أرقام فارسية
+  const match = str.match(/(\d+)/);
+  const n = match ? parseInt(match[1], 10) : 1;
+  return n > 0 ? n : 1;
+}
+
+/**
  * 📦 تقدير حجم الشحنة بذكاء من الكمية ونوع المنتج
  */
 export function estimatePackageSize(quantity: number, productDesc?: string): 'SMALL' | 'MEDIUM' | 'LARGE' {
@@ -713,7 +727,7 @@ export async function createBostaDelivery(order: {
   const smartNotesParts: string[] = [];
   if (order.notes) smartNotesParts.push(order.notes);
   if (addressParts.landmark) smartNotesParts.push(`📍 ${addressParts.landmark}`);
-  const qty = parseInt(order.quantity) || 1;
+  const qty = parseQuantity(order.quantity);
   if (qty > 1) smartNotesParts.push(`📦 ${qty} قطع`);
   if (shipmentType === 'Exchange') smartNotesParts.push('🔄 تبديل — استلام المنتج القديم');
   const smartNotes = smartNotesParts.length > 0 ? smartNotesParts.join(' | ') : undefined;
@@ -722,17 +736,17 @@ export async function createBostaDelivery(order: {
     type: shipmentType,
     specs: {
       packageDetails: {
-        itemsCount: parseInt(order.quantity) || 1,
+        itemsCount: qty,
         description: order.productName || order.orderDetails || 'Order',
         ...(numericType === 30 && order.bostaSku && {
           items: [{
             name: order.productName || order.orderDetails || 'Order',
             sku: order.bostaSku,
-            quantity: parseInt(order.quantity) || 1
+            quantity: qty
           }]
         }),
       },
-      size: estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails),
+      size: estimatePackageSize(qty, order.productName || order.orderDetails),
       allowToOpenPackage: true,
     },
     dropOffAddress: {
@@ -756,10 +770,10 @@ export async function createBostaDelivery(order: {
     ...(shipmentType === 'Exchange' && {
       returnSpecs: {
         packageDetails: {
-          itemsCount: parseInt(order.quantity) || 1,
+          itemsCount: qty,
           description: `إرجاع: ${order.productName || order.orderDetails || 'Order'}`,
         },
-        size: estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails),
+        size: estimatePackageSize(qty, order.productName || order.orderDetails),
       },
     }),
     notes: smartNotes,
@@ -777,7 +791,7 @@ export async function createBostaDelivery(order: {
     console.log(`📍 [BOSTA] علامة مميزة: ${addressParts.landmark}`);
   }
 
-  const pkgSize = estimatePackageSize(parseInt(order.quantity) || 1, order.productName || order.orderDetails);
+  const pkgSize = estimatePackageSize(qty, order.productName || order.orderDetails);
   console.log(`🚚 [BOSTA] إنشاء شحنة للطلب #${order.id} → ${match.city}/${match.zone || '-'} | COD: ${codAmount} | نوع: ${shipmentType} | حجم: ${pkgSize}`);
   // 🔍 DEBUG: طباعة البيانات الكاملة لتشخيص المشكلة
   console.log(`🔍 [BOSTA DEBUG] type=${deliveryData.type}, allowToOpenPackage_root=${deliveryData.allowToOpenPackage}, allowToOpenPackage_specs=${deliveryData.specs?.allowToOpenPackage}`);

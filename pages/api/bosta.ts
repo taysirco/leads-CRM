@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { createBostaDelivery, getTrackingUrl } from '../../lib/bosta';
+import { createBostaDelivery, getTrackingUrl, parseQuantity } from '../../lib/bosta';
 import { fetchLeads, updateLead, deductStock, fetchStock, findProductBySynonyms } from '../../lib/googleSheets';
 import { checkRateLimitByType, getClientIP } from '../../lib/rateLimit';
 
@@ -168,7 +168,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         if (effectiveFulfillment !== 30) {
           const productName = order.productName?.trim();
-          const quantity = parseInt(String(order.quantity || '1')) || 1;
+          const quantity = parseQuantity(order.quantity);
 
           if (productName) {
             try {
