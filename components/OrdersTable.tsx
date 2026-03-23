@@ -93,6 +93,15 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
     };
   }, [autoSaveTimer]);
 
+  // 🧠 Cleanup suggestion timers on unmount
+  React.useEffect(() => {
+    return () => {
+      if (govTimerRef.current) clearTimeout(govTimerRef.current);
+      if (zoneTimerRef.current) clearTimeout(zoneTimerRef.current);
+      if (addressTimerRef.current) clearTimeout(addressTimerRef.current);
+    };
+  }, []);
+
   // 🧠 Fetch governorate suggestions from Bosta
   const fetchGovSuggestions = React.useCallback((query: string) => {
     if (govTimerRef.current) clearTimeout(govTimerRef.current);
@@ -1042,7 +1051,14 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                   {/* تم تعطيل مؤشر الحفظ التلقائي - الحفظ يدوي فقط */}
                 </h3>
                 <button
-                  onClick={() => setEditModalOpen(false)}
+                  onClick={() => {
+                    setEditModalOpen(false);
+                    setGovSuggestions([]);
+                    setZoneSuggestions([]);
+                    setAddressAnalysis(null);
+                    setShowGovDropdown(false);
+                    setShowZoneDropdown(false);
+                  }}
                   className="text-white hover:text-gray-200 transition-colors p-1 sm:p-2 hover:bg-white hover:bg-opacity-20 rounded-full"
                 >
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1320,7 +1336,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       )}
 
                       {/* Apply all button */}
-                      {(addressAnalysis.matchedCity && addressAnalysis.matchedCity !== editingOrder.governorate) || (addressAnalysis.matchedZone && addressAnalysis.matchedZone !== editingOrder.area) ? (
+                      {((addressAnalysis.matchedCity && addressAnalysis.matchedCity !== editingOrder.governorate) || (addressAnalysis.matchedZone && addressAnalysis.matchedZone !== editingOrder.area)) ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -1395,6 +1411,12 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       setEditingOrder(null);
                       setOriginalOrder(null);
                       setHasUnsavedChanges(false);
+                      // 🧠 تنظيف الاقتراحات
+                      setGovSuggestions([]);
+                      setZoneSuggestions([]);
+                      setAddressAnalysis(null);
+                      setShowGovDropdown(false);
+                      setShowZoneDropdown(false);
                     }}
                     disabled={loadingOrders.has(editingOrder.id)}
                     className="px-4 sm:px-6 py-2 sm:py-3 text-gray-600 border border-gray-300 rounded-lg sm:rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-all duration-200 font-medium text-sm sm:text-base order-2 sm:order-1"

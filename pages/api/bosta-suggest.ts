@@ -33,15 +33,26 @@ async function getCitiesList() {
   }
 }
 
+// 📦 كاش المناطق — يتم تحميلها لكل مدينة مرة واحدة
+const cachedZones: Map<string, { data: any[]; timestamp: number }> = new Map();
+const ZONES_CACHE_TTL = 30 * 60 * 1000; // 30 دقيقة
+
 async function getZonesForCity(cityId: string) {
+  // تحقق من الكاش
+  const cached = cachedZones.get(cityId);
+  if (cached && Date.now() - cached.timestamp < ZONES_CACHE_TTL) {
+    return cached.data;
+  }
   try {
     const res = await fetch(`https://app.bosta.co/api/v2/cities/${cityId}/zones`, {
       headers: { 'Authorization': process.env.BOSTA_API_KEY || '' },
     });
     const json = await res.json();
-    return (json?.data || []).filter((z: any) => z.dropOffAvailability);
+    const zones = (json?.data || []).filter((z: any) => z.dropOffAvailability);
+    cachedZones.set(cityId, { data: zones, timestamp: Date.now() });
+    return zones;
   } catch {
-    return [];
+    return cached?.data || [];
   }
 }
 
