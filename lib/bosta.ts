@@ -553,7 +553,7 @@ export async function extractCityAndZoneFromAddress(
 // ==================== Bosta API ====================
 
 export interface BostaDeliveryRequest {
-  type: string; // 'Deliver' | 'SEND' | 'EXCHANGE' (حساس لحالة الأحرف — تم التحقق من API)
+  type: string; // 'Deliver' | 'SEND' | 'EXCHANGE' | 'FXF_SEND' (حساس لحالة الأحرف — تم التحقق من API)
   specs: {
     packageDetails: {
       itemsCount: number;
@@ -593,7 +593,9 @@ export interface BostaDeliveryRequest {
   notes?: string;
   webhookUrl?: string;
   pickupAddress?: { _id: string; firstLine: string; city: string }; // ⚠️ API يطلب firstLine + city مع _id
-  isExternalFulfillmentOrder?: boolean; // ⚠️ حقل حرج! يجب true لشحنات مخزون بوسطة
+  isExternalFulfillmentOrder?: boolean;
+  fulfillmentInfo?: { items: Array<{ product_id: number; bostaSKU: string; quantity: number; name: string; itemPrice: number }> };
+  goodsInfo?: { amount: number };
 }
 
 export interface BostaDeliveryResponse {
@@ -710,10 +712,11 @@ export async function createBostaDelivery(order: {
   const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
   const businessReference = `SMRKT-${order.id}-${new Date().toISOString().slice(0, 10)}-${randomSuffix}`;
 
-  // ✅ تحديد نوع الشحن — بوسطة تقبل: 'Deliver' أو 'SEND' أو 'EXCHANGE' (حساس لحالة الأحرف! تم التحقق بالفعل من API)
-  // ⚠️ مخزون بوسطة (30) يجب أن يكون 'SEND' — لأن isExternalFulfillmentOrder لا يعمل مع 'Deliver'!
+  // ✅ تحديد نوع الشحن — تم التحقق بالتجربة الحية على API:
+  // - 'Deliver' = شحن عادي | 'EXCHANGE' = تبديل | 'FXF_SEND' = شحن من مخزون بوسطة (code 200)
+  // ⚠️ 'SEND' + isExternalFulfillmentOrder كان خطأ! لا يُظهر "من مخازن بوسطة" في الداشبورد
   const numericType = order.fulfillmentType || 10;
-  const shipmentType: string = numericType === 25 ? 'EXCHANGE' : numericType === 30 ? 'SEND' : 'Deliver';
+  const shipmentType: string = numericType === 25 ? 'EXCHANGE' : numericType === 30 ? 'FXF_SEND' : 'Deliver';
 
   // 🏗️ تحليل بنية العنوان — استخراج المبنى والدور والشقة تلقائياً
   const addressParts = parseAddressStructure(cleanAddress);
@@ -739,14 +742,10 @@ export async function createBostaDelivery(order: {
     specs: {
       packageDetails: {
         itemsCount: qty,
-        description: order.productName || order.orderDetails || 'Order',
-        ...(numericType === 30 && order.bostaSku && {
-          items: [{
-            name: order.productName || order.orderDetails || 'Order',
-            sku: order.bostaSku,
-            quantity: qty
-          }]
-        }),
+        // ✅ وصف المنتج: بتنسيق بوسطة الخاص لطلبات FXF_SEND
+        description: numericType === 30 && order.bostaSku
+          ? `BostaSKU:${order.bostaSku} - quantity:${qty} - itemPrice:0`
+          : (order.productName || order.orderDetails || 'Order'),
       },
       size: estimatePackageSize(qty, order.productName || order.orderDetails),
       allowToOpenPackage: true,
@@ -779,17 +778,19 @@ export async function createBostaDelivery(order: {
       },
     }),
     notes: smartNotes,
-    // ✅ موقع الاستلام حسب نوع الشحن — تم التحقق من API: {_id} وحده لا يكفي! يجب إرسال firstLine + city
-    // للطلبات العادية: لا نرسل pickupAddress نهائياً — بوسطة تستخدم العنوان الافتراضي تلقائياً
-    // ✅ شحن من مخزون بوسطة: يجب إرسال isExternalFulfillmentOrder: true + pickupAddress
-    // ⚠️ بدون isExternalFulfillmentOrder — الطلب يظهر كشحن عادي على داشبورد بوسطة!
-    ...(numericType === 30 ? {
-      isExternalFulfillmentOrder: true,
-      pickupAddress: {
-        _id: process.env.BOSTA_FULFILLMENT_PICKUP_ID || 'hFkb9kXv1',
-        firstLine: 'Bosta Fulfillment, Industrial Area, New Cairo 3',
-        city: 'Cairo',
-      }
+    // ✅ شحن من مخزون بوسطة (FXF_SEND): يجب إرسال fulfillmentInfo + goodsInfo
+    // ⚠️ تم التحقق بالتجربة: type=FXF_SEND يملأ fulfillmentInfo تلقائياً ويظهر "من مخازن بوسطة" على الداشبورد
+    ...(numericType === 30 && order.bostaSku ? {
+      fulfillmentInfo: {
+        items: [{
+          product_id: parseInt(order.bostaSku.replace('BO-', '')) || 0,
+          bostaSKU: order.bostaSku,
+          quantity: qty,
+          name: order.productName || order.orderDetails || 'Order',
+          itemPrice: 0
+        }]
+      },
+      goodsInfo: { amount: codAmount || 1000 },
     } : {}),
   };
 
