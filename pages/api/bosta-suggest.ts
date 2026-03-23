@@ -229,12 +229,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         match = await smartMatchCityAndZone(normalizedGov);
       }
 
+      // 🧠 إذا لم نجد المنطقة عبر smartMatch، نستخدم zone scoring من العنوان
+      let bestZoneFromAddress: string | null = null;
+      const effectiveGov = match?.city || (extraction.extracted ? extraction.city : null) || normalizedGov;
+      if (effectiveGov && !match?.zone) {
+        const cities = await fetchBostaCities();
+        const govNorm2 = norm(effectiveGov);
+        const mc = cities.find(c => {
+          const names = [c.nameAr, c.name, c.alias].filter(Boolean) as string[];
+          return names.some(n => norm(n) === govNorm2 || normalizeGovernorateName(n) === normalizeGovernorateName(effectiveGov));
+        });
+        if (mc) {
+          const zones = await fetchBostaZones(mc._id);
+          const addrNorm = norm(cleanAddr);
+          let bestScore = 0;
+          for (const z of zones) {
+            const znAr = norm(z.nameAr || '');
+            if (znAr.length < 3) continue;
+            // تطابق كامل للاسم في العنوان
+            if (addrNorm.includes(znAr)) {
+              const score = 0.9 + (znAr.length / 100);
+              if (score > bestScore) {
+                bestScore = score;
+                bestZoneFromAddress = z.nameAr;
+              }
+            }
+          }
+        }
+      }
+
       return res.status(200).json({
         suggestions: {
           governorate: extraction.extracted ? extraction.city : null,
           area: extraction.extracted ? extraction.zone : null,
           matchedCity: match?.city || null,
-          matchedZone: match?.zone || null,
+          matchedZone: match?.zone || bestZoneFromAddress || null,
           building: parsed.buildingNumber || null,
           floor: parsed.floor || null,
           apartment: parsed.apartment || null,
