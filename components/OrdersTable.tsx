@@ -1215,12 +1215,16 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
 
                 <div className="space-y-1 sm:space-y-2">
                   <label className="block text-xs sm:text-sm font-bold text-gray-700">📊 الكمية</label>
-                  <input
-                    type="text"
-                    value={editingOrder.quantity}
+                  <select
+                    value={editingOrder.quantity || '1'}
                     onChange={(e) => handleUpdateField('quantity', e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
-                  />
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 bg-white text-sm sm:text-base"
+                  >
+                    <option value="1">1 قطعة</option>
+                    <option value="2">2 قطع</option>
+                    <option value="3">3 قطع</option>
+                    <option value="4">4 قطع</option>
+                  </select>
                 </div>
 
                 <div className="space-y-1 sm:space-y-2">
