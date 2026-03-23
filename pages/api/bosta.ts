@@ -161,6 +161,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (bostaResult.success && bostaResult.trackingNumber) {
         const now = new Date().toLocaleString('sv-SE', { timeZone: 'Africa/Cairo' });
         const trackingUrl = getTrackingUrl(bostaResult.trackingNumber);
+        
+        // 📦 خصم المخزون المحلي أولاً — قبل تحديث الشيت (الترتيب الصحيح)
+        let stockWarning: string | undefined;
+
+        if (effectiveFulfillment !== 30) {
+          const productName = order.productName?.trim();
+          const quantity = parseInt(String(order.quantity || '1')) || 1;
+
+          if (productName) {
+            try {
+              const stockResult = await deductStock(productName, quantity, orderId);
+              if (stockResult.success) {
+                console.log(`📦 [BOSTA API] تم خصم ${quantity} × "${productName}" من المخزون المحلي`);
+              } else {
+                stockWarning = stockResult.message;
+                console.warn(`⚠️ [BOSTA API] فشل خصم المخزون للطلب ${orderId}: ${stockResult.message}`);
+              }
+            } catch (stockErr: any) {
+              stockWarning = stockErr.message || 'خطأ في خصم المخزون';
+              console.error(`❌ [BOSTA API] خطأ في خصم المخزون للطلب ${orderId}:`, stockErr);
+            }
+          } else {
+            // 📝 طلب بدون اسم منتج — تخطي خصم المخزون مع تحذير
+            stockWarning = 'لم يتم خصم المخزون — اسم المنتج فارغ (طلب يدوي)';
+            console.log(`📝 [BOSTA API] الطلب ${orderId} بدون اسم منتج — تخطي خصم المخزون`);
+          }
+        } else {
+          console.log(`🏭 [BOSTA API] شحن من مخزون بوسطة — لن يتم خصم المخزون المحلي للطلب ${orderId}`);
+        }
+
+        // ✅ تحديث الشيت بعد خصم المخزون
         try {
           await updateLead(order.rowIndex, {
             status: 'تم الشحن',
@@ -170,32 +201,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
 
           console.log(`✅ [BOSTA API] تم الشحن وتحديث الطلب ${orderId} بنجاح`);
-
-          // 📦 خصم المخزون المحلي — فقط إذا كان شحن من مخزوني (ليس من مخزون بوسطة)
-          let stockWarning: string | undefined;
-
-          if (effectiveFulfillment !== 30) {
-            // ✅ شحن من مخزوني → خصم من المخزون المحلي
-            const productName = order.productName?.trim();
-            const quantity = parseInt(String(order.quantity || '1')) || 1;
-
-            if (productName) {
-              try {
-                const stockResult = await deductStock(productName, quantity, orderId);
-                if (stockResult.success) {
-                  console.log(`📦 [BOSTA API] تم خصم ${quantity} × "${productName}" من المخزون المحلي`);
-                } else {
-                  stockWarning = stockResult.message;
-                  console.warn(`⚠️ [BOSTA API] فشل خصم المخزون للطلب ${orderId}: ${stockResult.message}`);
-                }
-              } catch (stockErr: any) {
-                stockWarning = stockErr.message || 'خطأ في خصم المخزون';
-                console.error(`❌ [BOSTA API] خطأ في خصم المخزون للطلب ${orderId}:`, stockErr);
-              }
-            }
-          } else {
-            console.log(`🏭 [BOSTA API] شحن من مخزون بوسطة — لن يتم خصم المخزون المحلي للطلب ${orderId}`);
-          }
 
           return {
             orderId,

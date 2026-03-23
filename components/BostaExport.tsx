@@ -464,6 +464,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
         successResults.forEach((r: any) => {
           message += `  📦 طلب #${r.orderId} → تتبع: ${r.trackingNumber}`;
           if (r.trackingUrl) message += ` (🔗 ${r.trackingUrl})`;
+          if (r.stockWarning) message += `\n     ⚠️ ${r.stockWarning}`;
           message += '\n';
         });
       }

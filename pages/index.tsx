@@ -238,9 +238,7 @@ export default function Home() {
     const exportableOrders = orders.filter((order: any) =>
       order.status === 'تم التأكيد' &&
       order.name &&
-      order.phone &&
-      order.governorate &&
-      order.address
+      order.phone
     );
     setSelectedOrders(exportableOrders.map((order: any) => order.id));
   };
