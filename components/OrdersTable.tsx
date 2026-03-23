@@ -79,6 +79,23 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   const zoneTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   const addressTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
+  // ⌨️ Keyboard navigation
+  const [govActiveIndex, setGovActiveIndex] = useState(-1);
+  const [zoneActiveIndex, setZoneActiveIndex] = useState(-1);
+  const govDropdownRef = React.useRef<HTMLDivElement | null>(null);
+  const zoneDropdownRef = React.useRef<HTMLDivElement | null>(null);
+
+  // ✅ Delivery validation
+  const [deliveryValidation, setDeliveryValidation] = useState<{
+    status: 'idle' | 'checking' | 'valid' | 'invalid' | 'warning';
+    message?: string;
+  }>({ status: 'idle' });
+  const validationTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // 🔔 Auto-fill toast
+  const [autoFillToast, setAutoFillToast] = useState<string | null>(null);
+  const toastTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+
   // إعادة تعيين التحديدات عند تغيير الفلاتر
   React.useEffect(() => {
     setSelectedOrders(new Set());
@@ -93,13 +110,60 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
     };
   }, [autoSaveTimer]);
 
-  // 🧠 Cleanup suggestion timers on unmount
+  // 🧠 Cleanup all timers on unmount
   React.useEffect(() => {
     return () => {
       if (govTimerRef.current) clearTimeout(govTimerRef.current);
       if (zoneTimerRef.current) clearTimeout(zoneTimerRef.current);
       if (addressTimerRef.current) clearTimeout(addressTimerRef.current);
+      if (validationTimerRef.current) clearTimeout(validationTimerRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
+  }, []);
+
+  // 🔔 Auto-dismiss toast
+  const showAutoFillToast = React.useCallback((msg: string) => {
+    setAutoFillToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setAutoFillToast(null), 3000);
+  }, []);
+
+  // ✅ Validate delivery availability with Bosta
+  const validateDelivery = React.useCallback((gov: string, area: string) => {
+    if (validationTimerRef.current) clearTimeout(validationTimerRef.current);
+    if (!gov || !area) {
+      setDeliveryValidation({ status: 'idle' });
+      return;
+    }
+    setDeliveryValidation({ status: 'checking' });
+    validationTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/bosta-suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'zone', query: area, governorate: gov }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const suggestions = data.suggestions || [];
+          // Check exact match
+          const normArea = area.replace(/[\u0610-\u061A\u064B-\u065F\u0670]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').trim().toLowerCase();
+          const exactMatch = suggestions.find((s: any) => {
+            const sn = s.nameAr.replace(/[\u0610-\u061A\u064B-\u065F\u0670]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').trim().toLowerCase();
+            return sn === normArea;
+          });
+          if (exactMatch) {
+            setDeliveryValidation({ status: 'valid', message: '✅ متاح للتوصيل عبر بوسطه' });
+          } else if (suggestions.length > 0) {
+            setDeliveryValidation({ status: 'warning', message: `⚠️ المنطقة غير مطابقة تماماً — هل تقصد "${suggestions[0].nameAr}"؟` });
+          } else {
+            setDeliveryValidation({ status: 'invalid', message: '❌ المنطقة غير متاحة للتوصيل في بوسطه' });
+          }
+        }
+      } catch {
+        setDeliveryValidation({ status: 'idle' });
+      }
+    }, 500);
   }, []);
 
   // 🧠 Fetch governorate suggestions from Bosta
@@ -142,8 +206,8 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
     }, 200);
   }, []);
 
-  // 🧠 Analyze address for smart suggestions
-  const analyzeAddress = React.useCallback((address: string, gov: string) => {
+  // 🧠 Analyze address for smart suggestions + AUTO-FILL
+  const analyzeAddress = React.useCallback((address: string, gov: string, currentArea: string) => {
     if (addressTimerRef.current) clearTimeout(addressTimerRef.current);
     if (!address || address.trim().length < 5) {
       setAddressAnalysis(null);
@@ -159,15 +223,52 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
         });
         if (res.ok) {
           const data = await res.json();
-          setAddressAnalysis(data.suggestions);
+          const analysis = data.suggestions;
+          setAddressAnalysis(analysis);
+
+          if (analysis) {
+            const autoUpdates: Partial<Order> = {};
+            const toastParts: string[] = [];
+
+            // 🏙️ Feature #2: Auto-detect governorate from address
+            if (!gov && analysis.matchedCity) {
+              autoUpdates.governorate = analysis.matchedCity;
+              toastParts.push(`المحافظة: ${analysis.matchedCity}`);
+            }
+
+            // ✏️ Feature #1: Auto-fill area from address
+            const effectiveGov = autoUpdates.governorate || gov;
+            if (effectiveGov && !currentArea && analysis.matchedZone) {
+              autoUpdates.area = analysis.matchedZone;
+              toastParts.push(`المنطقة: ${analysis.matchedZone}`);
+            }
+
+            // Apply auto-fill if anything was detected
+            if (Object.keys(autoUpdates).length > 0) {
+              // Use setTimeout to avoid stale state from the calling onChange
+              setTimeout(() => {
+                setEditingOrder(prev => prev ? { ...prev, ...autoUpdates } : prev);
+                setHasUnsavedChanges(true);
+                if (toastParts.length > 0) {
+                  showAutoFillToast(`تم اكتشاف: ${toastParts.join(' | ')}`);
+                }
+                // Validate delivery after auto-fill
+                const finalGov = autoUpdates.governorate || gov;
+                const finalArea = autoUpdates.area || currentArea;
+                if (finalGov && finalArea) {
+                  validateDelivery(finalGov, finalArea);
+                }
+              }, 50);
+            }
+          }
         }
       } catch (err) {
         console.error('Address analysis error:', err);
       } finally {
         setIsAnalyzing(false);
       }
-    }, 500);
-  }, []);
+    }, 600);
+  }, [showAutoFillToast, validateDelivery]);
 
   const getOrderWithUpdates = (order: Order) => {
     const updates = optimisticUpdates.get(order.id);
@@ -1073,6 +1174,10 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     setAddressAnalysis(null);
                     setShowGovDropdown(false);
                     setShowZoneDropdown(false);
+                    setDeliveryValidation({ status: 'idle' });
+                    setAutoFillToast(null);
+                    setGovActiveIndex(-1);
+                    setZoneActiveIndex(-1);
                   }}
                   className="text-white hover:text-gray-200 transition-colors p-1 sm:p-2 hover:bg-white hover:bg-opacity-20 rounded-full"
                 >
@@ -1082,6 +1187,15 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 </button>
               </div>
             </div>
+
+            {/* 🔔 Auto-fill Toast */}
+            {autoFillToast && (
+              <div className="mx-3 sm:mx-6 mt-2 px-4 py-2.5 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl flex items-center gap-2 text-sm text-green-800 font-medium animate-pulse shadow-sm">
+                <span className="text-lg">✨</span>
+                {autoFillToast}
+                <button onClick={() => setAutoFillToast(null)} className="mr-auto text-green-500 hover:text-green-700 text-xs">✕</button>
+              </div>
+            )}
 
             <div className="p-3 sm:p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
@@ -1137,19 +1251,51 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       handleUpdateField('governorate', e.target.value);
                       fetchGovSuggestions(e.target.value);
                       setShowGovDropdown(true);
+                      setGovActiveIndex(-1);
+                      setDeliveryValidation({ status: 'idle' });
                     }}
                     onFocus={() => {
                       fetchGovSuggestions(editingOrder.governorate || '');
                       setShowGovDropdown(true);
+                      setGovActiveIndex(-1);
                     }}
-                    onBlur={() => setTimeout(() => setShowGovDropdown(false), 200)}
+                    onBlur={() => setTimeout(() => { setShowGovDropdown(false); setGovActiveIndex(-1); }, 200)}
+                    onKeyDown={(e) => {
+                      if (!showGovDropdown || govSuggestions.length === 0) return;
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setGovActiveIndex(prev => {
+                          const next = Math.min(prev + 1, govSuggestions.length - 1);
+                          govDropdownRef.current?.children[next]?.scrollIntoView({ block: 'nearest' });
+                          return next;
+                        });
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setGovActiveIndex(prev => {
+                          const next = Math.max(prev - 1, 0);
+                          govDropdownRef.current?.children[next]?.scrollIntoView({ block: 'nearest' });
+                          return next;
+                        });
+                      } else if (e.key === 'Enter' && govActiveIndex >= 0) {
+                        e.preventDefault();
+                        const s = govSuggestions[govActiveIndex];
+                        handleUpdateMultipleFields({ governorate: s.nameAr, area: '' });
+                        setShowGovDropdown(false);
+                        setGovActiveIndex(-1);
+                        fetchZoneSuggestions('', s.nameAr, editingOrder.address);
+                        validateDelivery(s.nameAr, '');
+                      } else if (e.key === 'Escape') {
+                        setShowGovDropdown(false);
+                        setGovActiveIndex(-1);
+                      }
+                    }}
                     placeholder="ابدأ بكتابة اسم المحافظة..."
                     autoComplete="off"
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-blue-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base bg-blue-50"
                   />
-                  {/* Governorate Dropdown */}
+                  {/* Governorate Dropdown with keyboard navigation */}
                   {showGovDropdown && govSuggestions.length > 0 && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+                    <div ref={govDropdownRef} className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
                       {govSuggestions.map((s, i) => (
                         <button
                           key={i}
@@ -1158,9 +1304,11 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                             e.preventDefault();
                             handleUpdateMultipleFields({ governorate: s.nameAr, area: '' });
                             setShowGovDropdown(false);
+                            setGovActiveIndex(-1);
                             fetchZoneSuggestions('', s.nameAr, editingOrder.address);
+                            validateDelivery(s.nameAr, '');
                           }}
-                          className="w-full text-right px-3 py-2 hover:bg-blue-50 transition-colors flex items-center justify-between text-sm border-b border-gray-50 last:border-0"
+                          className={`w-full text-right px-3 py-2 transition-colors flex items-center justify-between text-sm border-b border-gray-50 last:border-0 ${i === govActiveIndex ? 'bg-blue-100 ring-1 ring-blue-300' : 'hover:bg-blue-50'}`}
                         >
                           <span className="font-medium text-gray-900">{s.nameAr}</span>
                           <span className="text-xs text-gray-400">{s.name}</span>
@@ -1179,14 +1327,51 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       handleUpdateField('area', e.target.value);
                       fetchZoneSuggestions(e.target.value, editingOrder.governorate, editingOrder.address);
                       setShowZoneDropdown(true);
+                      setZoneActiveIndex(-1);
+                      setDeliveryValidation({ status: 'idle' });
                     }}
                     onFocus={() => {
                       if (editingOrder.governorate) {
                         fetchZoneSuggestions(editingOrder.area || '', editingOrder.governorate, editingOrder.address);
                         setShowZoneDropdown(true);
+                        setZoneActiveIndex(-1);
                       }
                     }}
-                    onBlur={() => setTimeout(() => setShowZoneDropdown(false), 200)}
+                    onBlur={() => {
+                      setTimeout(() => { setShowZoneDropdown(false); setZoneActiveIndex(-1); }, 200);
+                      // Validate on blur if both fields filled
+                      if (editingOrder.governorate && editingOrder.area) {
+                        validateDelivery(editingOrder.governorate, editingOrder.area);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (!showZoneDropdown || zoneSuggestions.length === 0) return;
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setZoneActiveIndex(prev => {
+                          const next = Math.min(prev + 1, zoneSuggestions.length - 1);
+                          zoneDropdownRef.current?.children[next]?.scrollIntoView({ block: 'nearest' });
+                          return next;
+                        });
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setZoneActiveIndex(prev => {
+                          const next = Math.max(prev - 1, 0);
+                          zoneDropdownRef.current?.children[next]?.scrollIntoView({ block: 'nearest' });
+                          return next;
+                        });
+                      } else if (e.key === 'Enter' && zoneActiveIndex >= 0) {
+                        e.preventDefault();
+                        const s = zoneSuggestions[zoneActiveIndex];
+                        handleUpdateField('area', s.nameAr);
+                        setShowZoneDropdown(false);
+                        setZoneActiveIndex(-1);
+                        validateDelivery(editingOrder.governorate, s.nameAr);
+                      } else if (e.key === 'Escape') {
+                        setShowZoneDropdown(false);
+                        setZoneActiveIndex(-1);
+                      }
+                    }}
                     placeholder={editingOrder.governorate ? 'ابدأ بكتابة اسم المنطقة...' : 'اختر المحافظة أولاً'}
                     autoComplete="off"
                     className={`w-full px-3 sm:px-4 py-2 sm:py-3 border rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base ${editingOrder.governorate ? 'border-blue-300 bg-blue-50' : 'border-gray-300 bg-gray-100'}`}
@@ -1194,9 +1379,26 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                   {!editingOrder.governorate && (
                     <p className="text-xs text-amber-600 mt-0.5">⚠️ اختر المحافظة أولاً لعرض المناطق المتاحة</p>
                   )}
-                  {/* Zone Dropdown */}
+
+                  {/* ✅ Delivery Validation Badge */}
+                  {deliveryValidation.status !== 'idle' && editingOrder.governorate && editingOrder.area && (
+                    <div className={`flex items-center gap-1.5 mt-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-300 ${
+                      deliveryValidation.status === 'checking' ? 'bg-blue-50 text-blue-600' :
+                      deliveryValidation.status === 'valid' ? 'bg-green-50 text-green-700 border border-green-200' :
+                      deliveryValidation.status === 'warning' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                      'bg-red-50 text-red-700 border border-red-200'
+                    }`}>
+                      {deliveryValidation.status === 'checking' ? (
+                        <><div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div> جاري التحقق...</>
+                      ) : (
+                        deliveryValidation.message
+                      )}
+                    </div>
+                  )}
+
+                  {/* Zone Dropdown with keyboard navigation */}
                   {showZoneDropdown && zoneSuggestions.length > 0 && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+                    <div ref={zoneDropdownRef} className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
                       {zoneSuggestions.map((s, i) => (
                         <button
                           key={i}
@@ -1205,8 +1407,13 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                             e.preventDefault();
                             handleUpdateField('area', s.nameAr);
                             setShowZoneDropdown(false);
+                            setZoneActiveIndex(-1);
+                            validateDelivery(editingOrder.governorate, s.nameAr);
                           }}
-                          className={`w-full text-right px-3 py-2 hover:bg-blue-50 transition-colors flex items-center justify-between text-sm border-b border-gray-50 last:border-0 ${s.isAddressMatch ? 'bg-green-50 border-l-2 border-l-green-400' : ''}`}
+                          className={`w-full text-right px-3 py-2 transition-colors flex items-center justify-between text-sm border-b border-gray-50 last:border-0 ${
+                            i === zoneActiveIndex ? 'bg-blue-100 ring-1 ring-blue-300' :
+                            s.isAddressMatch ? 'bg-green-50 border-l-2 border-l-green-400' : 'hover:bg-blue-50'
+                          }`}
                         >
                           <span className="font-medium text-gray-900 flex items-center gap-1">
                             {s.isAddressMatch && <span className="text-green-600 text-xs">✨</span>}
@@ -1284,7 +1491,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                     value={editingOrder.address}
                     onChange={(e) => {
                       handleUpdateField('address', e.target.value);
-                      analyzeAddress(e.target.value, editingOrder.governorate);
+                      analyzeAddress(e.target.value, editingOrder.governorate, editingOrder.area);
                     }}
                     rows={2}
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm text-gray-900 text-sm sm:text-base"
@@ -1441,6 +1648,10 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       setAddressAnalysis(null);
                       setShowGovDropdown(false);
                       setShowZoneDropdown(false);
+                      setDeliveryValidation({ status: 'idle' });
+                      setAutoFillToast(null);
+                      setGovActiveIndex(-1);
+                      setZoneActiveIndex(-1);
                     }}
                     disabled={loadingOrders.has(editingOrder.id)}
                     className="px-4 sm:px-6 py-2 sm:py-3 text-gray-600 border border-gray-300 rounded-lg sm:rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-all duration-200 font-medium text-sm sm:text-base order-2 sm:order-1"
