@@ -592,7 +592,7 @@ export interface BostaDeliveryRequest {
   };
   notes?: string;
   webhookUrl?: string;
-  pickupAddress?: { _id: string }; // موقع الاستلام/الإرجاع المُسجل في بوسطة
+  pickupAddress?: { _id: string; firstLine: string; city: string }; // ⚠️ API يطلب firstLine + city مع _id
 }
 
 export interface BostaDeliveryResponse {
@@ -777,10 +777,15 @@ export async function createBostaDelivery(order: {
       },
     }),
     notes: smartNotes,
-    // ✅ موقع الاستلام/الإرجاع حسب نوع الشحن — قابل للتعديل عبر ENV
-    pickupAddress: numericType === 30
-      ? { _id: process.env.BOSTA_FULFILLMENT_PICKUP_ID || 'hFkb9kXv1' }  // Bosta Fulfillment New Cairo Warehouse
-      : { _id: process.env.BOSTA_DEFAULT_PICKUP_ID || '6hbvJbsxM' }, // المكتب الرئسي - دمياط
+    // ✅ موقع الاستلام حسب نوع الشحن — تم التحقق من API: {_id} وحده لا يكفي! يجب إرسال firstLine + city
+    // للطلبات العادية: لا نرسل pickupAddress نهائياً — بوسطة تستخدم العنوان الافتراضي تلقائياً
+    ...(numericType === 30 ? {
+      pickupAddress: {
+        _id: process.env.BOSTA_FULFILLMENT_PICKUP_ID || 'hFkb9kXv1',
+        firstLine: 'Bosta Fulfillment, Industrial Area, New Cairo 3',
+        city: 'Cairo',
+      }
+    } : {}),
   };
 
   // 🏗️ لوج تفاصيل العنوان المستخرجة
