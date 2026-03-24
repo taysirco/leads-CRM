@@ -956,3 +956,11 @@ input[type="number"] {
   border-radius: 3px;
   transition: width 0.6s ease-out;
 }
+
+/* Spinner animation for auto-checking ranking */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.ranking-checking {
+  opacity: 0.7;
+}

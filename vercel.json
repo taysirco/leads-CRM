@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/bosta-ranking?auto=true&limit=5",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

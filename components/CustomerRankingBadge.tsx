@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 /**
  * CustomerRankingBadge — بادج تقييم العميل من بوسطة
  * 
- * يقرأ الـ ranking المحفوظ في الشيت مباشرة (Column V)
- * لا يستدعي API — الـ batch check يملأ البيانات بشكل مجمع
+ * يعمل بوضعين:
+ * 1. إذا الـ ranking محفوظ → يعرضه مباشرة (Column V)
+ * 2. إذا فارغ → يفحص تلقائياً عبر API (create-wait-read-delete)
  */
 
 // تحليل الـ ranking المحفوظ في الشيت (format: "88% - ممتاز" أو "جديد")
@@ -43,16 +44,80 @@ export default function CustomerRankingBadge({
   phone, 
   compact = true, 
   storedRanking = '',
+  rowIndex,
 }: Props) {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
+  const [liveResult, setLiveResult] = useState<{
+    ranking: number | null;
+    classification: string;
+    classificationAr: string;
+    sheetValue: string;
+  } | null>(null);
 
-  // قراءة الـ ranking المحفوظ فقط
+  // التحقق التلقائي: إذا لا يوجد ranking محفوظ، يفحص عبر الـ API
+  useEffect(() => {
+    if (storedRanking && storedRanking.trim() !== '') return; // محفوظ بالفعل
+    if (!phone || phone.length < 10) return;
+    if (isChecking || liveResult) return;
+
+    // فحص تلقائي لأول مرة فقط
+    const checkRanking = async () => {
+      setIsChecking(true);
+      try {
+        const cleanPhone = phone.replace(/\D/g, '');
+        const saveParam = rowIndex ? `&save=true&row=${rowIndex}` : '';
+        const res = await fetch(`/api/bosta-ranking?phone=${cleanPhone}${saveParam}`);
+        const data = await res.json();
+        if (data.success && data.result) {
+          setLiveResult({
+            ranking: data.result.ranking,
+            classification: data.result.classification,
+            classificationAr: data.result.classificationAr,
+            sheetValue: data.result.sheetValue,
+          });
+        }
+      } catch (e) {
+        console.error('خطأ فحص ranking:', e);
+      } finally {
+        setIsChecking(false);
+      }
+    };
+
+    // تأخير عشوائي 2-8 ثوانٍ لتجنب طلبات متزامنة
+    const delay = 2000 + Math.random() * 6000;
+    const timer = setTimeout(checkRanking, delay);
+    return () => clearTimeout(timer);
+  }, [phone, storedRanking, rowIndex, isChecking, liveResult]);
+
+  // القراءة الأولية
   const parsed = parseStoredRanking(storedRanking);
   
-  // لا بيانات = لا بادج
-  if (!parsed) return null;
+  // استخدام النتيجة المباشرة أو المحفوظة
+  const displayData = liveResult || parsed;
 
-  const { ranking, classification, classificationAr } = parsed;
+  // جاري الفحص
+  if (isChecking) {
+    return (
+      <span className="ranking-badge ranking-checking" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+        <span className="ranking-spinner" style={{
+          display: 'inline-block',
+          width: '12px',
+          height: '12px',
+          border: '2px solid #e5e7eb',
+          borderTop: '2px solid #3b82f6',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <span style={{ fontSize: '11px', color: '#6b7280' }}>فحص...</span>
+      </span>
+    );
+  }
+
+  // لا بيانات = لا بادج
+  if (!displayData) return null;
+
+  const { ranking, classification, classificationAr } = displayData;
 
   // في الجدول: إخفاء العملاء الجُدد
   if (compact && classification === 'new') {
@@ -97,6 +162,11 @@ export default function CustomerRankingBadge({
                 <span>{Math.round(ranking)}%</span>
               </span>
             )}
+            {liveResult && (
+              <span className="ranking-tooltip-row" style={{ fontSize: '10px', color: '#059669' }}>
+                <span>✅ تم الفحص والحفظ تلقائياً</span>
+              </span>
+            )}
           </span>
         )}
       </span>
@@ -113,7 +183,9 @@ export default function CustomerRankingBadge({
           {ranking !== null && classification !== 'new' && (
             <span className="ranking-full-percent">نسبة الاستلام {Math.round(ranking)}%</span>
           )}
-          <span className="ranking-full-count">✅ محفوظ في الشيت</span>
+          <span className="ranking-full-count">
+            {liveResult ? '✅ تم الفحص والحفظ تلقائياً' : '✅ محفوظ في الشيت'}
+          </span>
         </div>
       </div>
       {ranking !== null && classification !== 'new' && (
