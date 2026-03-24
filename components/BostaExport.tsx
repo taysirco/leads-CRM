@@ -165,7 +165,7 @@ export default function BostaExport({ orders, selectedOrders, onSelectOrder, onS
               .forEach((r: any) => {
                 errorMessage += `• الطلب ${r.orderId}: ${r.message}\n`;
                 if (r.availableQuantity !== undefined) {
-                  errorMessage += `  المتوفر: ${r.availableQuantity} | المطلوب: ${r.quantity}\n`;
+                  errorMessage += `  المتوفر: ${r.availableQuantity} | المطلوب: ${r.requiredQuantity ?? r.quantity ?? '?'}\n`;
                 }
               });
           }
