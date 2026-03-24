@@ -64,6 +64,12 @@ export default function CustomerRankingBadge({ phone, compact = true }: Props) {
 
   const { classification, classificationAr, ranking, totalDeliveries } = data;
 
+  // في الوضع المختصر (الجدول): إخفاء البادج للعملاء الجُدد — فقط نظهره عندما يكون هناك ranking فعلي
+  // هذا يمنع ظهور "عميل جديد" بشكل متكرر لكل العملاء الجدد
+  if (compact && (classification === 'new' || classification === 'error')) {
+    return null;
+  }
+
   // أيقونة ولون حسب التصنيف
   const config: Record<string, { icon: string; className: string; color: string }> = {
     excellent: { icon: '🟢', className: 'ranking-excellent', color: '#059669' },
