@@ -6,6 +6,7 @@ import BostaExport from '../components/BostaExport';
 import ArchiveTable from '../components/ArchiveTable';
 import RejectedTable from '../components/RejectedTable';
 import StockManagement from '../components/StockManagement';
+import BostaNotificationBar from '../components/BostaNotificationBar';
 import LiveStats from '../components/LiveStats';
 
 
@@ -413,6 +414,9 @@ export default function Home() {
               )}
             </div>
           </header>
+
+          {/* 🔔 شريط إشعارات بوسطة — الطلبات التي تحتاج إجراء */}
+          <BostaNotificationBar />
 
           <LiveStats orders={orders} />
 

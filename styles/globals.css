@@ -448,4 +448,339 @@ textarea {
 input[type="number"] {
   direction: ltr;
   text-align: left;
-} 
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/* 🔔 Bosta Notification Bar — Professional Smart Design     */
+/* ═══════════════════════════════════════════════════════════ */
+
+@keyframes bosta-bell-ring {
+  0%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(14deg); }
+  20% { transform: rotate(-14deg); }
+  30% { transform: rotate(10deg); }
+  40% { transform: rotate(-8deg); }
+  50% { transform: rotate(4deg); }
+  60% { transform: rotate(0deg); }
+}
+
+@keyframes bosta-badge-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+  50% { transform: scale(1.15); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+@keyframes bosta-slide-down {
+  from { opacity: 0; transform: translateY(-8px); max-height: 0; }
+  to { opacity: 1; transform: translateY(0); max-height: 600px; }
+}
+
+@keyframes bosta-item-enter {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.bosta-notification-bar {
+  margin-bottom: 12px;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(234, 88, 12, 0.1);
+}
+
+.bosta-notif-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 50%, #fed7aa 100%);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: right;
+}
+
+.bosta-notif-header:hover {
+  background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 50%, #fdba74 100%);
+}
+
+.bosta-notif-header-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.bosta-notif-bell {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #ea580c, #dc2626);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(234, 88, 12, 0.3);
+}
+
+.bosta-notif-bell-icon {
+  font-size: 20px;
+  animation: bosta-bell-ring 3s ease-in-out infinite;
+  filter: grayscale(0);
+}
+
+.bosta-notif-badge {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  min-width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ef4444;
+  color: white;
+  font-size: 12px;
+  font-weight: 800;
+  border-radius: 12px;
+  padding: 0 6px;
+  animation: bosta-badge-pulse 2s ease-in-out infinite;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.5);
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+.bosta-notif-main-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bosta-notif-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #9a3412;
+  line-height: 1.3;
+}
+
+.bosta-notif-subtitle {
+  font-size: 12px;
+  color: #c2410c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.bosta-notif-chevron {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(234, 88, 12, 0.1);
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ea580c;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform: rotate(-90deg);
+}
+
+.bosta-notif-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+/* القائمة المنسدلة */
+.bosta-notif-dropdown {
+  animation: bosta-slide-down 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  background: #fffbf5;
+  border-top: 1px solid rgba(234, 88, 12, 0.12);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 350px;
+  overflow-y: auto;
+}
+
+.bosta-notif-dropdown::-webkit-scrollbar {
+  width: 4px;
+}
+
+.bosta-notif-dropdown::-webkit-scrollbar-thumb {
+  background: #fdba74;
+  border-radius: 4px;
+}
+
+/* كارت الإشعار الواحد */
+.bosta-notif-item {
+  border-radius: 10px;
+  border: 1px solid;
+  padding: 10px 12px;
+  transition: all 0.2s ease;
+  animation: bosta-item-enter 0.3s ease-out backwards;
+}
+
+.bosta-notif-item:nth-child(1) { animation-delay: 0ms; }
+.bosta-notif-item:nth-child(2) { animation-delay: 60ms; }
+.bosta-notif-item:nth-child(3) { animation-delay: 120ms; }
+.bosta-notif-item:nth-child(4) { animation-delay: 180ms; }
+
+.bosta-notif-item:hover {
+  transform: translateX(-2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.bosta-notif-item-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.bosta-notif-item-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.bosta-notif-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.bosta-notif-item-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2937;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.bosta-notif-tracking {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'Inter', monospace;
+  direction: ltr;
+}
+
+.bosta-notif-item-reason {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.bosta-notif-item-meta {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.bosta-notif-time {
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+.bosta-notif-new-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  padding: 1px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.5px;
+}
+
+.bosta-notif-item-details {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+}
+
+.bosta-notif-phone {
+  font-size: 12px;
+  color: #059669;
+  font-weight: 600;
+  direction: ltr;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(5, 150, 105, 0.06);
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+.bosta-notif-phone:hover {
+  background: rgba(5, 150, 105, 0.12);
+  color: #047857;
+}
+
+.bosta-notif-bosta-link {
+  font-size: 11px;
+  color: #2563eb;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(37, 99, 235, 0.06);
+  transition: all 0.15s ease;
+  text-decoration: none;
+  margin-right: auto;
+}
+
+.bosta-notif-bosta-link:hover {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .bosta-notif-header {
+    padding: 8px 12px;
+  }
+  
+  .bosta-notif-bell {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .bosta-notif-bell-icon {
+    font-size: 18px;
+  }
+  
+  .bosta-notif-title {
+    font-size: 13px;
+  }
+  
+  .bosta-notif-subtitle {
+    font-size: 11px;
+  }
+  
+  .bosta-notif-item-details {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  
+  .bosta-notif-bosta-link {
+    margin-right: 0;
+  }
+
+  .bosta-notif-dropdown {
+    max-height: 280px;
+  }
+}
