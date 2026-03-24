@@ -31,12 +31,16 @@ function classifyRanking(ranking: number | null | undefined): { classification: 
   }
 }
 
-// تنسيق رقم الهاتف للمطابقة
+// تنسيق رقم الهاتف للمطابقة — يعالج الأرقام المشوهة
 function normalizePhone(phone: string): string {
   if (!phone) return '';
   let clean = phone.replace(/\D/g, '');
-  if (clean.startsWith('20') && clean.length === 12) clean = '0' + clean.substring(2);
+  // +201XXXXXXXXX or 201XXXXXXXXX → 01XXXXXXXXX
+  if (clean.startsWith('20') && clean.length >= 12) clean = '0' + clean.substring(2);
+  // 1XXXXXXXXX → 01XXXXXXXXX
   if (clean.startsWith('1') && clean.length === 10) clean = '0' + clean;
+  // Truncate to max 11 digits if it starts with 01
+  if (clean.startsWith('01') && clean.length > 11) clean = clean.substring(0, 11);
   return clean;
 }
 
