@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { fetchLeads, updateLead } from '../../lib/googleSheets';
+import { formatEgyptianPhone, convertArabicNumerals } from '../../lib/phoneFormatter';
 
 /**
  * API Endpoint: /api/bosta-ranking
@@ -7,6 +8,7 @@ import { fetchLeads, updateLead } from '../../lib/googleSheets';
  * طريقة الفحص: Create → Wait → Read → Delete
  * - إنشاء شحنة مؤقتة → انتظار ranking → قراءة → حذف
  * - يصل لقاعدة بيانات بوسطة العالمية (ليس فقط شحناتنا)
+ * - يستخدم CRM phone formatter لتصحيح الأرقام قبل الفحص
  * 
  * GET: ?auto=true       → فحص تلقائي لأول 5 عملاء بدون ranking
  * GET: ?phone=01XXXXXXX → فحص ranking عميل واحد
@@ -31,15 +33,34 @@ function classifyRanking(ranking: number | null | undefined): { classification: 
   }
 }
 
-// تنسيق رقم الهاتف للمطابقة — يعالج الأرقام المشوهة
+/**
+ * تنسيق رقم الهاتف باستخدام CRM formatter ثم تحويله للصيغة المحلية
+ * يعالج: الأرقام العربية، +20 prefix، الأصفار المفقودة، الأرقام الأرضية
+ * +201XXXXXXXXX → 01XXXXXXXXX
+ */
 function normalizePhone(phone: string): string {
   if (!phone) return '';
-  let clean = phone.replace(/\D/g, '');
-  // +201XXXXXXXXX or 201XXXXXXXXX → 01XXXXXXXXX
+  
+  // Step 1: استخدام CRM formatter لتصحيح الرقم أولاً
+  const formatted = formatEgyptianPhone(phone);
+  
+  // Step 2: تحويل الصيغة الدولية (+201XXXXXXXXX) إلى محلية (01XXXXXXXXX)
+  if (formatted && !formatted.includes('⚠️')) {
+    const digits = formatted.replace(/\D/g, '');
+    // 201XXXXXXXXX → 01XXXXXXXXX
+    if (digits.startsWith('20') && digits.length === 12) {
+      return '0' + digits.substring(2);
+    }
+    // If already in local format
+    if (digits.startsWith('01') && digits.length === 11) {
+      return digits;
+    }
+  }
+  
+  // Step 3: Fallback — تنظيف يدوي للأرقام التي فشل الـ formatter فيها
+  let clean = convertArabicNumerals(phone).replace(/\D/g, '');
   if (clean.startsWith('20') && clean.length >= 12) clean = '0' + clean.substring(2);
-  // 1XXXXXXXXX → 01XXXXXXXXX
   if (clean.startsWith('1') && clean.length === 10) clean = '0' + clean;
-  // Truncate to max 11 digits if it starts with 01
   if (clean.startsWith('01') && clean.length > 11) clean = clean.substring(0, 11);
   return clean;
 }
