@@ -3,6 +3,7 @@ import StatusBadge from './StatusBadge';
 import WhatsAppTemplates from './WhatsAppTemplates';
 import { formatPhoneForDisplay, formatEgyptianPhone } from '../lib/phoneFormatter';
 import { cleanText, getUniqueProducts } from '../lib/textCleaner';
+import CustomerRankingBadge from './CustomerRankingBadge';
 
 interface Order {
   id: number;
@@ -898,7 +899,10 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                       </td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4">
                         <div className="flex flex-col space-y-1">
-                          <span className="font-bold text-gray-900 text-sm sm:text-lg">{order.name}</span>
+                          <span className="font-bold text-gray-900 text-sm sm:text-lg">
+                            {order.name}
+                            <CustomerRankingBadge phone={order.phone} />
+                          </span>
                           <span className="text-xs sm:text-sm text-gray-800">{order.productName}</span>
                           {/* عرض معلومات إضافية على الهواتف المحمولة */}
                           <div className="block sm:hidden space-y-1">
@@ -1207,6 +1211,13 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                 <span className="text-lg">✨</span>
                 {autoFillToast}
                 <button onClick={() => setAutoFillToast(null)} className="mr-auto text-green-500 hover:text-green-700 text-xs">✕</button>
+              </div>
+            )}
+
+            {/* 📊 تقييم العميل من بوسطة */}
+            {editingOrder.phone && (
+              <div className="mx-3 sm:mx-6 mt-2">
+                <CustomerRankingBadge phone={editingOrder.phone} compact={false} />
               </div>
             )}
 
