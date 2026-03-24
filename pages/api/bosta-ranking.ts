@@ -4,29 +4,17 @@ import { fetchLeads, updateLead } from '../../lib/googleSheets';
 /**
  * API Endpoint: /api/bosta-ranking
  * 
- * استراتيجية الحصول على ranking العميل العالمي من بوسطة:
- * 1. إنشاء delivery مؤقت بالرقم → بوسطة تملأ receiver.ranking من قاعدة البيانات العالمية
- * 2. قراءة الـ ranking من الطلب المُنشأ
- * 3. حذف الطلب فوراً
- * 4. حفظ الـ ranking في Google Sheet لعدم الحاجة لفحصه مرة أخرى
+ * استراتيجية الحصول على ranking:
+ * - listing API (/api/v0/deliveries) يحتوي على receiver.ranking لكل delivery سابق
+ * - نمسح كل الصفحات ← نبني خريطة رقم→ranking ← نطابق مع شيت العملاء ← نحفظ
  * 
- * GET: ?phone=01XXXXXXXXX&rowIndex=5  → فحص ranking وحفظه
- * GET: ?batch=true                    → فحص كل العملاء بدون ranking
+ * GET: ?batch=true       → فحص وحفظ جميع rankings
+ * GET: ?phone=01XXXXXXX  → فحص ranking عميل واحد
  */
 
-interface RankingResult {
-  phone: string;
-  ranking: number | null;
-  classification: 'excellent' | 'medium' | 'low' | 'new' | 'error';
-  classificationAr: string;
-  saved: boolean;
-}
-
-interface RankingResponse {
-  success: boolean;
-  results?: RankingResult[];
-  result?: RankingResult;
-  error?: string;
+interface PhoneRanking {
+  ranking: number;
+  name: string;
 }
 
 // تصنيف الـ ranking
@@ -42,76 +30,81 @@ function classifyRanking(ranking: number | null | undefined): { classification: 
   }
 }
 
-// فحص ranking عميل واحد: إنشاء → قراءة → حذف
-async function checkRanking(phone: string, apiKey: string): Promise<number | null> {
-  const formattedPhone = phone.startsWith('0') ? phone : '0' + phone;
-
-  try {
-    // 1) إنشاء delivery مؤقت
-    const createRes = await fetch('https://app.bosta.co/api/v0/deliveries', {
-      method: 'POST',
-      headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 10,
-        specs: {
-          packageType: 'Small', size: 'SMALL', weight: 1,
-          packageDetails: { itemsCount: 1, description: 'RANKING-CHECK' },
-        },
-        notes: 'TEMP-RANKING-CHECK',
-        cod: 1,
-        dropOffAddress: {
-          city: { _id: 'rMpGpyDMsRwmGb7bR', name: 'Cairo', nameAr: 'القاهره' },
-          zone: { _id: 'ZThjMCqaHf1LOlYxC', name: 'Nasr City', nameAr: 'مدينة نصر' },
-          district: { name: 'مدينة نصر' },
-          firstLine: 'TEMP-RANKING-CHECK',
-          buildingNumber: '1', floor: '1', apartment: '1',
-        },
-        receiver: { firstName: 'RankCheck', lastName: 'Temp', phone: formattedPhone },
-      }),
-    });
-
-    if (!createRes.ok) {
-      console.error(`Failed to create temp delivery for ${phone}: ${createRes.status}`);
-      return null;
-    }
-
-    const created = await createRes.json();
-    const deliveryId = created._id;
-    const trackingNumber = created.trackingNumber;
-
-    if (!deliveryId || !trackingNumber) {
-      console.error(`No delivery ID/TN returned for ${phone}`);
-      return null;
-    }
-
-    // 2) قراءة الـ ranking
-    const getRes = await fetch(`https://app.bosta.co/api/v0/deliveries/${trackingNumber}`, {
-      headers: { Authorization: apiKey },
-    });
-    const deliveryData = await getRes.json();
-    const ranking = deliveryData.receiver?.ranking ?? null;
-
-    // 3) حذف فوري
-    await fetch(`https://app.bosta.co/api/v0/deliveries/${deliveryId}`, {
-      method: 'DELETE',
-      headers: { Authorization: apiKey },
-    }).catch((err) => console.error(`Warning: Failed to delete temp delivery ${deliveryId}:`, err));
-
-    return ranking;
-  } catch (error) {
-    console.error(`Error checking ranking for ${phone}:`, error);
-    return null;
-  }
+// تنسيق رقم الهاتف للمطابقة
+function normalizePhone(phone: string): string {
+  if (!phone) return '';
+  let clean = phone.replace(/\D/g, '');
+  // +201... → 01...
+  if (clean.startsWith('20') && clean.length === 12) clean = '0' + clean.substring(2);
+  // 1... → 01...
+  if (clean.startsWith('1') && clean.length === 10) clean = '0' + clean;
+  return clean;
 }
 
 // تنسيق قيمة الـ ranking للحفظ في الشيت
 function formatRankingForSheet(ranking: number | null): string {
-  if (ranking === null) return 'جديد';
+  if (ranking === null || ranking === undefined) return 'جديد';
   const { classificationAr } = classifyRanking(ranking);
   return `${Math.round(ranking)}% - ${classificationAr}`;
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse<RankingResponse>) {
+// مسح جميع الشحنات من بوسطة وبناء خريطة رقم→ranking
+async function scanAllDeliveries(apiKey: string): Promise<Map<string, PhoneRanking>> {
+  const phoneMap = new Map<string, PhoneRanking>();
+  let page = 1;
+  const maxPages = 200; // حد أقصى 2000 delivery
+  let emptyPages = 0;
+
+  while (page <= maxPages) {
+    try {
+      const res = await fetch(`https://app.bosta.co/api/v0/deliveries?pageSize=10&page=${page}`, {
+        headers: { Authorization: apiKey },
+      });
+      
+      if (!res.ok) {
+        console.error(`Listing page ${page} failed: ${res.status}`);
+        break;
+      }
+
+      const data = await res.json();
+      const deliveries = data.deliveries || [];
+      
+      if (deliveries.length === 0) {
+        emptyPages++;
+        if (emptyPages >= 3) break; // 3 صفحات فارغة متتالية = انتهاء
+        page++;
+        continue;
+      }
+      
+      emptyPages = 0;
+
+      for (const del of deliveries) {
+        const receiverPhone = del.receiver?.phone || '';
+        const ranking = del.receiver?.ranking;
+
+        if (receiverPhone && ranking !== undefined && ranking !== null) {
+          const normalized = normalizePhone(receiverPhone);
+          if (normalized && !phoneMap.has(normalized)) {
+            phoneMap.set(normalized, {
+              ranking,
+              name: del.receiver?.fullName || '',
+            });
+          }
+        }
+      }
+
+      page++;
+    } catch (error) {
+      console.error(`Error scanning page ${page}:`, error);
+      break;
+    }
+  }
+
+  console.log(`📊 مسح ${page - 1} صفحة → ${phoneMap.size} رقم مع ranking`);
+  return phoneMap;
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
@@ -121,58 +114,66 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     return res.status(500).json({ success: false, error: 'BOSTA_API_KEY not set' });
   }
 
-  const { phone, rowIndex, batch } = req.query;
+  const { phone, batch } = req.query;
 
-  // === وضع الدُفعات: فحص كل الطلبات بدون ranking ===
+  // === وضع الدُفعات: مسح كل الشحنات ومطابقة مع الشيت ===
   if (batch === 'true') {
     try {
+      console.log('🔍 بدء مسح شامل لـ rankings من بوسطة...');
+      
+      // 1) مسح كل الشحنات السابقة
+      const phoneMap = await scanAllDeliveries(apiKey);
+      
+      // 2) جلب الطلبات من الشيت
       const leads = await fetchLeads();
-      // فلترة الطلبات النشطة (جديد/معلق) بدون ranking
-      const unchecked = leads.filter(
-        (lead) =>
-          lead.phone &&
-          lead.phone.length >= 10 &&
-          !lead.bostaRanking &&
-          (lead.status === 'جديد' || lead.status === 'لم يرد' || lead.status === 'معلق' || !lead.status)
-      );
+      
+      // 3) مطابقة وحفظ
+      let saved = 0;
+      let skipped = 0;
+      let newCustomers = 0;
+      const results: Array<{ name: string; phone: string; ranking: string; status: string }> = [];
 
-      console.log(`📊 فحص ranking لـ ${unchecked.length} طلب بدون تقييم...`);
-
-      const results: RankingResult[] = [];
-      // فحص بحد أقصى 10 في المرة الواحدة لتجنب rate limits
-      const toCheck = unchecked.slice(0, 10);
-
-      for (const lead of toCheck) {
-        const cleanPhone = lead.phone.replace(/\D/g, '');
-        const formattedPhone = cleanPhone.startsWith('0') ? cleanPhone : '0' + cleanPhone;
-
-        const ranking = await checkRanking(formattedPhone, apiKey);
-        const { classification, classificationAr } = classifyRanking(ranking);
-        const sheetValue = formatRankingForSheet(ranking);
-
-        // حفظ في الشيت
-        try {
-          await updateLead(lead.rowIndex, { bostaRanking: sheetValue });
-          console.log(`  ✅ ${lead.name} (${lead.phone}) → ${sheetValue}`);
-        } catch (err) {
-          console.error(`  ❌ فشل حفظ ranking لـ ${lead.name}:`, err);
+      for (const lead of leads) {
+        // تخطي الطلبات التي لها ranking محفوظ بالفعل
+        if (lead.bostaRanking && lead.bostaRanking.trim() !== '') {
+          skipped++;
+          continue;
         }
 
-        results.push({
-          phone: formattedPhone,
-          ranking,
-          classification: classification as RankingResult['classification'],
-          classificationAr,
-          saved: true,
-        });
+        if (!lead.phone || lead.phone.length < 10) continue;
 
-        // تأخير 500ms بين كل طلب
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        const cleanPhone = normalizePhone(lead.phone);
+        const match = phoneMap.get(cleanPhone);
+
+        if (match) {
+          const sheetValue = formatRankingForSheet(match.ranking);
+          try {
+            await updateLead(lead.rowIndex, { bostaRanking: sheetValue });
+            saved++;
+            results.push({ name: lead.name, phone: cleanPhone, ranking: sheetValue, status: 'saved' });
+            console.log(`  ✅ ${lead.name} → ${sheetValue}`);
+          } catch (err) {
+            console.error(`  ❌ فشل حفظ ranking لـ ${lead.name}:`, err);
+            results.push({ name: lead.name, phone: cleanPhone, ranking: sheetValue, status: 'error' });
+          }
+        } else {
+          // عميل جديد - ليس له شحنات سابقة على بوسطة
+          try {
+            await updateLead(lead.rowIndex, { bostaRanking: 'جديد' });
+            newCustomers++;
+            results.push({ name: lead.name, phone: cleanPhone, ranking: 'جديد', status: 'new' });
+          } catch (err) {
+            console.error(`  ❌ فشل تعيين ${lead.name} كجديد:`, err);
+          }
+        }
       }
+
+      console.log(`\n📊 الملخص: ${saved} محفوظ | ${newCustomers} جديد | ${skipped} موجود مسبقاً`);
 
       return res.status(200).json({
         success: true,
-        results,
+        summary: { saved, newCustomers, skipped, totalDeliveriesScanned: phoneMap.size },
+        results: results.slice(0, 50), // أول 50 نتيجة
       });
     } catch (error) {
       console.error('Batch ranking error:', error);
@@ -186,32 +187,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   }
 
   try {
-    const cleanPhone = phone.replace(/\D/g, '');
-    const formattedPhone = cleanPhone.startsWith('0') ? cleanPhone : '0' + cleanPhone;
+    const cleanPhone = normalizePhone(phone);
+    
+    // مسح الشحنات للبحث عن هذا الرقم
+    const phoneMap = await scanAllDeliveries(apiKey);
+    const match = phoneMap.get(cleanPhone);
 
-    const ranking = await checkRanking(formattedPhone, apiKey);
+    const ranking = match?.ranking ?? null;
     const { classification, classificationAr } = classifyRanking(ranking);
-    const sheetValue = formatRankingForSheet(ranking);
-
-    // حفظ في الشيت إذا تم تمرير rowIndex
-    let saved = false;
-    if (rowIndex && typeof rowIndex === 'string') {
-      try {
-        await updateLead(parseInt(rowIndex, 10), { bostaRanking: sheetValue });
-        saved = true;
-      } catch (err) {
-        console.error(`Failed to save ranking for row ${rowIndex}:`, err);
-      }
-    }
 
     return res.status(200).json({
       success: true,
       result: {
-        phone: formattedPhone,
+        phone: cleanPhone,
         ranking,
-        classification: classification as RankingResult['classification'],
+        classification,
         classificationAr,
-        saved,
+        saved: false,
       },
     });
   } catch (error) {
