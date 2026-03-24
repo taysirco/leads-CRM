@@ -98,6 +98,96 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   const [autoFillToast, setAutoFillToast] = useState<string | null>(null);
   const toastTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
+  // 📊 Bulk Ranking Check
+  const [isRankingChecking, setIsRankingChecking] = useState(false);
+  const [rankingProgress, setRankingProgress] = useState<{
+    total: number;
+    checked: number;
+    current: string;
+    results: { name: string; phone: string; ranking: string; status: 'success' | 'new' | 'error' }[];
+  }>({ total: 0, checked: 0, current: '', results: [] });
+  const [showRankingModal, setShowRankingModal] = useState(false);
+  const rankingAbortRef = React.useRef(false);
+
+  // فحص تقييمات بوسطة الجماعي
+  const handleBulkRankingCheck = async () => {
+    // العثور على الطلبات بدون ranking
+    const unranked = orders.filter(o => !o.bostaRanking || o.bostaRanking.trim() === '');
+    if (unranked.length === 0) {
+      alert('✅ جميع العملاء لديهم تقييم بوسطة بالفعل!');
+      return;
+    }
+
+    setIsRankingChecking(true);
+    setShowRankingModal(true);
+    rankingAbortRef.current = false;
+    setRankingProgress({ total: unranked.length, checked: 0, current: '', results: [] });
+
+    for (let i = 0; i < unranked.length; i++) {
+      if (rankingAbortRef.current) break;
+
+      const order = unranked[i];
+      const phone = (order.phone || '').replace(/\D/g, '');
+      const name = order.name || 'عميل';
+
+      setRankingProgress(prev => ({
+        ...prev,
+        checked: i,
+        current: `${name} (${phone})`,
+      }));
+
+      if (!phone || phone.length < 8) {
+        setRankingProgress(prev => ({
+          ...prev,
+          checked: i + 1,
+          results: [...prev.results, { name, phone, ranking: 'رقم غير صالح', status: 'error' as const }],
+        }));
+        continue;
+      }
+
+      try {
+        const saveParam = order.rowIndex ? `&save=true&row=${order.rowIndex}` : '';
+        const res = await fetch(`/api/bosta-ranking?phone=${phone}${saveParam}`);
+        const data = await res.json();
+
+        if (data.success && data.result) {
+          const rankingText = data.result.sheetValue || 'جديد';
+          const isNew = data.result.classification === 'new';
+          setRankingProgress(prev => ({
+            ...prev,
+            checked: i + 1,
+            results: [...prev.results, {
+              name,
+              phone,
+              ranking: rankingText,
+              status: isNew ? 'new' as const : 'success' as const,
+            }],
+          }));
+        } else {
+          setRankingProgress(prev => ({
+            ...prev,
+            checked: i + 1,
+            results: [...prev.results, { name, phone, ranking: 'فشل الفحص', status: 'error' as const }],
+          }));
+        }
+      } catch (e) {
+        setRankingProgress(prev => ({
+          ...prev,
+          checked: i + 1,
+          results: [...prev.results, { name, phone, ranking: 'خطأ في الاتصال', status: 'error' as const }],
+        }));
+      }
+
+      // انتظار قصير بين كل فحص لـ rate limiting
+      if (i < unranked.length - 1 && !rankingAbortRef.current) {
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+
+    setIsRankingChecking(false);
+    setRankingProgress(prev => ({ ...prev, current: 'اكتمل!' }));
+  };
+
   // إعادة تعيين التحديدات عند تغيير الفلاتر
   React.useEffect(() => {
     setSelectedOrders(new Set());
@@ -720,6 +810,115 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
         </div>
       )}
 
+      {/* 📊 Ranking Check Progress Modal */}
+      {showRankingModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style={{ direction: 'rtl' }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4 text-white">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-lg flex items-center gap-2">
+                  📊 فحص تقييمات بوسطة
+                </h3>
+                <button
+                  onClick={() => {
+                    if (isRankingChecking) {
+                      rankingAbortRef.current = true;
+                    } else {
+                      setShowRankingModal(false);
+                      // Reload page to show updated rankings
+                      window.location.reload();
+                    }
+                  }}
+                  className="text-white hover:text-amber-100 font-bold text-lg px-2"
+                >
+                  {isRankingChecking ? '⏹ إيقاف' : '✕'}
+                </button>
+              </div>
+              <div className="mt-2 text-amber-100 text-sm">
+                {isRankingChecking
+                  ? `جاري فحص: ${rankingProgress.current}`
+                  : `${rankingProgress.current}`
+                }
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="px-6 pt-4">
+              <div className="flex items-center justify-between text-sm mb-2">
+                <span className="text-gray-700 font-medium">
+                  {rankingProgress.checked} / {rankingProgress.total}
+                </span>
+                <span className="text-gray-500">
+                  {rankingProgress.total > 0 ? Math.round((rankingProgress.checked / rankingProgress.total) * 100) : 0}%
+                </span>
+              </div>
+              <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500 ease-out"
+                  style={{
+                    width: `${rankingProgress.total > 0 ? (rankingProgress.checked / rankingProgress.total) * 100 : 0}%`,
+                    background: 'linear-gradient(90deg, #f59e0b, #d97706)',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Results List */}
+            <div className="px-6 py-4 max-h-80 overflow-y-auto">
+              {rankingProgress.results.length === 0 && isRankingChecking && (
+                <div className="text-center py-8 text-gray-500">
+                  <div className="animate-spin inline-block w-8 h-8 border-4 border-amber-200 border-t-amber-500 rounded-full mb-3" />
+                  <p>جاري بدء الفحص...</p>
+                </div>
+              )}
+              {rankingProgress.results.map((r, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+                >
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize: '16px' }}>
+                      {r.status === 'success' ? '🟢' : r.status === 'new' ? '⚪' : '❌'}
+                    </span>
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">{r.name}</span>
+                      <span className="text-xs text-gray-400 mr-2">{r.phone}</span>
+                    </div>
+                  </div>
+                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                    r.status === 'success' ? 'bg-green-100 text-green-800' :
+                    r.status === 'new' ? 'bg-gray-100 text-gray-600' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {r.ranking}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer Summary */}
+            {!isRankingChecking && rankingProgress.results.length > 0 && (
+              <div className="bg-gray-50 px-6 py-3 border-t border-gray-200">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-600">
+                    ✅ {rankingProgress.results.filter(r => r.status === 'success').length} تقييم |
+                    ⚪ {rankingProgress.results.filter(r => r.status === 'new').length} جديد |
+                    ❌ {rankingProgress.results.filter(r => r.status === 'error').length} خطأ
+                  </span>
+                  <button
+                    onClick={() => { setShowRankingModal(false); window.location.reload(); }}
+                    className="px-3 py-1 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600"
+                  >
+                    إغلاق وتحديث
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Container */}
       <div className="bg-white shadow-xl rounded-2xl overflow-hidden border border-gray-100">
         {/* Enhanced Filters Section */}
@@ -790,6 +989,41 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
             </div>
           </div>
         </div>
+
+        {/* زر فحص تقييمات بوسطة الجماعي */}
+        {orders.some(o => !o.bostaRanking || o.bostaRanking.trim() === '') && (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-200 px-3 sm:px-6 py-2 sm:py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span style={{ fontSize: '18px' }}>📊</span>
+                <span className="text-xs sm:text-sm font-medium text-amber-900">
+                  {orders.filter(o => !o.bostaRanking || o.bostaRanking.trim() === '').length} عميل بدون تقييم بوسطة
+                </span>
+              </div>
+              <button
+                onClick={handleBulkRankingCheck}
+                disabled={isRankingChecking}
+                className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-white rounded-lg transition-all duration-200 text-xs sm:text-sm font-bold shadow-md"
+                style={{
+                  background: isRankingChecking ? '#9ca3af' : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  cursor: isRankingChecking ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isRankingChecking ? (
+                  <>
+                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                    جاري الفحص...
+                  </>
+                ) : (
+                  <>
+                    <span>🔍</span>
+                    فحص تقييمات بوسطة
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* شريط العمليات الجماعية */}
         {filteredOrders.length > 0 && (
