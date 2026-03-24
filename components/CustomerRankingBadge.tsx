@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 /**
  * CustomerRankingBadge — بادج تقييم العميل من بوسطة
  * 
- * يعمل بوضعين:
+ * يعمل بثلاث أوضاع:
  * 1. إذا الـ ranking محفوظ → يعرضه مباشرة (Column V)
  * 2. إذا فارغ → يفحص تلقائياً عبر API (create-wait-read-delete)
+ * 3. زر إعادة الفحص يدوياً في نافذة التعديل
  */
 
 // تحليل الـ ranking المحفوظ في الشيت (format: "88% - ممتاز" أو "جديد")
@@ -36,7 +37,7 @@ function parseStoredRanking(stored: string): {
 interface Props {
   phone: string;
   compact?: boolean;
-  storedRanking?: string; // القيمة المحفوظة في الشيت
+  storedRanking?: string;
   rowIndex?: number;
 }
 
@@ -54,77 +55,50 @@ export default function CustomerRankingBadge({
     classificationAr: string;
     sheetValue: string;
   } | null>(null);
+  const [recheckDone, setRecheckDone] = useState(false);
 
-  // التحقق التلقائي: إذا لا يوجد ranking محفوظ، يفحص عبر الـ API
+  // دالة الفحص المشتركة — تُستخدم للفحص التلقائي واليدوي
+  const doRankingCheck = useCallback(async () => {
+    if (!phone || phone.length < 8) return;
+    setIsChecking(true);
+    setRecheckDone(false);
+    try {
+      const cleanPhone = phone.replace(/\D/g, '');
+      const saveParam = rowIndex ? `&save=true&row=${rowIndex}` : '';
+      const res = await fetch(`/api/bosta-ranking?phone=${cleanPhone}${saveParam}`);
+      const data = await res.json();
+      if (data.success && data.result) {
+        setLiveResult({
+          ranking: data.result.ranking,
+          classification: data.result.classification,
+          classificationAr: data.result.classificationAr,
+          sheetValue: data.result.sheetValue,
+        });
+        setRecheckDone(true);
+      }
+    } catch (e) {
+      console.error('خطأ فحص ranking:', e);
+    } finally {
+      setIsChecking(false);
+    }
+  }, [phone, rowIndex]);
+
+  // الفحص التلقائي: فقط عندما Column V فارغ
   useEffect(() => {
-    if (storedRanking && storedRanking.trim() !== '') return; // محفوظ بالفعل
-    if (!phone || phone.length < 10) return;
+    if (storedRanking && storedRanking.trim() !== '') return;
+    if (!phone || phone.length < 8) return;
     if (isChecking || liveResult) return;
 
-    // فحص تلقائي لأول مرة فقط
-    const checkRanking = async () => {
-      setIsChecking(true);
-      try {
-        const cleanPhone = phone.replace(/\D/g, '');
-        const saveParam = rowIndex ? `&save=true&row=${rowIndex}` : '';
-        const res = await fetch(`/api/bosta-ranking?phone=${cleanPhone}${saveParam}`);
-        const data = await res.json();
-        if (data.success && data.result) {
-          setLiveResult({
-            ranking: data.result.ranking,
-            classification: data.result.classification,
-            classificationAr: data.result.classificationAr,
-            sheetValue: data.result.sheetValue,
-          });
-        }
-      } catch (e) {
-        console.error('خطأ فحص ranking:', e);
-      } finally {
-        setIsChecking(false);
-      }
-    };
-
-    // تأخير عشوائي 2-8 ثوانٍ لتجنب طلبات متزامنة
     const delay = 2000 + Math.random() * 6000;
-    const timer = setTimeout(checkRanking, delay);
+    const timer = setTimeout(doRankingCheck, delay);
     return () => clearTimeout(timer);
-  }, [phone, storedRanking, rowIndex, isChecking, liveResult]);
+  }, [phone, storedRanking, isChecking, liveResult, doRankingCheck]);
 
   // القراءة الأولية
   const parsed = parseStoredRanking(storedRanking);
-  
-  // استخدام النتيجة المباشرة أو المحفوظة
   const displayData = liveResult || parsed;
 
-  // جاري الفحص
-  if (isChecking) {
-    return (
-      <span className="ranking-badge ranking-checking" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-        <span className="ranking-spinner" style={{
-          display: 'inline-block',
-          width: '12px',
-          height: '12px',
-          border: '2px solid #e5e7eb',
-          borderTop: '2px solid #3b82f6',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite',
-        }} />
-        <span style={{ fontSize: '11px', color: '#6b7280' }}>فحص...</span>
-      </span>
-    );
-  }
-
-  // لا بيانات = لا بادج
-  if (!displayData) return null;
-
-  const { ranking, classification, classificationAr } = displayData;
-
-  // في الجدول: إخفاء العملاء الجُدد
-  if (compact && classification === 'new') {
-    return null;
-  }
-
-  // أيقونة ولون حسب التصنيف
+  // لون ورمز التصنيف
   const config: Record<string, { icon: string; className: string; color: string }> = {
     excellent: { icon: '🟢', className: 'ranking-excellent', color: '#059669' },
     medium:    { icon: '🟡', className: 'ranking-medium',    color: '#d97706' },
@@ -132,8 +106,35 @@ export default function CustomerRankingBadge({
     new:       { icon: '⚪', className: 'ranking-new',       color: '#6b7280' },
   };
 
+  // ───── Spinner أثناء الفحص (compact) ─────
+  if (isChecking && compact) {
+    return (
+      <span className="ranking-badge ranking-checking" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+        <span style={{
+          display: 'inline-block', width: '12px', height: '12px',
+          border: '2px solid #e5e7eb', borderTop: '2px solid #3b82f6',
+          borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+        }} />
+        <span style={{ fontSize: '11px', color: '#6b7280' }}>فحص...</span>
+      </span>
+    );
+  }
+
+  // ───── لا بيانات + لم يُفحص = لا بادج (compact only) ─────
+  if (!displayData && compact && !isChecking) return null;
+
+  const ranking = displayData?.ranking ?? null;
+  const classification = displayData?.classification || 'new';
+  const classificationAr = displayData?.classificationAr || 'عميل جديد';
+
+  // في الجدول: إخفاء العملاء الجُدد
+  if (compact && classification === 'new') return null;
+
   const cfg = config[classification] || config.new;
 
+  // ════════════════════════════════════════
+  // ───── Compact Mode (الجدول) ─────
+  // ════════════════════════════════════════
   if (compact) {
     return (
       <span 
@@ -148,7 +149,6 @@ export default function CustomerRankingBadge({
           <span className="ranking-percent">{Math.round(ranking)}%</span>
         )}
         
-        {/* Tooltip */}
         {showTooltip && (
           <span className="ranking-tooltip">
             <span className="ranking-tooltip-title">📊 تقييم بوسطة</span>
@@ -173,7 +173,9 @@ export default function CustomerRankingBadge({
     );
   }
 
-  // Full mode (for edit modal)
+  // ════════════════════════════════════════
+  // ───── Full Mode (نافذة التعديل) ─────
+  // ════════════════════════════════════════
   return (
     <div className={`ranking-full ${cfg.className}`}>
       <div className="ranking-full-header">
@@ -184,10 +186,54 @@ export default function CustomerRankingBadge({
             <span className="ranking-full-percent">نسبة الاستلام {Math.round(ranking)}%</span>
           )}
           <span className="ranking-full-count">
-            {liveResult ? '✅ تم الفحص والحفظ تلقائياً' : '✅ محفوظ في الشيت'}
+            {recheckDone ? '✅ تم التحديث الآن' : liveResult ? '✅ تم الفحص تلقائياً' : '✅ محفوظ في الشيت'}
           </span>
         </div>
+
+        {/* ── زر إعادة الفحص ── */}
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); doRankingCheck(); }}
+          disabled={isChecking}
+          title="إعادة فحص التقييم من بوسطة"
+          style={{
+            marginRight: 'auto',
+            marginLeft: '8px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '4px 10px',
+            fontSize: '12px',
+            fontWeight: 600,
+            color: isChecking ? '#9ca3af' : '#3b82f6',
+            background: isChecking ? '#f3f4f6' : '#eff6ff',
+            border: `1px solid ${isChecking ? '#e5e7eb' : '#bfdbfe'}`,
+            borderRadius: '6px',
+            cursor: isChecking ? 'not-allowed' : 'pointer',
+            transition: 'all 0.2s',
+            whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={(e) => { if (!isChecking) { (e.target as HTMLElement).style.background = '#dbeafe'; }}}
+          onMouseLeave={(e) => { if (!isChecking) { (e.target as HTMLElement).style.background = '#eff6ff'; }}}
+        >
+          {isChecking ? (
+            <>
+              <span style={{
+                display: 'inline-block', width: '14px', height: '14px',
+                border: '2px solid #d1d5db', borderTop: '2px solid #3b82f6',
+                borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+              }} />
+              جاري الفحص...
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: '14px' }}>🔄</span>
+              إعادة فحص
+            </>
+          )}
+        </button>
       </div>
+
+      {/* ── Progress Bar ── */}
       {ranking !== null && classification !== 'new' && (
         <div className="ranking-progress-bar">
           <div 
