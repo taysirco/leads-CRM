@@ -24,6 +24,7 @@ interface Order {
   notes: string;
   whatsappSent: string;
   assignee?: string; // إضافة حقل المسؤول
+  bostaRanking?: string; // تقييم بوسطة المحفوظ
 }
 
 interface OrdersTableProps {
@@ -901,7 +902,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
                         <div className="flex flex-col space-y-1">
                           <span className="font-bold text-gray-900 text-sm sm:text-lg">
                             {order.name}
-                            <CustomerRankingBadge phone={order.phone} />
+                            <CustomerRankingBadge phone={order.phone} storedRanking={order.bostaRanking} rowIndex={order.rowIndex} />
                           </span>
                           <span className="text-xs sm:text-sm text-gray-800">{order.productName}</span>
                           {/* عرض معلومات إضافية على الهواتف المحمولة */}
@@ -1217,7 +1218,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
             {/* 📊 تقييم العميل من بوسطة */}
             {editingOrder.phone && (
               <div className="mx-3 sm:mx-6 mt-2">
-                <CustomerRankingBadge phone={editingOrder.phone} compact={false} />
+                <CustomerRankingBadge phone={editingOrder.phone} compact={false} storedRanking={editingOrder.bostaRanking} rowIndex={editingOrder.rowIndex} />
               </div>
             )}
 

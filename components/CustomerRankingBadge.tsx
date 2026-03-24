@@ -4,19 +4,46 @@ import useSWR from 'swr';
 /**
  * CustomerRankingBadge — بادج تقييم العميل من بوسطة
  * 
- * يعرض نسبة استلام العميل بجانب اسمه في جدول الطلبات
- * يجلب البيانات lazily عند أول ظهور فقط
+ * يقرأ الـ ranking المحفوظ في الشيت مباشرة
+ * إذا لم يكن محفوظاً، يفحصه من API ويحفظه تلقائياً
  */
 
-interface RankingData {
+interface RankingApiResponse {
   success: boolean;
-  ranking: number | null;
-  classification: 'excellent' | 'medium' | 'low' | 'new' | 'error';
-  classificationAr: string;
-  totalDeliveries: number;
+  result?: {
+    ranking: number | null;
+    classification: 'excellent' | 'medium' | 'low' | 'new' | 'error';
+    classificationAr: string;
+    saved: boolean;
+  };
 }
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
+
+// تحليل الـ ranking المحفوظ في الشيت (format: "88% - ممتاز" أو "جديد")
+function parseStoredRanking(stored: string): {
+  ranking: number | null;
+  classification: 'excellent' | 'medium' | 'low' | 'new';
+  classificationAr: string;
+} | null {
+  if (!stored || stored.trim() === '') return null;
+
+  if (stored === 'جديد') {
+    return { ranking: null, classification: 'new', classificationAr: 'عميل جديد' };
+  }
+
+  const match = stored.match(/^(\d+)%\s*-\s*(.+)$/);
+  if (match) {
+    const ranking = parseInt(match[1], 10);
+    const label = match[2].trim();
+    let classification: 'excellent' | 'medium' | 'low' = 'low';
+    if (ranking >= 70) classification = 'excellent';
+    else if (ranking >= 40) classification = 'medium';
+    return { ranking, classification, classificationAr: label };
+  }
+
+  return null;
+}
 
 // تنظيف رقم الهاتف
 const cleanPhone = (phone: string): string => {
@@ -26,46 +53,78 @@ const cleanPhone = (phone: string): string => {
 
 interface Props {
   phone: string;
-  compact?: boolean; // عرض مختصر للجداول
+  compact?: boolean;
+  storedRanking?: string; // القيمة المحفوظة في الشيت
+  rowIndex?: number; // لتمريره للـ API لحفظ النتيجة
+  onRankingLoaded?: (ranking: string) => void; // callback عند تحميل ranking جديد
 }
 
-export default function CustomerRankingBadge({ phone, compact = true }: Props) {
+export default function CustomerRankingBadge({ 
+  phone, 
+  compact = true, 
+  storedRanking = '',
+  rowIndex,
+  onRankingLoaded
+}: Props) {
   const [showTooltip, setShowTooltip] = useState(false);
 
-  const cleanedPhone = cleanPhone(phone);
-  
-  // لا نجلب إذا الرقم غير صالح
-  const shouldFetch = cleanedPhone.length >= 10;
+  // أولاً: محاولة قراءة الـ ranking المحفوظ
+  const parsed = parseStoredRanking(storedRanking);
 
-  const { data, error, isLoading } = useSWR<RankingData>(
-    shouldFetch ? `/api/bosta-ranking?phone=${cleanedPhone}` : null,
+  const cleanedPhone = cleanPhone(phone);
+  const shouldFetch = !parsed && cleanedPhone.length >= 10;
+
+  // فقط نستدعي API إذا لم يكن هناك ranking محفوظ
+  const { data, error, isLoading } = useSWR<RankingApiResponse>(
+    shouldFetch ? `/api/bosta-ranking?phone=${cleanedPhone}${rowIndex ? `&rowIndex=${rowIndex}` : ''}` : null,
     fetcher,
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
-      dedupingInterval: 300000, // 5 دقائق cache
-      errorRetryCount: 1,
+      dedupingInterval: 600000, // 10 دقائق cache
+      errorRetryCount: 0, // لا نعيد المحاولة لأن create-delete مكلف
+      onSuccess: (data) => {
+        if (data?.result?.saved && onRankingLoaded) {
+          const r = data.result.ranking;
+          const label = data.result.classificationAr;
+          const value = r !== null ? `${Math.round(r)}% - ${label}` : 'جديد';
+          onRankingLoaded(value);
+        }
+      }
     }
   );
 
-  // لا نعرض شيء إذا لا يوجد رقم أو خطأ
-  if (!shouldFetch || error) return null;
-  
+  // تحديد البيانات من المصدر المتاح (محفوظ أو API)
+  let ranking: number | null = null;
+  let classification: string = 'new';
+  let classificationAr: string = 'عميل جديد';
+
+  if (parsed) {
+    // استخدام البيانات المحفوظة
+    ranking = parsed.ranking;
+    classification = parsed.classification;
+    classificationAr = parsed.classificationAr;
+  } else if (data?.result) {
+    // استخدام بيانات API
+    ranking = data.result.ranking;
+    classification = data.result.classification;
+    classificationAr = data.result.classificationAr;
+  } else if (shouldFetch && !isLoading && !error) {
+    return null; // لا بيانات بعد
+  } else if (error || (!shouldFetch && !parsed)) {
+    return null;
+  }
+
   // حالة التحميل
   if (isLoading) {
     return (
-      <span className="ranking-badge ranking-loading" title="جاري فحص تقييم العميل...">
+      <span className="ranking-badge ranking-loading" title="جاري فحص تقييم العميل من بوسطة...">
         <span className="ranking-spinner">⏳</span>
       </span>
     );
   }
 
-  if (!data?.success) return null;
-
-  const { classification, classificationAr, ranking, totalDeliveries } = data;
-
-  // في الوضع المختصر (الجدول): إخفاء البادج للعملاء الجُدد — فقط نظهره عندما يكون هناك ranking فعلي
-  // هذا يمنع ظهور "عميل جديد" بشكل متكرر لكل العملاء الجدد
+  // في الجدول: إخفاء العملاء الجُدد
   if (compact && (classification === 'new' || classification === 'error')) {
     return null;
   }
@@ -80,11 +139,6 @@ export default function CustomerRankingBadge({ phone, compact = true }: Props) {
   };
 
   const cfg = config[classification] || config.error;
-
-  // نص التولتيب
-  const tooltipText = classification === 'new'
-    ? 'عميل جديد — لم يسبق التسليم له'
-    : `نسبة الاستلام: ${ranking !== null ? Math.round(ranking) + '%' : 'غير محدد'} | ${totalDeliveries} طلب سابق`;
 
   if (compact) {
     return (
@@ -115,8 +169,8 @@ export default function CustomerRankingBadge({ phone, compact = true }: Props) {
               </span>
             )}
             <span className="ranking-tooltip-row">
-              <span>الطلبات السابقة:</span>
-              <span>{totalDeliveries}</span>
+              <span>المصدر:</span>
+              <span>{parsed ? 'محفوظ' : 'فحص جديد'}</span>
             </span>
           </span>
         )}
@@ -124,7 +178,7 @@ export default function CustomerRankingBadge({ phone, compact = true }: Props) {
     );
   }
 
-  // Full mode (for edit modal or expanded view)
+  // Full mode (for edit modal)
   return (
     <div className={`ranking-full ${cfg.className}`}>
       <div className="ranking-full-header">
@@ -134,7 +188,7 @@ export default function CustomerRankingBadge({ phone, compact = true }: Props) {
           {ranking !== null && classification !== 'new' && (
             <span className="ranking-full-percent">نسبة الاستلام {Math.round(ranking)}%</span>
           )}
-          <span className="ranking-full-count">{totalDeliveries} طلب سابق</span>
+          <span className="ranking-full-count">{parsed ? '✅ محفوظ في الشيت' : '🔄 تم الفحص الآن'}</span>
         </div>
       </div>
       {ranking !== null && classification !== 'new' && (

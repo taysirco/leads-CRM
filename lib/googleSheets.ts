@@ -32,6 +32,7 @@ export type LeadRow = {
   bostaTrackingNumber?: string; // رقم تتبع بوسطة (S column - الفهرس 18)
   bostaState?: string; // حالة بوسطة (T column - الفهرس 19)
   lastBostaUpdate?: string; // آخر تحديث بوسطة (U column - الفهرس 20)
+  bostaRanking?: string; // تقييم بوسطة (V column - الفهرس 21)
 };
 
 export type StockItem = {
@@ -1911,7 +1912,8 @@ export async function fetchLeads() {
       assignee: row[16] || '', // العمود Q (الفهرس 16)
       bostaTrackingNumber: row[18] || '', // العمود S (الفهرس 18)
       bostaState: row[19] || '', // العمود T (الفهرس 19)
-      lastBostaUpdate: row[20] || '' // العمود U (الفهرس 20)
+      lastBostaUpdate: row[20] || '', // العمود U (الفهرس 20)
+      bostaRanking: row[21] || '' // العمود V (الفهرس 21)
     };
   });
 }
@@ -1923,7 +1925,7 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const headers = ['تاريخ الطلب', 'الاسم', 'رقم الهاتف', 'رقم الواتساب', 'المحافظة', 'المنطقة', 'العنوان', 'تفاصيل الطلب', 'الكمية', 'إجمالي السعر', 'اسم المنتج', 'الحالة', 'ملاحظات', 'المصدر', 'ارسال واتس اب', 'عمود P', 'المسؤول', 'TikTok Lead ID', 'رقم تتبع بوسطة', 'حالة بوسطة', 'آخر تحديث بوسطة'];
+  const headers = ['تاريخ الطلب', 'الاسم', 'رقم الهاتف', 'رقم الواتساب', 'المحافظة', 'المنطقة', 'العنوان', 'تفاصيل الطلب', 'الكمية', 'إجمالي السعر', 'اسم المنتج', 'الحالة', 'ملاحظات', 'المصدر', 'ارسال واتس اب', 'عمود P', 'المسؤول', 'TikTok Lead ID', 'رقم تتبع بوسطة', 'حالة بوسطة', 'آخر تحديث بوسطة', 'تقييم بوسطة'];
   const range = `leads!A${rowNumber}:${String.fromCharCode(64 + headers.length)}${rowNumber}`;
 
   // جلب البيانات الحالية مع إعادة المحاولة
@@ -2003,6 +2005,9 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   }
   if (updates.lastBostaUpdate !== undefined) {
     updatedRow[20] = updates.lastBostaUpdate; // آخر تحديث بوسطة
+  }
+  if (updates.bostaRanking !== undefined) {
+    updatedRow[21] = updates.bostaRanking; // تقييم بوسطة
   }
 
   console.log(`✏️ البيانات الجديدة للصف ${rowNumber}:`, updatedRow);
