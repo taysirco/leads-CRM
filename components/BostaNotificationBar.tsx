@@ -140,7 +140,7 @@ export default function BostaNotificationBar() {
                     📞 {notification.consigneePhone}
                   </a>
                   <a
-                    href={`https://business.bosta.co/deliveries/${notification.trackingNumber}`}
+                    href={`https://business.bosta.co/orders/${notification.trackingNumber}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bosta-notif-bosta-link"
