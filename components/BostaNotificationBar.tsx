@@ -129,6 +129,31 @@ export default function BostaNotificationBar() {
                       <span className="bosta-notif-new-badge">جديد</span>
                     )}
                   </div>
+                  {/* زر إغلاق الإشعار */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDismissed(prev => new Set([...prev, notification.id]));
+                    }}
+                    className="bosta-notif-dismiss"
+                    title="إغلاق الإشعار"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      color: '#9ca3af',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      lineHeight: 1,
+                      marginRight: '4px',
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={(e) => { (e.target as HTMLElement).style.color = '#ef4444'; (e.target as HTMLElement).style.background = '#fee2e2'; }}
+                    onMouseLeave={(e) => { (e.target as HTMLElement).style.color = '#9ca3af'; (e.target as HTMLElement).style.background = 'none'; }}
+                  >
+                    ✕
+                  </button>
                 </div>
 
                 <div className="bosta-notif-item-details">
