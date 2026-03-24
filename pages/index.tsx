@@ -7,12 +7,9 @@ import ArchiveTable from '../components/ArchiveTable';
 import RejectedTable from '../components/RejectedTable';
 import StockManagement from '../components/StockManagement';
 import LiveStats from '../components/LiveStats';
-import SmartNotificationSystem from '../components/SmartNotificationSystem';
-import SmartNotificationSettings from '../components/SmartNotificationSettings';
-import NotificationHistory from '../components/NotificationHistory';
-import FollowUpReminders from '../components/FollowUpReminders';
 
-import { useRealTimeOrderTracking } from '../hooks/useRealTimeOrderTracking';
+
+
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import type { Order, TabId, UserNotificationSettings } from '../types';
 
@@ -33,31 +30,16 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<TabId>('orders');
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [showSettings, setShowSettings] = useState(false);
-  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
-  const [showNotificationHistory, setShowNotificationHistory] = useState(false);
+
   const [notificationSettings, setNotificationSettings] = useState<UserNotificationSettings>({
     autoRefresh: true,
     refreshInterval: 30,
     soundEnabled: true
   });
-  const [hasInteracted, setHasInteracted] = useState(false);
+
   const [isArchiving, setIsArchiving] = useState(false);
 
-  useEffect(() => {
-    const handleInteraction = () => {
-      setHasInteracted(true);
-      window.removeEventListener('click', handleInteraction);
-      window.removeEventListener('keydown', handleInteraction);
-    };
 
-    window.addEventListener('click', handleInteraction);
-    window.addEventListener('keydown', handleInteraction);
-
-    return () => {
-      window.removeEventListener('click', handleInteraction);
-      window.removeEventListener('keydown', handleInteraction);
-    };
-  }, []);
 
   const { data, error, mutate } = useSWR(
     '/api/orders',
@@ -93,26 +75,7 @@ export default function Home() {
 
   const orders = data?.data || [];
 
-  const {
-    notifications,
-    notificationHistory,
-    removeNotification,
-    clearAllNotifications,
-    clearNotificationsByType,
-    notifySuccess,
-    notifyError,
-    notifyWarning,
-    settings: smartNotificationSettings,
-    updateSettings: updateNotificationSettings,
-    newOrdersCount,
-    criticalCount,
-    hasUserInteracted: smartHasInteracted,
-    unreadCount,
-    isDNDActive,
-    markAsRead,
-    markAllAsRead,
-    clearHistory
-  } = useRealTimeOrderTracking(orders, hasInteracted);
+
 
   const handleUpdateOrder = async (orderId: number, updates: any): Promise<void> => {
     try {
@@ -141,13 +104,13 @@ export default function Home() {
           if (result.availableQuantity !== undefined) {
             const details = `\n\n📦 التفاصيل:\n• المنتج: ${result.productName}\n• المطلوب: ${result.requiredQuantity}\n• المتوفر: ${result.availableQuantity}\n• النقص: ${result.requiredQuantity - result.availableQuantity}`;
 
-            notifyError(errorMessage + details, result);
+            console.error(errorMessage + details);
           } else {
-            notifyError(errorMessage, result);
+            console.error(errorMessage);
           }
         } else {
           // خطأ عادي
-          notifyError(result.message || 'فشل في تحديث الطلب. حاول مرة أخرى.', result);
+          console.error(result.message || 'فشل في تحديث الطلب. حاول مرة أخرى.');
         }
         throw new Error(result.message || 'فشل في التحديث');
       }
@@ -157,14 +120,14 @@ export default function Home() {
 
       // عرض رسالة نجاح مع معلومات المخزون إن وُجدت
       if (result.stockResult && result.stockResult.success) {
-        notifySuccess(`✅ تم شحن الطلب رقم ${orderId}\n📦 ${result.stockResult.message}`, result);
+        console.log(`✅ تم شحن الطلب رقم ${orderId}\n📦 ${result.stockResult.message}`);
       } else if (updates.status === 'تم الشحن') {
-        notifySuccess(`تم تحديث الطلب رقم ${orderId} بنجاح`, result);
+        console.log(`تم تحديث الطلب رقم ${orderId} بنجاح`);
       }
 
       // عرض تحذيرات المخزون إن وُجدت
       if (result.warning) {
-        notifyWarning(result.warning, result);
+        console.warn(result.warning);
       }
 
     } catch (error) {
@@ -175,7 +138,7 @@ export default function Home() {
 
   const handleAssign = async () => {
     try {
-      notifyWarning('🔄 جاري توزيع الليدز غير المعيّنة بالتساوي بين موظفي الكول سنتر...');
+      console.log('🔄 جاري توزيع الليدز غير المعيّنة بالتساوي بين موظفي الكول سنتر...');
 
       const res = await fetch('/api/assign', { method: 'POST' });
       const data = await res.json();
@@ -214,14 +177,14 @@ export default function Home() {
       }
 
       if (data.distributed > 0) {
-        notifySuccess(message, data);
+        console.log(message);
       } else {
-        notifyWarning(message, data);
+        console.warn(message);
       }
 
       await mutate(); // تحديث البيانات بعد التوزيع
     } catch (e: any) {
-      notifyError(e.message + '\n💡 تأكد من الاتصال بالإنترنت وحاول مرة أخرى', e);
+      console.error(e.message + '\n💡 تأكد من الاتصال بالإنترنت وحاول مرة أخرى');
     }
   };
 
@@ -373,31 +336,7 @@ export default function Home() {
 
   return (
     <>
-      <SmartNotificationSystem
-        notifications={notifications}
-        onDismiss={removeNotification}
-        onDismissAll={clearAllNotifications}
-        onDismissType={(type: string) => clearNotificationsByType(type as any)}
-        hasUserInteracted={smartHasInteracted}
-        isDNDActive={isDNDActive}
-      />
 
-      <SmartNotificationSettings
-        settings={smartNotificationSettings}
-        onSettingsChange={updateNotificationSettings}
-        isOpen={showNotificationSettings}
-        onClose={() => setShowNotificationSettings(false)}
-      />
-
-      <NotificationHistory
-        history={notificationHistory}
-        unreadCount={unreadCount}
-        onMarkAsRead={markAsRead}
-        onMarkAllAsRead={markAllAsRead}
-        onClearHistory={clearHistory}
-        isOpen={showNotificationHistory}
-        onClose={() => setShowNotificationHistory(false)}
-      />
 
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto p-2 sm:p-4">
@@ -456,19 +395,7 @@ export default function Home() {
                     >
                       الإعدادات
                     </button>
-                    <button
-                      onClick={() => setShowNotificationHistory(true)}
-                      className="relative bg-gradient-to-r from-indigo-100 to-purple-100 hover:from-indigo-200 hover:to-purple-200 text-indigo-700 px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2 text-xs sm:text-sm"
-                      title="سجل الإشعارات"
-                    >
-                      <span>🔔</span>
-                      <span className="hidden sm:inline">السجل</span>
-                      {unreadCount > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                          {unreadCount > 9 ? '9+' : unreadCount}
-                        </span>
-                      )}
-                    </button>
+
                   </div>
                 </div>
               )}
@@ -481,19 +408,7 @@ export default function Home() {
                   >
                     الإعدادات
                   </button>
-                  <button
-                    onClick={() => setShowNotificationHistory(true)}
-                    className="relative bg-gradient-to-r from-indigo-100 to-purple-100 hover:from-indigo-200 hover:to-purple-200 text-indigo-700 px-3 sm:px-4 py-2 rounded-lg sm:rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2 text-xs sm:text-sm"
-                    title="سجل الإشعارات"
-                  >
-                    <span>🔔</span>
-                    <span className="hidden sm:inline">السجل</span>
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </span>
-                    )}
-                  </button>
+
                 </div>
               )}
             </div>
@@ -554,16 +469,7 @@ export default function Home() {
           {/* Tab Content */}
           <div className="space-y-6">
             {activeTab === 'dashboard' && (
-              <>
-                <FollowUpReminders
-                  orders={orders}
-                  currentUser={user?.username}
-                  onOrderClick={(order) => {
-                    setActiveTab('orders');
-                  }}
-                />
-                <Dashboard />
-              </>
+              <Dashboard />
             )}
             {activeTab === 'orders' && (
               <OrdersTable
