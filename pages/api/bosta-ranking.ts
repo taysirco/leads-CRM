@@ -58,11 +58,16 @@ export default async function handler(
   }
 
   try {
-    // تنظيف رقم الهاتف
+    // تنظيف رقم الهاتف - إزالة الأصفار والرموز
     const cleanPhone = phone.replace(/\D/g, '').replace(/^0/, '');
+    const searchPhone = '0' + cleanPhone; // format: 01XXXXXXXXX
+    const fullPhone = '+20' + cleanPhone; // format: +201XXXXXXXXX
 
+    // ⚠️ ملاحظة مهمة: فلتر receiverPhone في Bosta API لا يعمل فعلياً
+    // لذلك نستخدم search الذي يرتب النتائج بحيث تظهر المطابقة أولاً
+    // ثم نتحقق يدوياً من تطابق رقم الهاتف
     const response = await fetch(
-      `https://app.bosta.co/api/v0/deliveries?receiverPhone=${cleanPhone}&pageSize=1`,
+      `https://app.bosta.co/api/v0/deliveries?search=${searchPhone}&pageSize=10`,
       {
         headers: {
           Authorization: apiKey,
@@ -77,19 +82,37 @@ export default async function handler(
 
     const data = await response.json();
     const deliveries = data.deliveries || [];
-    const totalDeliveries = data.count || 0;
 
-    // استخراج الـ ranking من أول طلب
+    // البحث عن طلب يطابق رقم هاتف العميل فعلياً
+    const matchedDelivery = deliveries.find((del: any) => {
+      const receiverPhone = del.receiver?.phone || '';
+      return (
+        receiverPhone === fullPhone ||
+        receiverPhone === searchPhone ||
+        receiverPhone === cleanPhone ||
+        receiverPhone.endsWith(cleanPhone)
+      );
+    });
+
+    // استخراج الـ ranking من الطلب المطابق
     let ranking: number | null = null;
-    if (deliveries.length > 0 && deliveries[0].receiver?.ranking !== undefined) {
-      ranking = deliveries[0].receiver.ranking;
+    let totalDeliveries = 0;
+    let customerFound = false;
+
+    if (matchedDelivery) {
+      customerFound = true;
+      if (matchedDelivery.receiver?.ranking !== undefined) {
+        ranking = matchedDelivery.receiver.ranking;
+      }
+      // عدد الطلبات غير متاح بدقة من هذا الـ endpoint، لكن وجود matching يعني عميل سابق
+      totalDeliveries = 1; // نعرف على الأقل أن هناك طلب واحد
     }
 
     // تصنيف العميل
     let classification: RankingResponse['classification'];
     let classificationAr: string;
 
-    if (totalDeliveries === 0 || deliveries.length === 0) {
+    if (!customerFound) {
       classification = 'new';
       classificationAr = 'عميل جديد';
     } else if (ranking === null || ranking === undefined) {
