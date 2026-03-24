@@ -110,23 +110,25 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
   const rankingAbortRef = React.useRef(false);
 
   // فحص تقييمات بوسطة الجماعي
-  const handleBulkRankingCheck = async () => {
-    // العثور على الطلبات بدون ranking
-    const unranked = orders.filter(o => !o.bostaRanking || o.bostaRanking.trim() === '');
-    if (unranked.length === 0) {
-      alert('✅ جميع العملاء لديهم تقييم بوسطة بالفعل!');
+  const handleBulkRankingCheck = async (forceAll = false) => {
+    // العثور على الطلبات المطلوب فحصها
+    const toCheck = forceAll
+      ? orders.filter(o => o.phone && o.phone.length >= 8)
+      : orders.filter(o => !o.bostaRanking || o.bostaRanking.trim() === '');
+    if (toCheck.length === 0) {
+      alert('✅ لا يوجد طلبات تحتاج فحص!');
       return;
     }
 
     setIsRankingChecking(true);
     setShowRankingModal(true);
     rankingAbortRef.current = false;
-    setRankingProgress({ total: unranked.length, checked: 0, current: '', results: [] });
+    setRankingProgress({ total: toCheck.length, checked: 0, current: '', results: [] });
 
-    for (let i = 0; i < unranked.length; i++) {
+    for (let i = 0; i < toCheck.length; i++) {
       if (rankingAbortRef.current) break;
 
-      const order = unranked[i];
+      const order = toCheck[i];
       const phone = (order.phone || '').replace(/\D/g, '');
       const name = order.name || 'عميل';
 
@@ -179,7 +181,7 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
       }
 
       // انتظار قصير بين كل فحص لـ rate limiting
-      if (i < unranked.length - 1 && !rankingAbortRef.current) {
+      if (i < toCheck.length - 1 && !rankingAbortRef.current) {
         await new Promise(r => setTimeout(r, 1500));
       }
     }
@@ -991,39 +993,57 @@ export default function OrdersTable({ orders, onUpdateOrder }: OrdersTableProps)
         </div>
 
         {/* زر فحص تقييمات بوسطة الجماعي */}
-        {orders.some(o => !o.bostaRanking || o.bostaRanking.trim() === '') && (
-          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-200 px-3 sm:px-6 py-2 sm:py-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span style={{ fontSize: '18px' }}>📊</span>
-                <span className="text-xs sm:text-sm font-medium text-amber-900">
-                  {orders.filter(o => !o.bostaRanking || o.bostaRanking.trim() === '').length} عميل بدون تقييم بوسطة
-                </span>
-              </div>
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-200 px-3 sm:px-6 py-2 sm:py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span style={{ fontSize: '18px' }}>📊</span>
+              <span className="text-xs sm:text-sm font-medium text-amber-900">
+                {orders.filter(o => !o.bostaRanking || o.bostaRanking.trim() === '').length > 0
+                  ? `${orders.filter(o => !o.bostaRanking || o.bostaRanking.trim() === '').length} عميل بدون تقييم بوسطة`
+                  : `✅ ${orders.length} عميل مُقيّم`
+                }
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {orders.some(o => !o.bostaRanking || o.bostaRanking.trim() === '') && (
+                <button
+                  onClick={() => handleBulkRankingCheck(false)}
+                  disabled={isRankingChecking}
+                  className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-white rounded-lg transition-all duration-200 text-xs sm:text-sm font-bold shadow-md"
+                  style={{
+                    background: isRankingChecking ? '#9ca3af' : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                    cursor: isRankingChecking ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {isRankingChecking ? (
+                    <>
+                      <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                      جاري الفحص...
+                    </>
+                  ) : (
+                    <>
+                      <span>🔍</span>
+                      فحص الجُدد
+                    </>
+                  )}
+                </button>
+              )}
               <button
-                onClick={handleBulkRankingCheck}
+                onClick={() => handleBulkRankingCheck(true)}
                 disabled={isRankingChecking}
-                className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-white rounded-lg transition-all duration-200 text-xs sm:text-sm font-bold shadow-md"
+                className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all duration-200 text-xs sm:text-sm font-bold shadow-md"
                 style={{
-                  background: isRankingChecking ? '#9ca3af' : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  background: isRankingChecking ? '#e5e7eb' : 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                  color: 'white',
                   cursor: isRankingChecking ? 'not-allowed' : 'pointer',
                 }}
               >
-                {isRankingChecking ? (
-                  <>
-                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                    جاري الفحص...
-                  </>
-                ) : (
-                  <>
-                    <span>🔍</span>
-                    فحص تقييمات بوسطة
-                  </>
-                )}
+                <span>🔄</span>
+                إعادة فحص الكل
               </button>
             </div>
           </div>
-        )}
+        </div>
 
         {/* شريط العمليات الجماعية */}
         {filteredOrders.length > 0 && (
