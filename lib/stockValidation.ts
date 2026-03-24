@@ -284,7 +284,12 @@ export async function atomicBulkShipping(
 
             // ✅ طلب كامل البيانات — يمر بخصم المخزون
             if (targetLead.productName?.trim() && targetLead.quantity?.toString().trim()) {
-                const quantity = parseInt(targetLead.quantity) || 1;
+                let quantity = parseInt(targetLead.quantity) || 1;
+                // ⚠️ حماية: إذا كانت الكمية > 50 فهي غالباً السعر وليست الكمية الفعلية
+                if (quantity > 50) {
+                    console.warn(`⚠️ [ATOMIC] كمية غير منطقية للطلب ${orderId}: ${quantity} - غالباً السعر في خانة الكمية! استخدام 1 بدلاً`);
+                    quantity = 1;
+                }
                 orderItems.push({
                     productName: targetLead.productName.trim(),
                     quantity,

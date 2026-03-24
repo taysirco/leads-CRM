@@ -307,7 +307,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             const productName = cachedTargetLead.productName?.trim();
             const quantityStr = cachedTargetLead.quantity?.toString().trim();
             const orderId = cachedTargetLead.id;
-            const quantity = parseInt(quantityStr!) || 1;
+            let quantity = parseInt(quantityStr!) || 1;
+            // ⚠️ حماية: إذا كانت الكمية > 50 فهي غالباً السعر وليست الكمية الفعلية
+            if (quantity > 50) {
+              console.warn(`⚠️ [INDIVIDUAL] كمية غير منطقية للطلب ${rowNumber}: ${quantity} (quantityStr="${quantityStr}") - غالباً السعر في خانة الكمية! استخدام 1 بدلاً`);
+              quantity = 1;
+            }
 
             console.log(`🚚 محاولة خصم مخزون الطلب ${rowNumber}: ${quantity} × ${productName}`);
 
