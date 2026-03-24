@@ -577,7 +577,7 @@ export interface BostaDeliveryRequest {
     firstName: string;
     lastName: string;
     phone: string;
-    phone2?: string;
+    secondPhone?: string; // ⚠️ الاسم الصحيح! phone2 يُتجاهل من بوسطة - تم التحقق بالتجربة الحية
     email?: string;
   };
   businessReference: string;
@@ -763,7 +763,7 @@ export async function createBostaDelivery(order: {
       firstName,
       lastName,
       phone: phoneValidation.formatted,
-      ...(formattedPhone2 && { phone2: formattedPhone2 }),
+      ...(formattedPhone2 && { secondPhone: formattedPhone2 }), // ✅ الاسم الصحيح — phone2 يُتجاهل!
     },
     businessReference,
     cod: codAmount,
