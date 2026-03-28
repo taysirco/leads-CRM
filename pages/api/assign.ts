@@ -35,9 +35,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     console.log(`📊 التوزيع الحالي:`, currentCounts);
 
-    // العثور على الليدز غير المعينة
-    const unassigned = leads.filter(l => !l.assignee || String(l.assignee).trim() === '');
-    console.log(`📈 ليدز غير معينة: ${unassigned.length}`);
+    // العثور على الليدز غير المعينة أو المعينة لموظف قديم غير موجود في القائمة
+    const unassigned = leads.filter(l => {
+      const assignee = (l.assignee || '').trim();
+      return !assignee || !EMPLOYEES.includes(assignee);
+    });
+    console.log(`📈 ليدز غير معينة أو معينة لموظف قديم: ${unassigned.length}`);
 
     if (unassigned.length === 0) {
       return res.status(200).json({

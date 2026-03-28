@@ -55,8 +55,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
           }
 
-          // العثور على الليدز غير المعينة
-          const unassigned = leads.filter(l => !l.assignee || String(l.assignee).trim() === '');
+          // العثور على الليدز غير المعينة أو المعينة لموظف قديم غير موجود في القائمة الحالية
+          const unassigned = leads.filter(l => {
+            const assignee = (l.assignee || '').trim();
+            // غير معيّن أو معيّن لموظف قديم لم يعد في القائمة
+            return !assignee || !EMPLOYEES.includes(assignee);
+          });
 
           if (unassigned.length > 0) {
             // حد أقصى 50 تحديث في الدفعة الواحدة
