@@ -16,21 +16,30 @@ const SETTINGS_SHEET_NAME = 'settings';
 
 // قائمة الموظفين الافتراضية
 const DEFAULT_EMPLOYEES: Employee[] = [
-  { username: 'ahmed.', displayName: 'أحمد' },
+  { username: 'heba.', displayName: 'هبه' },
   { username: 'mai.', displayName: 'مي' },
-  { username: 'nada.', displayName: 'ندي' }
+  { username: 'nada.', displayName: 'ندا' }
 ];
 
 /**
  * جلب قائمة أسماء المستخدمين للموظفين من متغيرات البيئة
+ * يقرأ من CALL_CENTER_USERS بصيغة: "user1:pass1:name1,user2:pass2:name2"
  * @returns مصفوفة أسماء المستخدمين
  */
 export function getEmployeesFromEnv(): string[] {
-  const envEmployees = process.env.CALL_CENTER_EMPLOYEES;
+  const envUsers = process.env.CALL_CENTER_USERS;
   
-  if (envEmployees) {
-    // تنسيق متوقع: "ahmed.,mai.,nada."
-    const parsed = envEmployees.split(',').map(e => e.trim()).filter(Boolean);
+  if (envUsers) {
+    // تنسيق: "heba.:zz2122:هبه,mai.:zz2122:مي,nada.:zz2122:ندا"
+    const parsed = envUsers.split(',')
+      .map(entry => entry.trim())
+      .filter(Boolean)
+      .map(entry => {
+        const parts = entry.split(':');
+        return parts[0]?.trim(); // أول جزء هو اسم المستخدم
+      })
+      .filter(Boolean) as string[];
+    
     if (parsed.length > 0) {
       return parsed;
     }
@@ -42,22 +51,27 @@ export function getEmployeesFromEnv(): string[] {
 
 /**
  * جلب قائمة الموظفين الكاملة مع أسماء العرض
+ * يقرأ من CALL_CENTER_USERS بصيغة: "user1:pass1:name1,user2:pass2:name2"
  * @returns مصفوفة كائنات الموظفين
  */
 export function getEmployeesWithDisplayNames(): Employee[] {
-  const envEmployees = process.env.CALL_CENTER_EMPLOYEES;
-  const envDisplayNames = process.env.CALL_CENTER_DISPLAY_NAMES;
+  const envUsers = process.env.CALL_CENTER_USERS;
   
-  if (envEmployees) {
-    const usernames = envEmployees.split(',').map(e => e.trim()).filter(Boolean);
-    const displayNames = envDisplayNames 
-      ? envDisplayNames.split(',').map(n => n.trim())
-      : [];
+  if (envUsers) {
+    const employees = envUsers.split(',')
+      .map(entry => entry.trim())
+      .filter(Boolean)
+      .map(entry => {
+        const parts = entry.split(':');
+        const username = parts[0]?.trim() || '';
+        const displayName = parts[2]?.trim() || username.replace('.', '');
+        return { username, displayName };
+      })
+      .filter(emp => emp.username);
     
-    return usernames.map((username, index) => ({
-      username,
-      displayName: displayNames[index] || username.replace('.', '')
-    }));
+    if (employees.length > 0) {
+      return employees;
+    }
   }
   
   return DEFAULT_EMPLOYEES;

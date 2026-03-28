@@ -105,8 +105,8 @@ GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY\n-----END PRIV
 GOOGLE_SHEET_ID=your-google-sheet-id
 
 # Application Login Credentials
-APP_USERNAME=smart123
-APP_PASSWORD=Zz2122@1
+APP_USERNAME=admin123
+APP_PASSWORD=ABMabm2122@@
 ```
 
 3. **تشغيل الخادم:**

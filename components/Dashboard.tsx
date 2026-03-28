@@ -5,6 +5,18 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveCo
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
+// Custom hook for dynamic employee data
+const useEmployees = () => {
+  const { data } = useSWR('/api/employees', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60000,
+  });
+  const employees: string[] = useMemo(() => data?.employees?.map((e: any) => e.username) || [], [data]);
+  const displayMap: Record<string, string> = useMemo(() => data?.displayMap || {}, [data]);
+  const getDisplayName = (username: string) => displayMap[username] || username;
+  return { employees, displayMap, getDisplayName };
+};
+
 // ألوان الرسوم البيانية
 const CHART_COLORS = {
   confirmed: '#22c55e',  // أخضر
@@ -165,6 +177,7 @@ type EmployeeStats = {
 
 export default function Dashboard() {
   const { user } = useCurrentUser();
+  const { employees: dynamicEmployees, getDisplayName } = useEmployees();
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'all'>('all');
 
   // Fetch dashboard data - single call for all data
@@ -235,7 +248,7 @@ export default function Dashboard() {
     const byAssigneeByProduct = stats?.byAssigneeByProduct || {};
 
     // حساب إحصائيات شاملة ومؤشرات الأداء بالمنطق الصحيح
-    const employees = ['ahmed.', 'mai.', 'nada.'];
+    const employees = dynamicEmployees;
 
     // إجمالي الليدز المعينة للموظفين فقط (بدون غير المعين)
     const assignedLeads = employees.reduce((sum, emp) => sum + (byAssignee[emp]?.total || 0), 0);
@@ -381,7 +394,7 @@ export default function Dashboard() {
                   <div key={emp} className="border rounded-lg p-3 sm:p-4 bg-gray-50">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 space-y-2 sm:space-y-0">
                       <div>
-                        <h4 className="font-bold text-base sm:text-lg text-gray-900">{emp === 'ahmed.' ? '👨‍💼 أحمد' : emp === 'mai.' ? '👩‍💼 مي' : '👩‍💼 ندي'}</h4>
+                        <h4 className="font-bold text-base sm:text-lg text-gray-900">👩‍💼 {getDisplayName(emp)}</h4>
                         <p className="text-xs sm:text-sm text-gray-700">نصيب: {share}% من الليدز المعينة ({empData.total} ليد)</p>
                       </div>
                       <div className="sm:text-right">
@@ -440,7 +453,7 @@ export default function Dashboard() {
             <div className="space-y-4 max-h-[500px] overflow-auto">
               {employees.map(emp => {
                 const empProducts = byAssigneeByProduct[emp] || {};
-                const empName = emp === 'ahmed.' ? 'أحمد' : emp === 'mai.' ? 'مي' : 'ندي';
+                const empName = getDisplayName(emp);
 
                 return (
                   <div key={emp} className="border rounded-lg p-4">
@@ -556,10 +569,10 @@ export default function Dashboard() {
                 <span className="font-bold text-gray-800">{balanceInfo.maxAllowed} ليد</span>
               </div>
               <div className="mt-2 pt-2 border-t border-teal-200">
-                <div className="grid grid-cols-3 gap-1 text-xs">
-                  <div className="text-center"><span className="text-gray-600">أحمد</span><div className="font-bold">{balanceInfo.counts['ahmed.']}</div></div>
-                  <div className="text-center"><span className="text-gray-600">مي</span><div className="font-bold">{balanceInfo.counts['mai.']}</div></div>
-                  <div className="text-center"><span className="text-gray-600">ندي</span><div className="font-bold">{balanceInfo.counts['nada.']}</div></div>
+                <div className={`grid gap-1 text-xs`} style={{ gridTemplateColumns: `repeat(${dynamicEmployees.length}, minmax(0, 1fr))` }}>
+                  {dynamicEmployees.map(emp => (
+                    <div key={emp} className="text-center"><span className="text-gray-600">{getDisplayName(emp)}</span><div className="font-bold">{balanceInfo.counts[emp]}</div></div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -573,10 +586,10 @@ export default function Dashboard() {
             <p className="text-xs sm:text-sm text-orange-800 mb-2">
               هناك فارق كبير في توزيع الليدز بين الموظفين. الفارق الحالي: {balanceInfo.difference} (الحد المسموح: {balanceInfo.maxAllowed})
             </p>
-            <div className="grid grid-cols-3 gap-2 sm:gap-4 text-xs sm:text-sm">
-              {employees.map(emp => (
+            <div className={`grid gap-2 sm:gap-4 text-xs sm:text-sm`} style={{ gridTemplateColumns: `repeat(${dynamicEmployees.length}, minmax(0, 1fr))` }}>
+              {dynamicEmployees.map(emp => (
                 <div key={emp} className="text-center">
-                  <p className="font-medium text-gray-800 text-xs sm:text-sm">{emp === 'ahmed.' ? 'أحمد' : emp === 'mai.' ? 'مي' : 'ندي'}</p>
+                  <p className="font-medium text-gray-800 text-xs sm:text-sm">{getDisplayName(emp)}</p>
                   <p className="text-base sm:text-lg font-bold text-gray-900">{balanceInfo.counts[emp]}</p>
                 </div>
               ))}

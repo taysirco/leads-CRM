@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Dashboard from '../components/Dashboard';
 import OrdersTable from '../components/OrdersTable';
 import BostaExport from '../components/BostaExport';
@@ -76,6 +76,18 @@ export default function Home() {
 
   const orders = data?.data || [];
 
+  // جلب قائمة الموظفين ديناميكياً من API
+  const { data: employeesData } = useSWR('/api/employees', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60000, // تحديث كل دقيقة فقط
+  });
+  const dynamicEmployees: string[] = useMemo(() => {
+    return employeesData?.employees?.map((e: any) => e.username) || [];
+  }, [employeesData]);
+  const dynamicDisplayMap: Record<string, string> = useMemo(() => {
+    return employeesData?.displayMap || {};
+  }, [employeesData]);
+
 
 
   const handleUpdateOrder = async (orderId: number, updates: any): Promise<void> => {
@@ -150,12 +162,7 @@ export default function Home() {
       let message = data.message;
       if (data.distributed > 0) {
         const getEmployeeName = (username: string) => {
-          const nameMap: Record<string, string> = {
-            'ahmed.': 'أحمد',
-            'mai.': 'مي',
-            'nada.': 'ندي'
-          };
-          return nameMap[username] || username;
+          return dynamicDisplayMap[username] || username;
         };
 
         const distDetails = Object.entries(data.currentDistribution || {})
@@ -280,40 +287,33 @@ export default function Home() {
 
   // حساب إحصائيات التوزيع للعرض
   const distributionStats = useMemo(() => {
-    const employees = ['ahmed.', 'mai.', 'nada.'];
-    const counts = { 'ahmed.': 0, 'mai.': 0, 'nada.': 0, 'غير معين': 0 };
+    const counts: Record<string, number> = { 'غير معين': 0 };
+    dynamicEmployees.forEach(emp => { counts[emp] = 0; });
 
     orders.forEach((order: any) => {
       const assignee = (order.assignee || '').trim();
-      if (employees.includes(assignee)) {
-        counts[assignee as keyof typeof counts]++;
+      if (dynamicEmployees.includes(assignee)) {
+        counts[assignee] = (counts[assignee] || 0) + 1;
       } else {
         counts['غير معين']++;
       }
     });
 
     const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
-    const employeeCounts = [counts['ahmed.'], counts['mai.'], counts['nada.']];
-    const max = Math.max(...employeeCounts);
-    const min = Math.min(...employeeCounts);
+    const employeeCounts = dynamicEmployees.map(emp => counts[emp] || 0);
+    const max = employeeCounts.length > 0 ? Math.max(...employeeCounts) : 0;
+    const min = employeeCounts.length > 0 ? Math.min(...employeeCounts) : 0;
     const imbalance = max - min;
     const maxAllowed = Math.ceil(total * 0.1); // 10% كحد أقصى للاختلاف
     const isBalanced = total > 0 ? imbalance <= maxAllowed : true;
 
     return { counts, total, imbalance, isBalanced, maxAllowed };
-  }, [orders]);
+  }, [orders, dynamicEmployees]);
 
-  // أسماء العرض للموظفين من البيئة إن توفرت
-  const employeeDisplayNames = useMemo(() => {
-    const envVal = process.env.NEXT_PUBLIC_CALL_CENTER_USERS_DISPLAY || '';
-    // صيغة: ahmed.:أحمد,mai.:مي,nada.:ندي
-    const map = new Map<string, string>();
-    envVal.split(/[,;]+/).map(s => s.trim()).filter(Boolean).forEach(pair => {
-      const [u, n] = pair.split(':');
-      if (u && n) map.set(u.trim(), n.trim());
-    });
-    return (username: string) => map.get(username) || (username === 'ahmed.' ? 'أحمد' : username === 'mai.' ? 'مي' : username === 'nada.' ? 'ندي' : username);
-  }, []);
+  // أسماء العرض للموظفين - ديناميكياً من API
+  const employeeDisplayNames = useCallback((username: string) => {
+    return dynamicDisplayMap[username] || username;
+  }, [dynamicDisplayMap]);
 
   if (error) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -368,9 +368,9 @@ export default function Home() {
                       <span className={distributionStats.counts['غير معين'] > 0 ? 'text-orange-600 font-medium' : ''}>
                         غير معين: {distributionStats.counts['غير معين']}
                       </span>
-                      <span>أحمد: {distributionStats.counts['ahmed.']}</span>
-                      <span>مي: {distributionStats.counts['mai.']}</span>
-                      <span>ندي: {distributionStats.counts['nada.']}</span>
+                      {dynamicEmployees.map(emp => (
+                        <span key={emp}>{employeeDisplayNames(emp)}: {distributionStats.counts[emp] || 0}</span>
+                      ))}
                       <span className="text-gray-500">
                         حد الفارق: {distributionStats.maxAllowed}
                       </span>
