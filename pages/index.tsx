@@ -46,11 +46,11 @@ export default function Home() {
     '/api/orders',
     fetcher,
     {
-      // ✨ إيقاف التحديث التلقائي أثناء الأرشفة لمنع Race Conditions
-      refreshInterval: isArchiving ? 0 : (notificationSettings.autoRefresh ? Math.min(notificationSettings.refreshInterval * 1000, 10000) : 0),
-      revalidateOnFocus: !isArchiving, // إيقاف التحديث عند التركيز أثناء الأرشفة
+      // ✨ تحسين: الحد الأدنى 20 ثانية لحماية الكوتا + إيقاف أثناء الأرشفة
+      refreshInterval: isArchiving ? 0 : (notificationSettings.autoRefresh ? Math.max(notificationSettings.refreshInterval * 1000, 20000) : 0),
+      revalidateOnFocus: false, // ✨ إيقاف التحديث عند تبديل النوافذ — يوفر كوتا كبيرة
       revalidateOnReconnect: !isArchiving, // إيقاف التحديث عند إعادة الاتصال أثناء الأرشفة
-      dedupingInterval: isArchiving ? 30000 : 5000, // زيادة فترة منع التكرار أثناء الأرشفة
+      dedupingInterval: isArchiving ? 30000 : 10000, // ✨ زيادة فترة منع التكرار (10 ثواني)
       shouldRetryOnError: !isArchiving, // إيقاف إعادة المحاولة أثناء الأرشفة
       errorRetryCount: 3,
       // إعادة محاولة مخصصة مع تأخير متصاعد لحل مشكلة التزامن
@@ -64,8 +64,8 @@ export default function Home() {
         // لا تعيد المحاولة أكثر من 3 مرات
         if (retryCount >= 3) return;
 
-        // تأخير متصاعد: 1s, 2s, 4s
-        const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
+        // تأخير متصاعد: 2s, 4s, 8s
+        const delay = Math.min(2000 * Math.pow(2, retryCount), 10000);
 
         console.warn(`⚠️ خطأ في جلب البيانات. إعادة المحاولة ${retryCount + 1}/3 خلال ${delay}ms...`);
 

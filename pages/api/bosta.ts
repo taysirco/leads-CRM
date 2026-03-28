@@ -68,7 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const validOrders: Array<{ order: any; orderId: number; effectiveFulfillment: number; bostaSku?: string }> = [];
 
     for (const orderId of orderIds) {
-      const order = leads.find((l) => l.id === Number(orderId));
+      const order = leads.find((l: any) => l.id === Number(orderId));
 
       if (!order) {
         results.push({ orderId, success: false, error: `الطلب رقم ${orderId} غير موجود` });

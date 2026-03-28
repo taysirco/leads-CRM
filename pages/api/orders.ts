@@ -35,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // توزيع تلقائي محسّن مع قيود صارمة لتجنب الكوتا
       const now = Date.now();
       const canAutoAssign = !autoAssignInProgress &&
-        (!hasRunInitialAutoAssign || (now - lastAutoAssignAt > 60_000)) && // التشغيل الأول أو كل دقيقة
+        (!hasRunInitialAutoAssign || (now - lastAutoAssignAt > 300_000)) && // ✨ التشغيل الأول أو كل 5 دقائق (بدلاً من دقيقة)
         req.query.noAutoAssign !== 'true'; // السماح بتجاهل التوزيع التلقائي
 
       if (canAutoAssign) {
@@ -56,7 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
 
           // العثور على الليدز غير المعينة أو المعينة لموظف قديم غير موجود في القائمة الحالية
-          const unassigned = leads.filter(l => {
+          const unassigned = leads.filter((l: any) => {
             const assignee = (l.assignee || '').trim();
             // غير معيّن أو معيّن لموظف قديم لم يعد في القائمة
             return !assignee || !EMPLOYEES.includes(assignee);
@@ -103,14 +103,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               });
             }
 
-            // تنفيذ التحديث المجمع
+            // تنفيذ التحديث المجمع (يُبطل الكاش تلقائياً)
             await updateLeadsBatch(batch);
             // حفظ مؤشر Round Robin بعد التوزيع
             await saveRoundRobinIndex(lastAutoAssignedIndex);
             lastAutoAssignAt = now;
             hasRunInitialAutoAssign = true;
 
-            // إعادة جلب البيانات بعد التحديث
+            // ✨ إعادة جلب البيانات بعد التحديث (الكاش أُبطل تلقائياً في updateLeadsBatch)
             leads = await fetchLeads();
           }
         } catch (e) {
@@ -125,7 +125,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       let filtered: LeadRow[] = leads;
       if (role === 'agent' && username) {
         const normalized = (s: string) => (s || '').toLowerCase().trim();
-        filtered = leads.filter(l => normalized(l.assignee || '') === normalized(username));
+        filtered = leads.filter((l: any) => normalized(l.assignee || '') === normalized(username));
       }
 
       return res.status(200).json({ data: filtered });
@@ -265,7 +265,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (updates.status === 'تم الشحن') {
           console.log('🔍 الخطوة 1: جلب الحالة الأصلية للطلب...');
           const leads = await fetchLeads();
-          cachedTargetLead = leads.find(lead => lead.id === Number(rowNumber));
+          cachedTargetLead = leads.find((lead: any) => lead.id === Number(rowNumber));
 
           if (!cachedTargetLead) {
             console.error(`❌ لم يتم العثور على الطلب ${rowNumber}`);

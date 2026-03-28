@@ -36,7 +36,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`📊 التوزيع الحالي:`, currentCounts);
 
     // العثور على الليدز غير المعينة أو المعينة لموظف قديم غير موجود في القائمة
-    const unassigned = leads.filter(l => {
+    const unassigned = leads.filter((l: any) => {
       const assignee = (l.assignee || '').trim();
       return !assignee || !EMPLOYEES.includes(assignee);
     });

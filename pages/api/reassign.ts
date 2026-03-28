@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ message: 'يجب تحديد الموظف القديم والجديد' });
       }
 
-      const leadsToTransfer = leads.filter(l => (l.assignee || '').trim() === oldEmployee);
+      const leadsToTransfer = leads.filter((l: any) => (l.assignee || '').trim() === oldEmployee);
       
       if (leadsToTransfer.length === 0) {
         return res.status(200).json({ 
@@ -38,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       console.log(`🔄 نقل ${leadsToTransfer.length} ليد من ${oldEmployee} إلى ${newEmployee}...`);
 
-      const updates = leadsToTransfer.map(lead => ({
+      const updates = leadsToTransfer.map((lead: any) => ({
         rowNumber: lead.rowIndex,
         updates: { assignee: newEmployee }
       }));
@@ -72,7 +72,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (action === 'redistribute') {
       console.log(`🔄 إعادة توزيع كل الليدز بالتساوي بين ${EMPLOYEES.length} موظف...`);
 
-      const allAssignedLeads = leads.filter(l => {
+      const allAssignedLeads = leads.filter((l: any) => {
         const assignee = (l.assignee || '').trim();
         return assignee !== '';
       });

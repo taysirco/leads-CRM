@@ -81,8 +81,9 @@ import { fetchStock, findProductBySynonyms } from './googleSheets';
  * يجب استدعاء هذه الدالة قبل تحديث حالة الطلبات
  */
 export async function validateStockAvailability(
-    orderItems: ProductQuantity[]
-): Promise<ValidationResult> {
+    orderItems: ProductQuantity[],
+    preloadedStockItems?: any[] // ✨ تمرير المخزون المجلوب مسبقاً لتجنب طلب API مكرر
+): Promise<ValidationResult & { stockItems?: any[] }> {
     console.log(`🔍 بدء التحقق المسبق من المخزون لـ ${orderItems.length} طلب...`);
 
     // الخطوة 1: تجميع الكميات المطلوبة حسب المنتج
@@ -107,10 +108,16 @@ export async function validateStockAvailability(
 
     console.log(`📊 تم تجميع ${productQuantities.size} منتج مختلف للتحقق`);
 
-    // الخطوة 2: جلب المخزون مرة واحدة فقط
-    const stockData = await fetchStock(true);
-    const stockItems = stockData.stockItems;
-    console.log(`📦 تم جلب ${stockItems.length} منتج من المخزون`);
+    // الخطوة 2: جلب المخزون مرة واحدة فقط (أو استخدام المخزون الممرر)
+    let stockItems: any[];
+    if (preloadedStockItems) {
+        stockItems = preloadedStockItems;
+        console.log(`📦 استخدام المخزون الممرر مسبقاً (${stockItems.length} منتج)`);
+    } else {
+        const stockData = await fetchStock(true);
+        stockItems = stockData.stockItems;
+        console.log(`📦 تم جلب ${stockItems.length} منتج من المخزون`);
+    }
 
     // الخطوة 3: التحقق من كل منتج
     const validProducts: ProductValidation[] = [];
@@ -161,13 +168,14 @@ export async function validateStockAvailability(
         console.log(`✅ المخزون كافي: "${stockItem.productName}" - متوفر ${stockItem.currentQuantity}، مطلوب ${data.totalQuantity}`);
     }
 
-    const result: ValidationResult = {
+    const result = {
         isValid: invalidProducts.length === 0,
         allAvailable: invalidProducts.length === 0,
         validProducts,
         invalidProducts,
         totalProductsChecked: productQuantities.size,
-        totalOrdersChecked: orderItems.length
+        totalOrdersChecked: orderItems.length,
+        stockItems // ✨ إرجاع المخزون لإعادة استخدامه في deductStockBulk
     };
 
     console.log(`📊 نتيجة التحقق: ${result.isValid ? '✅ جميع المنتجات متوفرة' : `❌ ${invalidProducts.length} منتج غير متوفر`}`);
@@ -256,7 +264,7 @@ export async function atomicBulkShipping(
         const orderStatusMap = new Map<number, { rowIndex: number; status: string }>();
 
         for (const orderId of orderIds) {
-            const targetLead = leads.find(lead => lead.id === Number(orderId));
+            const targetLead = leads.find((lead: any) => lead.id === Number(orderId));
 
             // ❌ الطلب غير موجود في النظام
             if (!targetLead) {
@@ -411,10 +419,10 @@ export async function atomicBulkShipping(
 
         console.log('✅ [ATOMIC] التحقق من المخزون نجح');
 
-        // ✨ الخطوة 3: خصم المخزون أولاً (قبل تحديث حالة الطلبات)
+        // ✨ الخطوة 3: خصم المخزون أولاً (باستخدام stockItems المجلوبة مسبقاً لتوفير طلب API)
         console.log('📦 [ATOMIC] الخطوة 3: خصم المخزون...');
         
-        const bulkResult = await deductStockBulkWithoutLock(orderItems);
+        const bulkResult = await deductStockBulkWithoutLock(orderItems, validation.stockItems);
         // دمج نتائج المخزون مع نتائج الطلبات اليدوية السابقة
         const skipStockResults = stockResults.filter(r => r.message?.includes('أرشفة مباشرة') || r.message?.includes('مشحون مسبقاً'));
         stockResults = [...skipStockResults, ...bulkResult.results];
@@ -549,11 +557,12 @@ export async function atomicBulkShipping(
  * خصم المخزون الجماعي بدون قفل (للاستخدام داخل عملية مقفلة مسبقاً)
  */
 async function deductStockBulkWithoutLock(
-    orderItems: Array<{ productName: string; quantity: number; orderId: number }>
+    orderItems: Array<{ productName: string; quantity: number; orderId: number }>,
+    preloadedStockItems?: any[] // ✨ تمرير المخزون مسبقاً لتوفير طلب API
 ): Promise<{ success: boolean; results: any[]; summary?: any }> {
     try {
         // ✨ استخدام skipLock لتجنب Deadlock لأننا داخل قفل بالفعل
-        const result = await deductStockBulk(orderItems, { skipLock: true });
+        const result = await deductStockBulk(orderItems, { skipLock: true, preloadedStockItems });
         return result;
     } catch (error) {
         return {

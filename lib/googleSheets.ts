@@ -88,7 +88,8 @@ interface CacheEntry {
 
 class GoogleSheetsCache {
   private static cache = new Map<string, CacheEntry>();
-  private static readonly DEFAULT_TTL = 30000; // 30 seconds
+  private static readonly DEFAULT_TTL = 60000; // 60 seconds (زيادة من 30 لتقليل الطلبات)
+  private static readonly LEADS_CACHE_TTL = 15000; // 15 ثانية — كاش قصير لضمان المزامنة اللحظية
 
   static set(key: string, data: any, ttl: number = this.DEFAULT_TTL): void {
     this.cache.set(key, {
@@ -120,6 +121,17 @@ class GoogleSheetsCache {
         this.cache.delete(key);
       }
     }
+  }
+
+  /** إبطال كاش الليدز فوراً — يُستدعى بعد أي عملية كتابة */
+  static invalidateLeads(): void {
+    this.cache.delete('leads_data');
+    console.log('🔄 [CACHE] تم إبطال كاش الليدز — القراءة التالية ستجلب بيانات طازجة');
+  }
+
+  /** الحصول على TTL الليدز */
+  static getLeadsTTL(): number {
+    return this.LEADS_CACHE_TTL;
   }
 }
 
@@ -1746,7 +1758,16 @@ async function createStockMovementsSheet() {
 }
 
 // دالة لجلب الطلبات (leads)
-export async function fetchLeads() {
+export async function fetchLeads(forceFresh: boolean = false) {
+  // ✨ كاش ذكي: 15 ثانية بين القراءات، يُبطل فوراً عند أي كتابة
+  if (!forceFresh) {
+    const cached = GoogleSheetsCache.get('leads_data');
+    if (cached) {
+      console.log('📋 [CACHE HIT] استخدام بيانات الليدز المحفوظة (طازجة)');
+      return cached;
+    }
+  }
+
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
 
@@ -1808,7 +1829,8 @@ export async function fetchLeads() {
     console.error('❌ لم يتم العثور على عمود رقم الواتساب');
   }
 
-  return rows.slice(1).map((row, index) => {
+  // ✨ تحويل البيانات إلى كائنات مع حفظ في الكاش
+  const leads = rows.slice(1).map((row, index) => {
     const rowIndex = index + 2;
 
     // دالة مساعدة لتنظيف وتنسيق أرقام الهاتف المصرية
@@ -1888,9 +1910,6 @@ export async function fetchLeads() {
     const normalizedPhone = phoneNumber.trim();
     const normalizedWhatsApp = whatsappNumber.trim();
 
-    // إرجاع الواتساب كما هو محفوظ في الشيت (بدون إخفائه)
-    // لضمان إمكانية التعديل عليه
-
     return {
       id: rowIndex,
       rowIndex,
@@ -1916,6 +1935,12 @@ export async function fetchLeads() {
       bostaRanking: row[21] || '' // العمود V (الفهرس 21)
     };
   });
+
+  // ✨ حفظ النتيجة في الكاش (15 ثانية) — يُبطل فوراً عند أي كتابة
+  GoogleSheetsCache.set('leads_data', leads, GoogleSheetsCache.getLeadsTTL());
+  console.log(`📋 [CACHE SET] تم حفظ ${leads.length} ليد في الكاش (${GoogleSheetsCache.getLeadsTTL() / 1000}s)`);
+
+  return leads;
 }
 
 // دالة لتحديث طلب واحد
@@ -2026,6 +2051,9 @@ export async function updateLead(rowNumber: number, updates: Partial<LeadRow>) {
   );
 
   console.log(`✅ تم تحديث الليد ${rowNumber} بنجاح`);
+
+  // ✨ إبطال كاش الليدز فوراً — لضمان أن القراءة التالية تجلب بيانات طازجة
+  GoogleSheetsCache.invalidateLeads();
 }
 
 // دالة لتحديث عدة طلبات
@@ -2072,6 +2100,8 @@ export async function updateLeadsBatch(updates: Array<{ rowNumber: number; updat
       `تحديث مجمع لـ ${updates.length} ليد`
     );
     console.log('✅ تم تنفيذ التحديث المجمع بنجاح');
+    // ✨ إبطال كاش الليدز فوراً بعد التحديث المجمع
+    GoogleSheetsCache.invalidateLeads();
   } else {
     console.log('⚠️ لا توجد تحديثات للتنفيذ');
   }
@@ -2080,7 +2110,7 @@ export async function updateLeadsBatch(updates: Array<{ rowNumber: number; updat
 // دالة للحصول على إحصائيات الطلبات
 export async function getOrderStatistics() {
   try {
-    const leads = await fetchLeads();
+    const leads: LeadRow[] = await fetchLeads();
 
     // الإحصائيات العامة
     const overall = {
@@ -2627,7 +2657,7 @@ import { stockMutex } from './stockValidation';
 
 export async function deductStockBulk(
   orderItems: Array<{ productName: string; quantity: number; orderId: number }>,
-  options?: { skipLock?: boolean }
+  options?: { skipLock?: boolean; preloadedStockItems?: any[] }
 ): Promise<{
   success: boolean;
   message: string;
@@ -2687,10 +2717,16 @@ export async function deductStockBulk(
 
     console.log(`📊 تم تجميع ${productQuantities.size} منتج مختلف`);
 
-    // الخطوة 2: جلب المخزون مرة واحدة فقط
-    const stockData = await fetchStock(true);
-    const stockItems = stockData.stockItems;
-    console.log(`📦 تم جلب ${stockItems.length} منتج من المخزون`);
+    // الخطوة 2: جلب المخزون مرة واحدة فقط (أو استخدام المخزون الممرر)
+    let stockItems: StockItem[];
+    if (options?.preloadedStockItems) {
+      stockItems = options.preloadedStockItems as StockItem[];
+      console.log(`📦 استخدام المخزون الممرر مسبقاً (${stockItems.length} منتج) — توفير طلب API`);
+    } else {
+      const stockData = await fetchStock(true);
+      stockItems = stockData.stockItems;
+      console.log(`📦 تم جلب ${stockItems.length} منتج من المخزون`);
+    }
 
     // الخطوة 3: التحقق من توفر المخزون وتحضير التحديثات
     const results: Array<any> = [];

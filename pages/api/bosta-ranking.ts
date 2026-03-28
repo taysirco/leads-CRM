@@ -205,7 +205,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const leads = await fetchLeads();
 
       // إيجاد العملاء بدون ranking (Column V فارغ)
-      const needsCheck = leads.filter(lead => {
+      const needsCheck = leads.filter((lead: any) => {
         const ranking = (lead.bostaRanking || '').trim();
         const hasPhone = lead.phone && lead.phone.length >= 10;
         return !ranking && hasPhone;

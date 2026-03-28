@@ -70,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const refMatch = businessReference.match(/SMRKT-(\d+)-/);
       if (refMatch) {
         const orderId = parseInt(refMatch[1]);
-        targetLead = leads.find((l) => l.id === orderId);
+        targetLead = leads.find((l: any) => l.id === orderId);
         if (targetLead) {
           console.log(`✅ [BOSTA WEBHOOK] تم العثور على الطلب ${orderId} بالمرجع: ${businessReference}`);
         }
@@ -80,7 +80,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 2. البحث باستخدام رقم التتبع (طريقة بديلة)
     if (!targetLead && trackingNumber) {
       const trackingStr = String(trackingNumber);
-      targetLead = leads.find((l) => l.bostaTrackingNumber === trackingStr);
+      targetLead = leads.find((l: any) => l.bostaTrackingNumber === trackingStr);
       if (targetLead) {
         console.log(`✅ [BOSTA WEBHOOK] تم العثور على الطلب برقم التتبع: ${trackingStr}`);
       }
